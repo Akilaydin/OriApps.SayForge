@@ -88,14 +88,10 @@ npm run build
 npm run tauri -- build --bundles nsis
 ```
 
-Placeholder icons are generated deterministically from source:
-
-```powershell
-python scripts/generate-placeholder-icons.py
-```
-
-Run that command **from the repository root**. The generated icons will be
-replaced with a final original brand design later.
+The checked-in icons are temporary placeholders. Replace the existing assets
+in `client/src-tauri/icons/`, `client/src/assets/`, `docs/images/readme/`
+and `server/web/` with your own finished design. Include matching PNG, ICO
+and NSIS BMP variants; no icon generator script is required.
 
 The optional server has its own [setup documentation](server/README.md).
 
