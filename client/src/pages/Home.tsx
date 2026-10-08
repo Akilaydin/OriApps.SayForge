@@ -9,13 +9,6 @@ import { displayShortcut } from '@/lib/shortcutKeys'
 import { getLocale } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
-/**
- * 把带 `{key}` 占位的文案渲染成「文字 + 键帽 + 文字」。
- *
- * 不能把整句塞进一个 t() 就完事：键帽是个带样式的 <span>，而中英文里键帽出现的
- * 位置不同（"按下 X 开始…" vs "Press X to start…"）。按占位符切分，位置就由
- * 译文自己决定，不用为每种语言各写一份 JSX。
- */
 function WithKeyChip({ template, keyLabel, chipClassName }: {
   template: string
   keyLabel: string
@@ -41,7 +34,6 @@ export default function Home() {
     const loadHandsFreeKey = () =>
       getSetting('shortcutHandsFree', 'AltRight').then((value) => setHandsFreeKey(value as string))
     void loadHandsFreeKey()
-    // 快捷键变化时（向导 / 设置页修改）实时刷新首页提示，无需切换路由
     window.addEventListener(SHORTCUTS_CHANGED_EVENT, loadHandsFreeKey)
     return () => window.removeEventListener(SHORTCUTS_CHANGED_EVENT, loadHandsFreeKey)
   }, [])
@@ -62,19 +54,7 @@ export default function Home() {
     return { value: `${totalMinutes}`, extraValue: null, unit: t('home.unitMinutes'), extraUnit: null }
   }
 
-  /**
-   * 大数字缩写。
-   *
-   * 中文分档保持原样（万 / 千）—— 这是中文读者的习惯，不要动。
-   * 英文没有"万"这一档，按 k / M 分；用 Intl 的 compact 记数法也能出结果，
-   * 但它在 zh-CN 下不会给"千"这一档，会改掉现有中文显示，所以这里手写分支。
-   */
   const formatCompactNumber = (num: number) => {
-    if (getLocale() === 'zh-CN') {
-      if (num >= 10000) return t('home.compactTenThousand', { value: (num / 10000).toFixed(1) })
-      if (num >= 1000) return t('home.compactThousand', { value: (num / 1000).toFixed(1) })
-      return `${num}`
-    }
     return new Intl.NumberFormat(getLocale(), {
       notation: 'compact',
       maximumFractionDigits: 1,

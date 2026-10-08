@@ -1,5 +1,3 @@
-// 远程公告 banner — 展示服务端下发的通知，与更新机制解耦。
-// 文案纯文本渲染，链接仅 https 且用系统浏览器打开（详见 services/notice.ts 的安全约束）。
 
 import { useEffect, useState } from 'react'
 import { Info, AlertTriangle, Megaphone, X } from 'lucide-react'
@@ -14,7 +12,6 @@ import {
   type RemoteNotice,
 } from '@/services/notice'
 
-// 每 3 小时刷新一次，长期开着也能收到新公告
 const REFRESH_MS = 3 * 60 * 60 * 1000
 
 const LEVEL_STYLES: Record<NoticeLevel, { wrap: string; accent: string; Icon: typeof Info }> = {
@@ -35,7 +32,6 @@ const LEVEL_STYLES: Record<NoticeLevel, { wrap: string; accent: string; Icon: ty
   },
 }
 
-/** 去掉末尾斜杠，展示更干净的网址 */
 function prettyUrl(url: string): string {
   return url.replace(/\/+$/, '')
 }
@@ -90,7 +86,6 @@ export default function NoticeBanner() {
             {hasLink && (
               <>
                 {notice.body ? ' ' : ''}
-                {/* 链接自然融入正文，普通超链接样式；点击用系统浏览器打开 */}
                 <button
                   type="button"
                   onClick={handleOpen}

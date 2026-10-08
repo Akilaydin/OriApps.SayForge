@@ -1,4 +1,3 @@
-// 反馈意见服务 — 发送用户反馈到后端
 
 import { getBackendBaseUrl } from './runtimeConfig'
 import { getClientRuntimeInfo } from './bridge'
@@ -11,12 +10,10 @@ export interface FeedbackPayload {
   app_version: string
   timestamp: string
   feedback_text: string
-  // 转录 + 该次会话的排错信息（仅在用户保留转录时发送）
   transcript: {
     asr_text: string
     ai_text: string
     duration_sec: number
-    // 会话排错信息
     app_name?: string
     app_id?: string
     window_title?: string
@@ -44,7 +41,6 @@ export interface FeedbackPayload {
     ai_preset_name: string
     ai_system_prompt: string
     ai_prompt_append: string
-    // 客户端环境（非个人信息，用于排错；不含 IP）
     platform: string
     os_version: string
     system_locale: string
@@ -58,26 +54,21 @@ export interface FeedbackResult {
   message: string
 }
 
-/** 获取最后一条转录记录 */
 export async function getLastTranscript(): Promise<HistoryRecord | null> {
   const records = await listHistory({ limit: 1, offset: 0 })
   return records.length > 0 ? records[0] : null
 }
 
-/** 收集当前配置上下文 */
 async function collectContext(
   clientInfo: Awaited<ReturnType<typeof getClientRuntimeInfo>>,
 ): Promise<FeedbackPayload['context']> {
   const workMode = getWorkMode()
   const aiEnabled = await getSetting('aiEnabled', false) as boolean
   const aiProvider = await getSetting('cloudAi.provider', '') as string
-  // 运行时生效的模型只认扁平键。原来这里读的是 `cloudAi.<provider>.model`，那是
-  // AI 服务页自己的存储命名空间；页面改成服务列表后那个键不再更新，会报出过期的模型名。
   const aiModel = await getSetting('cloudAi.model', '') as string
   const activePreset = await getActivePreset()
   const aiPromptAppend = await getSetting('aiPromptAppend', '') as string
 
-  // ASR 信息
   let asrProvider = ''
   let asrModel = ''
   if (workMode === 'cloud_api') {
@@ -109,11 +100,9 @@ async function collectContext(
   }
 }
 
-/** 发送反馈到后端 */
 export async function submitFeedback(feedbackText: string, options?: { includeTranscript?: boolean }): Promise<FeedbackResult> {
   const includeTranscript = options?.includeTranscript ?? true
 
-  // 校验
   const trimmed = feedbackText.trim()
   if (trimmed.length < 2) {
     return { ok: false, message: t('feedback.tooShort') }
@@ -122,7 +111,6 @@ export async function submitFeedback(feedbackText: string, options?: { includeTr
     return { ok: false, message: t('feedback.tooLong') }
   }
 
-  // 收集信息
   const clientInfo = await getClientRuntimeInfo()
   const lastRecord = includeTranscript ? await getLastTranscript() : null
   const context = await collectContext(clientInfo)
@@ -137,7 +125,6 @@ export async function submitFeedback(feedbackText: string, options?: { includeTr
         asr_text: (lastRecord.asrText || '').slice(0, 5000),
         ai_text: (lastRecord.llmText || '').slice(0, 5000),
         duration_sec: lastRecord.durationSec || 0,
-        // 该次会话的排错信息
         app_name: lastRecord.appName || undefined,
         app_id: lastRecord.appId || undefined,
         window_title: lastRecord.windowTitle || undefined,
@@ -162,7 +149,6 @@ export async function submitFeedback(feedbackText: string, options?: { includeTr
     context,
   }
 
-  // 发送
   const baseUrl = getBackendBaseUrl()
   const res = await fetch(`${baseUrl}/api/feedback`, {
     method: 'POST',

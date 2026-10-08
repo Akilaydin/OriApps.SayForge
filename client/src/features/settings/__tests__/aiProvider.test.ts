@@ -23,14 +23,6 @@ import {
 } from '../aiProviderCatalog'
 import { setLocale } from '@/i18n'
 
-/**
- * 这组断言守住「AI 服务」页最容易回归的几件事：
- * 1. 供应商清单是唯一真相 —— 每家都必须有默认地址和至少一个候选模型，
- *    否则选中它就会落到"两个空框 + 两个灰按钮 + 零说明"的死角。
- * 2. 格式校验只做几乎不会误报的判断 —— 对合法密钥报警的代价高于漏报。
- * 3. 服务列表的读取与启用项解析永不抛异常 —— 这个值会经过导入导出和手改数据库，
- *    一条脏数据不该让整页白屏，启用项失效也不该变成"什么都没启用"。
- */
 describe('AI_PROVIDERS 清单', () => {
   it('每家都有默认地址和至少一个候选模型', () => {
     for (const p of AI_PROVIDERS) {
@@ -51,7 +43,7 @@ describe('AI_PROVIDERS 清单', () => {
 })
 
 describe('地区相关的供应商默认值', () => {
-  afterEach(() => setLocale('zh-CN'))
+  afterEach(() => setLocale('en'))
 
   it('英文界面优先 OpenAI-compatible', () => {
     setLocale('en')
@@ -60,11 +52,10 @@ describe('地区相关的供应商默认值', () => {
     expect(blankProfile().provider).toBe('openai_compat')
   })
 
-  it('中文界面保持 DeepSeek 优先', () => {
-    setLocale('zh-CN')
-    expect(preferredAiProviderValue()).toBe('deepseek')
-    expect(aiProvidersForDisplay()[0].value).toBe('deepseek')
-    expect(blankProfile().provider).toBe('deepseek')
+  it('stays on international providers even for a legacy Chinese system preference', () => {
+    expect(preferredAiProviderValue()).toBe('openai_compat')
+    expect(aiProvidersForDisplay()[0].value).toBe('openai_compat')
+    expect(blankProfile().provider).toBe('openai_compat')
   })
 })
 
@@ -74,24 +65,23 @@ describe('checkAiKeyFormat', () => {
   })
 
   it('粘贴带进空白字符时报警', () => {
-    expect(checkAiKeyFormat('deepseek', 'sk-abc def')).toContain('空格')
-    expect(checkAiKeyFormat('doubao', 'abc\ndef')).toContain('空格')
+    expect(checkAiKeyFormat('openai_compat', 'sk-abc def')).toContain('space')
+    expect(checkAiKeyFormat('openai_compat', 'abc\ndef')).toContain('space')
   })
 
-  it('DeepSeek / 千问 缺 sk- 前缀时报警', () => {
-    expect(checkAiKeyFormat('deepseek', 'abcdef')).toContain('sk-')
-    expect(checkAiKeyFormat('qwen', 'abcdef')).toContain('sk-')
+  it('accepts API keys with arbitrary lengths and formats for compatible services', () => {
+    expect(checkAiKeyFormat('openai_compat', 'provider-specific-key')).toBe('')
+    expect(checkAiKeyFormat('openai_compat', 'sk-abc')).toBe('')
   })
 
   it('不再对长度做断言——供应商改长度不该让合法密钥报警', () => {
-    expect(checkAiKeyFormat('deepseek', 'sk-' + 'a'.repeat(64))).toBe('')
-    expect(checkAiKeyFormat('deepseek', 'sk-abc')).toBe('')
-    // 豆包的 key 不是 UUID 也不报警
-    expect(checkAiKeyFormat('doubao', 'not-a-uuid-at-all')).toBe('')
+    expect(checkAiKeyFormat('openai_compat', 'sk-' + 'a'.repeat(64))).toBe('')
+    expect(checkAiKeyFormat('openai_compat', 'sk-abc')).toBe('')
+    expect(checkAiKeyFormat('openai_compat', 'not-a-uuid-at-all')).toBe('')
   })
 
   it('没有专门规则的供应商只查空白字符', () => {
-    expect(checkAiKeyFormat('mimo', 'whatever-key')).toBe('')
+    expect(checkAiKeyFormat('openai_compat', 'whatever-key')).toBe('')
     expect(checkAiKeyFormat('openai_compat', 'anything')).toBe('')
   })
 })
@@ -111,25 +101,25 @@ describe('checkApiUrl', () => {
   })
 
   it('非法网址报警', () => {
-    expect(checkApiUrl('https://')).toContain('合法')
+    expect(checkApiUrl('https://')).toContain('valid URL')
   })
 })
 
 describe('extractTestReply', () => {
   const backendDetail = [
-    '耗时: 1240ms',
-    '模型: deepseek-v4-flash',
-    '发送: system="只回复「连接正常」四个字，不要输出任何其他内容。" user="测试"',
-    '回复: 连接正常',
+    'Elapsed: 1240ms',
+    'Model: gpt-4o-mini',
+    'Sent: system="Reply with OK only." user="Connection test"',
+    'Reply: OK',
   ].join('\n')
 
-  it('只取「回复」，不把内部测试提示词带出来', () => {
-    expect(extractTestReply(backendDetail)).toBe('连接正常')
+  it('extracts reply without exposing the internal test prompt', () => {
+    expect(extractTestReply(backendDetail)).toBe('OK')
     expect(extractTestReply(backendDetail)).not.toContain('system=')
   })
 
-  it('没有回复行时返回空串', () => {
-    expect(extractTestReply('耗时: 5ms')).toBe('')
+  it('returns empty if there is no reply line', () => {
+    expect(extractTestReply('Elapsed: 5ms')).toBe('')
     expect(extractTestReply(undefined)).toBe('')
   })
 })
@@ -158,10 +148,10 @@ describe('parseLegacyLatencies', () => {
 function profile(patch: Partial<AiProfile> = {}): AiProfile {
   return {
     id: 'p1',
-    provider: 'deepseek',
-    apiUrl: 'https://api.deepseek.com',
+    provider: 'openai_compat',
+    apiUrl: 'https://api.openai.com',
     apiKey: 'sk-key',
-    model: 'deepseek-v4-flash',
+    model: 'gpt-4o-mini',
     ...patch,
   }
 }
@@ -176,7 +166,7 @@ describe('parseProfiles', () => {
   it('丢掉不是对象的条目，保留能救的', () => {
     const result = parseProfiles([profile(), 'junk', null, 42])
     expect(result).toHaveLength(1)
-    expect(result[0].model).toBe('deepseek-v4-flash')
+    expect(result[0].model).toBe('gpt-4o-mini')
   })
 
   it('缺字段补空串、缺供应商回落到第一家', () => {
@@ -212,7 +202,6 @@ describe('parseProfiles', () => {
   it('更早版本平铺的 latencyMs 升级成"测通过"的结论（老版本只有测通才写这个数）', () => {
     const upgraded = parseProfiles([{ ...profile(), check: undefined, latencyMs: 1200 }])[0].check
     expect(upgraded).toEqual({ ok: true, latencyMs: 1200 })
-    // 没有 at：那次是什么时候测的没人知道，界面上就不该声称"刚测过"
     expect(upgraded?.at).toBeUndefined()
   })
 
@@ -224,15 +213,15 @@ describe('parseProfiles', () => {
 
 describe('gradeLatency', () => {
   it('五档，按口述场景的手感切：200 / 500 / 1000 / 2000', () => {
-    expect(gradeLatency(0).label).toBe('极速')
-    expect(gradeLatency(199).label).toBe('极速')
-    expect(gradeLatency(200).label).toBe('很快')
-    expect(gradeLatency(499).label).toBe('很快')
-    expect(gradeLatency(500).label).toBe('正常')
-    expect(gradeLatency(999).label).toBe('正常')
-    expect(gradeLatency(1000).label).toBe('偏慢')
-    expect(gradeLatency(1999).label).toBe('偏慢')
-    expect(gradeLatency(2000).label).toBe('太慢')
+    expect(gradeLatency(0).label).toBe('Instant')
+    expect(gradeLatency(199).label).toBe('Instant')
+    expect(gradeLatency(200).label).toBe('Fast')
+    expect(gradeLatency(499).label).toBe('Fast')
+    expect(gradeLatency(500).label).toBe('Normal')
+    expect(gradeLatency(999).label).toBe('Normal')
+    expect(gradeLatency(1000).label).toBe('Slow')
+    expect(gradeLatency(1999).label).toBe('Slow')
+    expect(gradeLatency(2000).label).toBe('Too slow')
   })
 
   it('每一档都有词：极速也要说出来，用户才知道这个数好不好', () => {
@@ -269,19 +258,17 @@ describe('isCheckFresh', () => {
 describe('formatCheckedAt', () => {
   const now = new Date('2026-08-03T12:00:00Z').getTime()
 
-  // 断言"选了哪个粒度"，不写死具体文案：相对时间现在交给 Intl.RelativeTimeFormat
-  // 渲染（英文的单复数没法用一条模板覆盖），所以文案随语言与 CLDR 走，不该锁死。
-  const rtf = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
 
   it('按最粗的合适粒度说"多久之前"', () => {
-    expect(formatCheckedAt(now - 30 * 1000, now)).toBe('刚刚')
+    expect(formatCheckedAt(now - 30 * 1000, now)).toBe('just now')
     expect(formatCheckedAt(now - 5 * 60 * 1000, now)).toBe(rtf.format(-5, 'minute'))
     expect(formatCheckedAt(now - 3 * 3600 * 1000, now)).toBe(rtf.format(-3, 'hour'))
     expect(formatCheckedAt(now - 50 * 3600 * 1000, now)).toBe(rtf.format(-2, 'day'))
   })
 
   it('时钟往回跳时不说"负几分钟前"', () => {
-    expect(formatCheckedAt(now + 60 * 1000, now)).toBe('刚刚')
+    expect(formatCheckedAt(now + 60 * 1000, now)).toBe('just now')
   })
 })
 
@@ -300,13 +287,13 @@ describe('resolveActiveProfile', () => {
 
 describe('一行的标题与副标题', () => {
   it('没填模型时也有字，否则那一行看着像坏了', () => {
-    expect(profileTitle(profile({ model: '  ' }))).toBe('未填写模型')
+    expect(profileTitle(profile({ model: '  ' }))).toBe('no model set')
   })
 
   it('默认地址不重复念，自定义端点才显示主机名', () => {
-    expect(profileSubtitle(profile())).toBe('DeepSeek')
+    expect(profileSubtitle(profile())).toBe('OpenAI-compatible')
     expect(profileSubtitle(profile({ provider: 'openai_compat', apiUrl: 'http://127.0.0.1:8000/v1' })))
-      .toBe('OpenAI 兼容 · 127.0.0.1:8000')
+      .toBe('OpenAI-compatible · 127.0.0.1:8000')
   })
 
   it('两个不同端点的 OpenAI 兼容在列表里能区分开——这正是旧结构做不到的事', () => {
@@ -332,33 +319,32 @@ describe('isProfileComplete', () => {
 describe('migrateLegacyProfiles', () => {
   const legacy: LegacyProviderData[] = [
     {
-      provider: 'deepseek',
-      apiUrl: 'https://api.deepseek.com',
-      apiKey: 'sk-ds',
-      model: 'deepseek-v4-flash',
-      models: ['deepseek-v4-flash', 'deepseek-chat'],
-      latencies: { 'deepseek-v4-flash': 1200 },
+      provider: 'groq',
+      apiUrl: 'https://api.groq.com/openai/v1',
+      apiKey: 'groq-key',
+      model: 'whisper-large-v3-turbo',
+      models: ['whisper-large-v3-turbo', 'whisper-large-v3'],
+      latencies: { 'whisper-large-v3-turbo': 1200 },
     },
-    // 没填密钥的一家不该被迁成"看着能用其实打不通"的服务
-    { provider: 'qwen', apiUrl: '', apiKey: '', model: '', models: [], latencies: {} },
+    { provider: 'deprecated-provider', apiUrl: '', apiKey: '', model: '', models: [], latencies: {} },
   ]
 
   it('每个候选模型各成一条，带上原来的地址、密钥；有耗时的算测通过一次', () => {
-    const { profiles } = migrateLegacyProfiles(legacy, 'deepseek', 'deepseek-chat')
-    expect(profiles.map((p) => p.model)).toEqual(['deepseek-v4-flash', 'deepseek-chat'])
-    expect(profiles.every((p) => p.apiKey === 'sk-ds')).toBe(true)
+    const { profiles } = migrateLegacyProfiles(legacy, 'groq', 'whisper-large-v3')
+    expect(profiles.map((p) => p.model)).toEqual(['whisper-large-v3-turbo', 'whisper-large-v3'])
+    expect(profiles.every((p) => p.apiKey === 'groq-key')).toBe(true)
     expect(profiles[0].check).toEqual({ ok: true, latencyMs: 1200 })
     expect(profiles[1].check).toBeUndefined()
   })
 
   it('老的「当前供应商 + 当前模型」成为启用项', () => {
-    const { profiles, activeId } = migrateLegacyProfiles(legacy, 'deepseek', 'deepseek-chat')
-    expect(resolveActiveProfile(profiles, activeId)?.model).toBe('deepseek-chat')
+    const { profiles, activeId } = migrateLegacyProfiles(legacy, 'groq', 'whisper-large-v3')
+    expect(resolveActiveProfile(profiles, activeId)?.model).toBe('whisper-large-v3')
   })
 
   it('没填完的供应商直接跳过', () => {
-    const { profiles } = migrateLegacyProfiles(legacy, 'deepseek', '')
-    expect(profiles.some((p) => p.provider === 'qwen')).toBe(false)
+    const { profiles } = migrateLegacyProfiles(legacy, 'groq', '')
+    expect(profiles.some((p) => p.provider === 'deprecated-provider')).toBe(false)
   })
 
   it('新用户（什么都没配过）迁出空列表，不是一堆空壳', () => {
@@ -371,8 +357,8 @@ describe('migrateLegacyProfiles', () => {
   })
 
   it('id 是确定性的：重复迁移不会产生两份', () => {
-    const first = migrateLegacyProfiles(legacy, 'deepseek', '')
-    const second = migrateLegacyProfiles(legacy, 'deepseek', '')
+    const first = migrateLegacyProfiles(legacy, 'groq', '')
+    const second = migrateLegacyProfiles(legacy, 'groq', '')
     expect(first.profiles.map((p) => p.id)).toEqual(second.profiles.map((p) => p.id))
   })
 })

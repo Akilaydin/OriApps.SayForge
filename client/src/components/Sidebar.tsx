@@ -10,8 +10,6 @@ import { useUpdateState } from '@/features/update/useUpdateState'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
-// 导航项存 key 而不是文案：切语言时这些常量不会重新求值（模块级只算一次），
-// 存成中文串就会永远停在启动时那个语言。
 const dailyNavItems = [
   { to: '/', icon: Home, labelKey: 'nav.home' },
   { to: '/history', icon: Clock, labelKey: 'nav.history' },
@@ -69,14 +67,12 @@ function IconOnlyNavItem({
   to: string
   icon: typeof Home
   label: string
-  /** 覆盖图标自身的颜色/动效（如「有更新」时的绿色闪烁） */
   iconClassName?: string
 }) {
   return (
     <Tooltip content={label}>
       <NavLink
         to={to}
-        // 这里只有图标、没有文字，不给 aria-label 的话读屏用户听到的是空按钮
         aria-label={label}
         className={({ isActive }) =>
           cn(
@@ -91,19 +87,6 @@ function IconOnlyNavItem({
   )
 }
 
-/**
- * 侧栏底部那排图标。
- *
- * 有更新待安装时**不新增图标** —— 让「关于」这一枚自己变绿闪烁，悬停提示换成
- * 「新版本已下载好」。关于页就是更新所在的地方，点它正好到达能看到版本说明和
- * 「立即安装」的位置；多一枚图标既挤又需要用户先学会它是什么意思。
- *
- * 后台下载期间**故意毫无变化**：那会儿没有任何需要用户知道的事，静默才是本意。
- *
- * ⚠ 这里用绿色不违反下面 ModeIndicator 那条"不给任何好颜色"的规矩：那条针对的是
- * 我们没验证过的事（配置填完了 ≠ 真能用）。而"包已下载完、哈希校验过、随时可装"
- * 是确定的事实。别顺手把它改回中性色。
- */
 function FooterIcons() {
   const t = useT()
   const update = useUpdateState()
@@ -129,13 +112,6 @@ function FooterIcons() {
   )
 }
 
-/**
- * 服务器模式的连接状态。
- *
- * 只有这一个模式配得上"状态指示"：它有一条真在跑的连接（30s 心跳），所以图标能诚实地
- * 报出此刻通不通——信号图标 + 颜色，断线换成带斜杠的那只。
- * 本地/云 API 没有这种持续探测，见 ModeIndicator 的注释。
- */
 const statusConfig = {
   connected: { icon: Wifi, color: 'text-success', labelKey: 'connection.connected' },
   connecting: { icon: Wifi, color: 'text-warning animate-pulse', labelKey: 'connection.connecting' },
@@ -143,18 +119,6 @@ const statusConfig = {
   error: { icon: WifiOff, color: 'text-destructive', labelKey: 'connection.error' },
 } as const satisfies Record<string, { icon: typeof Wifi; color: string; labelKey: TranslationKey }>
 
-/**
- * 左下角的引擎指示：始终只占一个图标位，细节全在悬停提示里。
- *
- * 这里和「语音引擎」页那三张模式卡**不是同一件事**，所以图标也不必事事对齐：
- * 卡片上的图标是在给模式起名（Cpu / Cloud / Server，一个静态属性）；
- * 这里报的是"此刻怎么样"。于是只有服务器模式换成信号图标——它有一条真在跑的连接可报。
- *
- * 本地 / 云 API 一律是中性单色，**不给任何"好"的颜色**：我们唯一知道的事实是
- * "配置填完了没有"，而填完 ≠ 真的能用（模型能不能加载、密钥有没有被吊销，都没验过）。
- * 所以只有确定的坏消息（缺东西）才转 warning 色，其余保持沉默——
- * 曾经在这里点过绿灯，等于替一件没测过的事作保。
- */
 function ModeIndicator() {
   const t = useT()
   const status = useConnectionStatus()
@@ -176,8 +140,6 @@ function ModeIndicator() {
   const Icon = mode === 'local' ? Cpu : Cloud
   const title = mode === 'local' ? t('mode.local') : t('mode.cloudApi')
   const notReady = ready === false
-  // blockedReason 目前是 Rust/服务层给的中文串（P2-1 会改成 code 再本地化）。
-  // 这里只保证**外壳**跟随语言，不假装里面那句已经翻好了。
   const tip = notReady
     ? t('mode.tooltipNotReady', { mode: title, reason: blockedReason || t('mode.notReadyFallback') })
     : detail ? t('mode.tooltipDetail', { mode: title, detail }) : title

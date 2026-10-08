@@ -1,11 +1,5 @@
-// 远程公告服务 — 与更新机制完全解耦的服务端可控通知通道。
 //
-// 即使自动更新出问题、或不想让用户更新软件，也能通过后端下发一条公告，
-// 在 App 内提示用户（例如引导去官网/GitHub 手动下载新版）。
 //
-// 安全约束（远程内容视为不可信输入）：
-//   - 文案一律按纯文本渲染（React 默认转义），绝不当 HTML 注入。
-//   - 链接只允许 https，且用系统浏览器打开，绝不导航 WebView 自身。
 
 import { getBackendBaseUrl } from './runtimeConfig'
 import { getSetting, setSetting } from './store'
@@ -14,23 +8,16 @@ import { getLocale, type Locale } from '@/i18n'
 export type NoticeLevel = 'info' | 'warning' | 'critical'
 
 export interface RemoteNotice {
-  /** 唯一 id：用户关闭后按 id 记忆，不再重复弹 */
   id: string
-  /** 级别，决定 banner 配色与图标 */
   level: NoticeLevel
   title: string
   body?: string
-  /** 行动按钮链接（仅 https） */
   linkUrl?: string
   linkLabel?: string
-  /** 只对 >= minVersion 的客户端显示 */
   minVersion?: string | null
-  /** 只对 <= maxVersion 的客户端显示（例如只提示旧版用户去手动更新） */
   maxVersion?: string | null
-  /** 生效时间窗（ISO 字符串），可选 */
   startAt?: string | null
   endAt?: string | null
-  /** 是否允许关闭，默认 true */
   dismissible?: boolean
 }
 
@@ -117,9 +104,6 @@ function withinTimeWindow(notice: RemoteNotice, now = Date.now()): boolean {
 }
 
 async function loadRaw(): Promise<unknown> {
-  // 开发预览：dev 环境下可在控制台执行
-  //   localStorage.setItem('__devNotice', JSON.stringify({ id:'t1', level:'warning', title:'测试公告', body:'内容…', linkUrl:'https://github.com/Akilaydin/OriApps.SayForge/releases', linkLabel:'GitHub Releases' }))
-  // 刷新即可看到 banner 效果，无需后端。清除：localStorage.removeItem('__devNotice')
   if (import.meta.env.DEV) {
     try {
       const dev = localStorage.getItem('__devNotice')
@@ -138,7 +122,6 @@ async function loadRaw(): Promise<unknown> {
   return await resp.json()
 }
 
-/** 拉取当前应展示的公告；无公告/不适用当前版本/不在时间窗/已被用户关闭 → 返回 null。 */
 export async function fetchActiveNotice(
   currentVersion: string,
   locale: Locale = getLocale(),
@@ -159,17 +142,14 @@ export async function fetchActiveNotice(
   }
 }
 
-/** 记住某条公告已被用户关闭（按 id）。 */
 export async function dismissNotice(id: string): Promise<void> {
   const dismissed = await getSetting<string[]>(DISMISSED_KEY, [])
   const list = Array.isArray(dismissed) ? dismissed : []
   if (!list.includes(id)) {
-    // 只保留最近 50 条，避免无限增长
     await setSetting(DISMISSED_KEY, [...list, id].slice(-50))
   }
 }
 
-/** 校验是否为安全的 https 外链。 */
 export function isSafeHttpsUrl(url: string | undefined): url is string {
   if (!url) return false
   try {

@@ -1,181 +1,65 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   buildAsrExtra,
-  isQwenOmniProvider,
   isStreamingDisplayCapable,
   isStreamingDisplayReady,
-  resolveQwenOmniModel,
   resolveAsrDisplayModel,
 } from '../asrModels'
 
-describe('isQwenOmniProvider', () => {
-  it('识别 Qwen Omni 系列', () => {
-    expect(isQwenOmniProvider('qwen_omni_plus')).toBe(true)
-    expect(isQwenOmniProvider('qwen_omni_35_plus')).toBe(true)
-    expect(isQwenOmniProvider('qwen_omni_35_flash')).toBe(true)
-    expect(isQwenOmniProvider('qwen_omni_flash')).toBe(true)
-    expect(isQwenOmniProvider('qwen_omni_turbo')).toBe(true)
-  })
-
-  it('非 Omni 返回 false', () => {
-    expect(isQwenOmniProvider('doubao_v2')).toBe(false)
-    expect(isQwenOmniProvider('qwen')).toBe(false)
-    expect(isQwenOmniProvider('')).toBe(false)
-  })
-})
-
-describe('resolveQwenOmniModel', () => {
-  it('返回正确的模型 ID', () => {
-    expect(resolveQwenOmniModel('qwen_omni_35_plus')).toBe('qwen3.5-omni-plus-realtime')
-    expect(resolveQwenOmniModel('qwen_omni_35_flash')).toBe('qwen3.5-omni-flash-realtime')
-  })
-
-  /**
-   * 两个退役运行时键必须仍然解析出**某个还活着的** Omni，不能变成 undefined。
-   *
-   * undefined 会让 buildAsrExtra 不带 model 字段，于是落点交给 Rust 侧的
-   * DEFAULT_MODEL 去定 —— 两处各自演进就会漂，而漂了没人会发现。
-   * 落点也必须和 asrProviderCatalog 的 RETIRED_MODELS 一致。
-   */
-  it('退役的运行时键落到同族还活着的模型', () => {
-    expect(resolveQwenOmniModel('qwen_omni_flash')).toBe('qwen3.5-omni-flash-realtime')
-    expect(resolveQwenOmniModel('qwen_omni_turbo')).toBe('qwen3.5-omni-flash-realtime')
-  })
-
-  it('非 Omni 返回 undefined', () => {
-    expect(resolveQwenOmniModel('doubao_v2')).toBeUndefined()
-    expect(resolveQwenOmniModel('qwen')).toBeUndefined()
-  })
-})
-
-describe('resolveAsrDisplayModel', () => {
-  it('映射已知供应商', () => {
-    expect(resolveAsrDisplayModel('doubao_v2')).toBe('Doubao-Seed-ASR-2.0')
-    expect(resolveAsrDisplayModel('qwen')).toBe('qwen3-asr-flash')
-    expect(resolveAsrDisplayModel('mimo')).toBe('mimo-v2.5-asr')
-    expect(resolveAsrDisplayModel('qwen_omni_35_plus')).toBe('qwen3.5-omni-plus-realtime')
-  })
-
-  it('未知供应商返回原始 key', () => {
+describe('supported international ASR providers', () => {
+  it('has human-readable default model names for major providers', () => {
+    expect(resolveAsrDisplayModel('groq_whisper')).toBe('whisper-large-v3-turbo')
+    expect(resolveAsrDisplayModel('openai_transcribe')).toBe('gpt-transcribe')
     expect(resolveAsrDisplayModel('custom_provider')).toBe('custom_provider')
-  })
-
-  it('空字符串返回 unknown', () => {
     expect(resolveAsrDisplayModel('')).toBe('unknown')
   })
-
-  // 用户选了同一家的另一个模型时，显示必须跟着走 —— 否则历史记录、诊断、
-  // 识别测试三处都会报该服务的默认模型，看着像"我选的没生效"
-  it('选定的模型优先于默认表', () => {
-    expect(resolveAsrDisplayModel('groq_whisper')).toBe('whisper-large-v3-turbo')
+  it('preserves selected model instead of reverting to provider default', () => {
     expect(resolveAsrDisplayModel('groq_whisper', 'whisper-large-v3')).toBe('whisper-large-v3')
-    expect(resolveAsrDisplayModel('openai_transcribe')).toBe('gpt-transcribe')
     expect(resolveAsrDisplayModel('openai_transcribe', 'gpt-4o-mini-transcribe'))
       .toBe('gpt-4o-mini-transcribe')
-  })
-
-  it('空白的选定值不算选过', () => {
     expect(resolveAsrDisplayModel('groq_whisper', '')).toBe('whisper-large-v3-turbo')
-    expect(resolveAsrDisplayModel('groq_whisper', '   ')).toBe('whisper-large-v3-turbo')
+    expect(resolveAsrDisplayModel('groq_whisper', '  ')).toBe('whisper-large-v3-turbo')
   })
-})
-
-describe('流式实时字幕判据', () => {
-  // isStreamingDisplayReady 是运行时**唯一**的闸门（CloudAPIProvider 拿它决定走不走
-  // WebSocket）。光在服务目录里给一条加 streaming: true 是没有任何效果的 ——
-  // 这组断言就是那份契约。
-  it('有流式实现的五家都就绪，一次性那几家一律不就绪', () => {
-    for (const provider of [
-      'doubao_v2', 'qwen_audio_stream', 'openai_live_transcribe', 'gemini_live_transcribe',
-    ]) {
+  it('limits realtime streaming to OpenAI and Gemini and preserves their readiness', () => {
+    for (const provider of ['openai_live_transcribe', 'gemini_live_transcribe']) {
       expect(isStreamingDisplayCapable(provider)).toBe(true)
       expect(isStreamingDisplayReady(provider)).toBe(true)
     }
-    // 这几个是一次性 HTTP，它们的流式版本是各自单独的一张卡
-    for (const provider of [
-      'qwen', 'mimo', 'groq_whisper', 'openai_transcribe', 'gemini_transcribe', 'qwen_omni_35_plus', '',
-    ]) {
+    for (const provider of ['groq_whisper', 'openai_transcribe', 'gemini_transcribe', 'doubao_v2', 'qwen_audio_stream', '']) {
       expect(isStreamingDisplayCapable(provider)).toBe(false)
       expect(isStreamingDisplayReady(provider)).toBe(false)
     }
   })
-
-  // qwen_realtime 走地域专属端点，没有业务空间 ID 连不上 —— 这条前置条件只属于它，
-  // 别照抄给 qwen_audio_stream（那个用通用域名，实测不需要）。
-  it('只有 qwen_realtime 要业务空间 ID 才算就绪', () => {
-    expect(isStreamingDisplayCapable('qwen_realtime')).toBe(true)
-    expect(isStreamingDisplayReady('qwen_realtime')).toBe(false)
-    expect(isStreamingDisplayReady('qwen_realtime', '  ')).toBe(false)
-    expect(isStreamingDisplayReady('qwen_realtime', 'ws-abc')).toBe(true)
-    // 别家给了 workspaceId 也不影响判定
-    expect(isStreamingDisplayReady('qwen_audio_stream')).toBe(true)
-    expect(isStreamingDisplayReady('gemini_live_transcribe', '')).toBe(true)
-  })
 })
 
-describe('buildAsrExtra', () => {
-  it('carries user and system instructions and MP3 for an OpenAI-compatible ASR endpoint', () => {
+describe('OpenAI-compatible audio request construction', () => {
+  it('preserves MP3 option, custom system/user prompts and the exact model name', () => {
     expect(buildAsrExtra('openai_compat', {
-      model: 'gemini-example',
-      protocol: 'chat_standard',
+      model: 'gemini-example', protocol: 'chat_standard',
       instructions: 'Transcribe Russian speech.',
-      userPrompt: 'Preserve C# and RabbitMQ spelling.',
+      userPrompt: 'Keep C# and RabbitMQ spelling.',
       audioEncoding: 'mp3',
     })).toEqual({
-      model: 'gemini-example',
-      protocol: 'chat_standard',
+      model: 'gemini-example', protocol: 'chat_standard',
       instructions: 'Transcribe Russian speech.',
-      userPrompt: 'Preserve C# and RabbitMQ spelling.',
+      userPrompt: 'Keep C# and RabbitMQ spelling.',
       audioEncoding: 'mp3',
     })
-    expect(buildAsrExtra('openai_compat', { audioEncoding: 'wav' })).toBeUndefined()
   })
-
-  it('普通服务：选过模型才带 extra', () => {
+  it('omits default options and empty strings', () => {
+    expect(buildAsrExtra('openai_compat', {audioEncoding: 'wav'})).toBeUndefined()
     expect(buildAsrExtra('groq_whisper')).toBeUndefined()
-    expect(buildAsrExtra('groq_whisper', { model: '' })).toBeUndefined()
-    expect(buildAsrExtra('groq_whisper', { model: '  ' })).toBeUndefined()
-    expect(buildAsrExtra('groq_whisper', { model: 'whisper-large-v3' }))
-      .toEqual({ model: 'whisper-large-v3' })
+    expect(buildAsrExtra('groq_whisper', {model: '  '})).toBeUndefined()
   })
-
-  /**
-   * ⚠️ 这条是一次静默 bug 的回归测试。
-   *
-   * 「一张卡 = 一个平台」之后，运行时 provider 变成了平台级的 `qwen_omni`，模型由
-   * 调用方（resolveAsrApiModel）解析好再传进来。而老实现看到 provider 以 `qwen_omni`
-   * 开头就去查 QWEN_OMNI_MODEL_MAP —— 表里没有 `qwen_omni` 这个键，于是
-   * `extra.model` 是 undefined，后端回落到它自己的默认模型。
-   * 表现是**下拉里选哪个 Omni 都跑同一个**，而界面显示一切正常。
-   *
-   * 老测试用的是旧 id（`qwen_omni_35_plus`，表里有），所以它一直是绿的 ——
-   * 断言钉在了已经不存在的调用形态上。
-   */
-  it('传进来的模型必须被采纳，哪怕 provider 是 qwen_omni', () => {
-    expect(buildAsrExtra('qwen_omni', { model: 'qwen3.5-omni-plus-realtime' }))
-      .toEqual({ model: 'qwen3.5-omni-plus-realtime' })
-    expect(buildAsrExtra('qwen_omni', {
-      model: 'qwen3.5-omni-flash-realtime',
-      instructions: '照原样转写',
-    })).toEqual({ model: 'qwen3.5-omni-flash-realtime', instructions: '照原样转写' })
+  it('preserves a user-provided model and endpoint even when not in a built-in catalog', () => {
+    expect(buildAsrExtra('openai_compat', {
+      model:'custom-asr-model',baseUrl:'http://127.0.0.1:8000/v1',
+    })).toEqual({model:'custom-asr-model',baseUrl:'http://127.0.0.1:8000/v1'})
+    expect(buildAsrExtra('groq_whisper', {model:'whisper-large-v3',baseUrl:' '}))
+      .toEqual({model:'whisper-large-v3'})
   })
-
-  /** 存量运行时键里 provider 还是旧的那几个时，模型名仍要能从老表反查出来。 */
-  it('没传模型时，旧 provider id 还能从老表兜底', () => {
-    expect(buildAsrExtra('qwen_omni_35_plus'))
-      .toEqual({ model: 'qwen3.5-omni-plus-realtime' })
-    // 退役键兜底出来的是替代模型，不是它原来那个（见 QWEN_OMNI_MODEL_MAP 的注释）
-    expect(buildAsrExtra('qwen_omni_turbo'))
-      .toEqual({ model: 'qwen3.5-omni-flash-realtime' })
-  })
-
-  it('自定义端点：地址会带进 extra', () => {
-    expect(buildAsrExtra('openai_compat_transcribe', {
-      model: 'whisper-1',
-      baseUrl: 'http://127.0.0.1:8000/v1',
-    })).toEqual({ model: 'whisper-1', baseUrl: 'http://127.0.0.1:8000/v1' })
-    // 空地址不进 extra，让后端用它内置的默认值
-    expect(buildAsrExtra('groq_whisper', { model: 'whisper-large-v3', baseUrl: '  ' }))
-      .toEqual({ model: 'whisper-large-v3' })
+  it('does not silently infer models from removed vendor-specific provider IDs', () => {
+    expect(buildAsrExtra('qwen_omni_35_plus')).toBeUndefined()
+    expect(buildAsrExtra('doubao_v2')).toBeUndefined()
   })
 })

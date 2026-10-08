@@ -20,73 +20,30 @@ let usingFallback = false
 
 const TARGET_SAMPLE_RATE = 16000
 
-/**
- * 一个输入端点。只留判断"这是哪个麦克风"用得到的三个字段，不用 MediaDeviceInfo
- * 本身 —— 那是带方法的宿主对象，单测里构造起来啰嗦。
- */
 export interface MicEndpoint {
   deviceId: string
   groupId: string
   label: string
 }
 
-/**
- * Chromium 在真实端点之外还摆两个「伪设备」：deviceId 固定为 default /
- * communications，label 是 `<本地化前缀> - <真实端点名>`（中文系统是「默认值 - 」）。
- * 它们不是麦克风，只是「跟着系统默认走」这条路由。
- *
- * 放在这里 export 而不是放在 micSourceReminder 里：设置页的设备列表和悬浮窗的
- * 来源提示都要认它，而 audio.ts 不能反向 import recorder 下的模块（会成环）。
- */
 export function isPseudoInputDevice(deviceId: string): boolean {
   const id = deviceId.trim().toLowerCase()
   return !id || id === 'default' || id === 'communications'
 }
 
-/**
- * 规范化设置里存的「选中的麦克风」。
- *
- * 伪设备 id 一律折成空串，也就是「跟随系统默认」—— 两者语义完全一样（`getUserMedia`
- * 收到 `deviceId: 'default'` 和收到不带 deviceId 的约束，解析结果是同一个端点）。
- *
- * 必须折：伪设备已经不在 listMicrophones 的结果里了，留着会让设置页的下拉找不到
- * 选中项、退回占位符文案，看起来像"没有选择麦克风"。实测存量数据里确实有
- * `selectedMic = "default"` —— 老版本的下拉把伪设备也列出来，用户点了它。
- */
 export function normalizeSelectedMicId(raw: unknown): string {
   const id = typeof raw === 'string' ? raw.trim() : ''
   return isPseudoInputDevice(id) ? '' : id
 }
 
-/**
- * 剥掉设备名结尾的 USB 标识（`(047f:c053)` 这种 VID:PID）。
- *
- * 它对辨认设备毫无帮助：同一型号的两台设备 VID:PID 完全一样，连"区分同型号"都做不到，
- * 只是白占宽度、把真正有用的型号名挤出可视范围。设备名里剩下的两段都要留 ——
- * 主名（`耳机式麦克风`）说明是什么，括号里的型号（`Plantronics Blackwire 5220 Series`）
- * 才是区分设备的依据。
- */
 export function stripUsbIds(label: string): string {
   return label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
 }
 
-/** 列表里真正的麦克风：排掉伪设备，也排掉读不到名字的条目（没名字无从辨认）。 */
 export function realInputEndpoints<T extends MicEndpoint>(devices: T[]): T[] {
   return devices.filter((d) => !isPseudoInputDevice(d.deviceId) && d.label.trim().length > 0)
 }
 
-/**
- * 把一条「跟随系统默认」的伪设备落到它当下实际指向的那个真实端点。
- *
- * 两级判据，都与界面语言无关（**不要退化成按「默认值 - 」这类文案做匹配**，那等于
- * 给每种界面语言维护一份，Windows 改写法还会静默失效）：
- *  1. groupId 相同 —— 伪设备与它指向的真实端点同组；
- *  2. 退一步按后缀匹配 —— 伪设备的 label 就是「前缀 + 真实 label」，所以真实 label
- *     一定是它的后缀。有些机器上伪设备的 groupId 是空的，只能靠这一层。
- *
- * 两个调用方：设置页用它回答「系统默认现在是哪个设备」，悬浮窗的来源提示用它把
- * 带前缀的名字换成真名。判据只此一份，别再各写一遍。
- */
 export function matchRealEndpoint<T extends MicEndpoint>(
   hint: MicEndpoint,
   devices: T[],
@@ -118,17 +75,6 @@ export interface ActiveMicrophoneInfo {
   deviceId: string
   groupId: string
   label: string
-  /**
-   * 与本次采集同一时刻的输入端点快照。
-   *
-   * 为什么要带上它：`label` 是 Chromium 给的，"跟随系统默认"这条路由上它是
-   * `默认值 - 端点名 (父设备名)`，两头都是噪音。要把它收成人能看懂的一段，需要
-   * 知道同一时刻还有哪些端点（见 micSourceReminder.describeMicSource）。
-   *
-   * 必须在流打开之后枚举：没有活跃流、或没有持久麦克风权限时，
-   * `enumerateDevices()` 返回的条目 label 全是空的（见 listMicrophones 的注释），
-   * 那种快照对同名判断毫无用处。
-   */
   devices: MicEndpoint[]
 }
 
@@ -243,13 +189,6 @@ class PCMProcessor extends AudioWorkletProcessor {
 registerProcessor('pcm-processor', PCMProcessor);
 `
 
-/**
- * 输入端点快照。**只在有活跃流时调用才有意义**（见 ActiveMicrophoneInfo.devices）。
- *
- * 与 listMicrophones 的区别：这里绝不为了拿名字去开临时流 —— 它跑在录音启动路径上，
- * 那时候已经有一路采集在跑，再开一路是真实故障。失败一律退化成空快照，
- * 调用方会落到"只显示端点名"这条兜底，不影响采集。
- */
 async function snapshotInputEndpoints(): Promise<MicEndpoint[]> {
   try {
     const list = await navigator.mediaDevices.enumerateDevices()
@@ -270,26 +209,18 @@ export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
 
   let devices = audioInputs(await navigator.mediaDevices.enumerateDevices())
 
-  // 没有持久麦克风权限时，enumerateDevices() 只返回一个无名字的通用项。
-  // 此时临时打开一路音频流触发授权，趁流活跃时重新枚举，拿到真实名称。
   if (devices.length <= 1 || devices.some((d) => !d.label)) {
     let stream: MediaStream | null = null
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       devices = audioInputs(await navigator.mediaDevices.enumerateDevices())
     } catch {
-      // 权限被拒或无可用麦克风：保留已有结果
     } finally {
       if (stream) stream.getTracks().forEach((t) => t.stop())
     }
   }
 
-  // **原样返回，含 Chromium 的伪设备**。
   //
-  // 这里刻意不替调用方剔除伪设备：它们虽然不是麦克风，却携带唯一一条「系统默认现在
-  // 指向谁」的信息（label 是 `<前缀> - <真实端点名>`，groupId 指向那个端点）。设置页
-  // 要靠它把第一项写成「系统默认（某某麦克风）」。
-  // 「哪些该进下拉」是产品判断，归 buildMicOptions；这个函数只负责"系统报了什么"。
   return devices
 }
 
@@ -298,10 +229,6 @@ function createAudioContext() {
   if (!AudioContextCtor) {
     throw new Error('Current browser does not support AudioContext')
   }
-  // 优先直接开 16 kHz 的 AudioContext：拿到的话浏览器会用自己的高质量重采样器，
-  // 我们下面那套手写线性插值就可以整段跳过。线性插值没有抗混叠低通，48k→16k
-  // 是 3 倍抽取，8~24 kHz 的能量会折回 0~8 kHz，直接损害识别准确度。
-  // 不是所有 WebView2/浏览器都接受 sampleRate 约束，所以拿不到就回退原路径。
   for (const opts of [
     { latencyHint: 'interactive', sampleRate: TARGET_SAMPLE_RATE, sinkId: { type: 'none' } },
     { latencyHint: 'interactive', sampleRate: TARGET_SAMPLE_RATE },
@@ -311,7 +238,6 @@ function createAudioContext() {
     try {
       return new AudioContextCtor(opts)
     } catch {
-      // 该组合不被支持，试下一个
     }
   }
   return new AudioContextCtor()
@@ -432,9 +358,6 @@ function setupScriptProcessorFallback(ctx: AudioContext, src: MediaStreamAudioSo
     const input = event.inputBuffer.getChannelData(0)
     const { pcm, rms } = resampleToInt16(input, ctx.sampleRate)
 
-    // 刻意不加 `rms > 0` 这个条件（worklet 路径也没有）：rms 一直是 0 恰恰是要抓的现象，
-    // 「有声音才记」等于把最需要的那条证据丢掉 —— 于是日志里「麦克风全程无声」和
-    // 「这条日志我压根没实现」长得一模一样。
     if (!firstRmsLogged) {
       firstRmsLogged = true
       addRuntimeEvent('info', 'audio', 'First RMS received (ScriptProcessor)', {
@@ -498,7 +421,6 @@ function setupScriptProcessorFallback(ctx: AudioContext, src: MediaStreamAudioSo
   })
 }
 
-/** 尝试加载 AudioWorklet 模块（data URL → Blob URL 两种方式） */
 async function tryLoadAudioWorklet(ctx: AudioContext): Promise<boolean> {
   try {
     const dataUrl = 'data:application/javascript;base64,' + btoa(PCM_WORKLET_CODE)
@@ -532,7 +454,6 @@ async function tryLoadAudioWorklet(ctx: AudioContext): Promise<boolean> {
   return false
 }
 
-/** 创建 AudioWorkletNode 并绑定 onmessage 处理 */
 function setupAudioWorkletNode(ctx: AudioContext, src: MediaStreamAudioSourceNode): AudioWorkletNode {
   const node = new AudioWorkletNode(ctx, 'pcm-processor', {
     numberOfInputs: 1,
@@ -555,7 +476,6 @@ function setupAudioWorkletNode(ctx: AudioContext, src: MediaStreamAudioSourceNod
   let captureStartTime = performance.now()
 
   node.port.onmessage = (e) => {
-    // 标记已收到 worklet 数据（用于外部静默检测）
     node.dispatchEvent(new Event('worklet-data'))
 
     if (typeof e.data.sampleRate === 'number') {
@@ -659,10 +579,6 @@ export async function startCapture(
     audio: {
       channelCount: 1,
       echoCancellation: false,
-      // 默认开启降噪：部分机器麦克风底噪大（低频电流声），关闭降噪会原样录入。
-      // 但浏览器降噪对 ASR 是个变量——它按"人听得舒服"优化，可能削掉模型要的细节，
-      // 所以做成开关，麦克风环境干净的用户可以关掉对比。
-      // 回声消除/自动增益保持关闭，避免影响 ASR 音频。
       noiseSuppression,
       autoGainControl: false,
       ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
@@ -680,8 +596,6 @@ export async function startCapture(
       deviceId: String(settings?.deviceId || deviceId || ''),
       groupId: String(settings?.groupId || ''),
       label: String(track?.label || ''),
-      // 流已经开着，所以这一次枚举拿得到带名字的条目。多花的是一次进程间调用，
-      // 与同一路径上的 getUserMedia / AudioContext 相比可以忽略。
       devices: await snapshotInputEndpoints(),
     }
 
@@ -694,9 +608,6 @@ export async function startCapture(
       settings,
     })
 
-    // muted / readyState / enabled 必须落盘：它们区分「Chromium 自己知道这路采集被静音了」
-    // 与「Chromium 以为一切正常、实际送来的全是 0」。后者是 WebView2 的已知毛病
-    // （采集静默降级成静音且不派发 mute 事件），只能靠对照这三个值 + 后面的 peakAmplitude 判定。
     addRuntimeEvent('info', 'audio', 'Microphone capture started', {
       requestedDeviceId: deviceId || 'default',
       trackLabel: track?.label || '',
@@ -714,8 +625,6 @@ export async function startCapture(
       sampleRate: audioCtx.sampleRate,
       nativeSixteenK,
     })
-    // 记一条到运行时日志：这是判断"有没有走上高质量重采样"的唯一依据，
-    // 排查识别准确度问题时先看这里。
     addRuntimeEvent('info', 'audio', nativeSixteenK ? 'AudioContext is natively 16 kHz; resampling skipped' : 'AudioContext is not 16 kHz; using linear resampling', {
       contextState: audioCtx.state,
       contextSampleRate: audioCtx.sampleRate,
@@ -797,8 +706,6 @@ export async function stopCapture() {
     actualSampleRate,
     targetSampleRate: TARGET_SAMPLE_RATE,
     usingFallback,
-    // 「一帧 PCM 都没到过」需要一条肯定式证据。只靠「日志里没有 First PCM frame received」
-    // 来推，读日志的人无法区分它与「这条日志没被镜像」。
     receivedPcm: firstPCMFrameLogged,
   })
 

@@ -1,4 +1,3 @@
-// 首页意见反馈卡片
 
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
@@ -17,7 +16,6 @@ export default function FeedbackSection() {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [submitted, setSubmitted] = useState(false)
 
-  // 公开反馈页地址 = 用户在设置里填写的服务器地址 + /feedback.html
   const feedbackUrl = `${getBackendBaseUrl()}/feedback.html`
 
   useEffect(() => {
@@ -47,7 +45,7 @@ export default function FeedbackSection() {
       const result = await submitFeedback(trimmed, { includeTranscript: showTranscript && !!lastTranscript })
       if (result.ok) {
         setFeedbackText('')
-        setSubmitted(true) // 显示常驻的“发送成功 + 查看进度”行
+        setSubmitted(true)
       } else {
         setSubmitted(false)
         setMessage({ ok: false, text: result.message })
@@ -71,7 +69,6 @@ export default function FeedbackSection() {
     try {
       await open(feedbackUrl)
     } catch {
-      // 打开外部浏览器失败时静默忽略，不影响反馈提交流程
     }
   }
 
@@ -80,7 +77,6 @@ export default function FeedbackSection() {
       <h2 className="mb-3 text-lg font-semibold">{t('feedback.title')}</h2>
 
       <div className="rounded-xl border border-border p-4">
-        {/* 转录引用块 — 可删除 */}
         {showTranscript && lastTranscript && (
           <div className="relative mb-3">
             <div className="rounded-lg bg-muted/70 px-3 py-2 pr-8">
@@ -97,7 +93,6 @@ export default function FeedbackSection() {
           </div>
         )}
 
-        {/* 反馈输入 */}
         <textarea
           value={feedbackText}
           onChange={(e) => {
@@ -113,7 +108,6 @@ export default function FeedbackSection() {
           style={{ fieldSizing: 'content' as never, minHeight: '1.5rem', maxHeight: '6rem' }}
         />
 
-        {/* 底部：状态提示（错误 / 成功）在左，发送按钮在右——成功提示也在此处显示，不再额外撑高卡片 */}
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="min-h-[1.25rem] flex-1 text-xs leading-relaxed">
             {submitted ? (

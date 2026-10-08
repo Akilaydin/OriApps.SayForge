@@ -1,12 +1,5 @@
-// 本地 ASR 的命令层 —— 推理本身在 gguf_asr.rs（transcribe.cpp / ggml / GGUF）。
 //
-// 这里负责：解 base64 → i16 转 f32 → Silero VAD 确认存在人声并裁剪首尾
-// → 交给引擎；以及回收上一代 ONNX 模型。原始录音不会被修改。
 //
-// 历史：0.1.3 之前本地识别走 sherpa-onnx（ONNX Runtime，纯 CPU、INT8 动态量化）。
-// Qwen3-ASR 这类自回归模型在那条路上慢一个量级，已整体换成 GGUF/ggml，
-// sherpa-onnx 依赖连同 Whisper/Paraformer/FireRed/FunASR 的加载器一并删除。
-// 原因与实测数字见 dev-docs/local-asr-ggml-migration.md。
 
 use serde::Serialize;
 use std::time::Instant;
@@ -14,7 +7,6 @@ use std::time::Instant;
 use super::downloader::{model_dir, models_dir};
 use super::gguf_asr;
 
-/// 采样率固定 16 kHz —— 前端采集就重采样到这个值，引擎也只接受这个值。
 const SR: usize = 16000;
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,7 +41,6 @@ pub async fn local_transcribe(
     model_id: String,
     language: Option<String>,
     accelerator: Option<String>,
-    // gpu_device：用户指定的显卡（`GgufDevice::id`）。缺省 / 空 = 交给库自动挑。
     gpu_device: Option<String>,
 ) -> Result<LocalAsrResult, String> {
     let samples = decode_pcm(&audio_b64).map_err(|e| {
@@ -75,12 +66,9 @@ pub async fn local_transcribe(
                 model_id, accel, lang, audio_sec
             ),
         );
-        // 先砍掉首尾静音：解码耗时基本与音频长度成正比，两头的空白是纯浪费
         let trimmed = match super::local_vad::detect_speech_span(&samples, SR) {
             Ok(Some(span)) => &samples[span],
             Ok(None) => {
-                // 这是「真的没人说话」，与识别失败要分得清 —— 前端两种都显示
-                // 「未检测到有效声音」，只有日志能区分
                 diag::empty_result(
                     "local/asr",
                     &format!("VAD detected no speech; model inference was skipped audio_sec={:.1}", audio_sec),
@@ -91,8 +79,6 @@ pub async fn local_transcribe(
                 });
             }
             Err(e) => {
-                // 防幻觉是硬约束：无法可靠判断是否有人声时，绝不能回退到会把静音
-                // 送进生成式模型的旧路径。保留错误便于诊断 VAD/本机环境问题。
                 return Err(diag::fail(
                     "local/asr",
                     "vad",
@@ -104,7 +90,6 @@ pub async fn local_transcribe(
             .map_err(|e| diag::fail("local/asr", "transcribe", e))?;
         let elapsed_ms = start.elapsed().as_millis() as u64;
         if text.trim().is_empty() {
-            // VAD 认定有人声、模型却什么都没输出 —— 模型/量化档/加速器组合有问题的信号
             diag::empty_result(
                 "local/asr",
                 &format!(
@@ -127,7 +112,6 @@ pub async fn local_transcribe(
 pub async fn preload_local_model(
     model_id: String,
     accelerator: Option<String>,
-    // gpu_device：用户指定的显卡（`GgufDevice::id`）。缺省 / 空 = 交给库自动挑。
     gpu_device: Option<String>,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
@@ -141,8 +125,6 @@ pub async fn preload_local_model(
     .map_err(|e| format!("Preload task failed: {}", e))?
 }
 
-/// 释放本地 ASR 模型占用的内存。切换到云 API / 服务器模式时调用，
-/// 否则常驻的权重（几百 MB ~ 数 GB）会一直占用到应用退出。
 #[tauri::command]
 pub async fn unload_local_model() -> Result<(), String> {
     tokio::task::spawn_blocking(gguf_asr::unload)
@@ -150,8 +132,6 @@ pub async fn unload_local_model() -> Result<(), String> {
         .map_err(|e| format!("Release task failed: {}", e))
 }
 
-/// 动态调整本地模型的空闲卸载时间。0 = 常驻；其余值由设置页限制为
-/// 10 / 30 / 60 分钟。守护线程只启动一次，这里仅更新它读取的原子配置。
 #[tauri::command]
 pub fn set_local_model_idle_unload(idle_minutes: u64) -> Result<(), String> {
     if !matches!(idle_minutes, 0 | 10 | 30 | 60) {
@@ -161,29 +141,15 @@ pub fn set_local_model_idle_unload(idle_minutes: u64) -> Result<(), String> {
     Ok(())
 }
 
-// ── 上一代 ONNX 模型的回收 ──
 
-/// 上一代（sherpa-onnx 时期）用过的模型目录名。新引擎读不了这些文件，
-/// 留着只是白占几百 MB ~ 1 GB 磁盘，所以启动时清掉。
 ///
-/// 用白名单而不是"扫描整个模型根目录"：模型根目录是用户可改的（可能指向
-/// 一个还放着别的东西的文件夹），绝不能在那儿做递归删除。
 const LEGACY_MODEL_IDS: &[&str] = &[
-    "sensevoice-small",
-    "qwen3-asr-0.6b",
-    "paraformer-zh",
     "whisper-tiny",
     "whisper-base",
     "whisper-small",
     "whisper-medium",
-    "funasr-nano",
-    "funasr-nano-int8",
-    "fire-red-asr2-ctc",
-    "fire-red-asr2-aed",
 ];
 
-/// 目录看起来确实是旧的 ONNX 模型吗？要求：目录存在、里面有 .onnx，
-/// 且**没有** .gguf（万一用户把新权重放进了同名目录，不能误删）。
 fn looks_like_legacy_onnx_model(dir: &std::path::Path) -> bool {
     if !dir.is_dir() {
         return false;
@@ -224,10 +190,7 @@ fn dir_size(dir: &std::path::Path) -> u64 {
         .sum()
 }
 
-/// 删掉旧引擎的模型目录，返回释放的字节数。
 ///
-/// 换引擎后这些 ONNX 权重永远用不上了，所以直接回收，不再问用户
-/// （旧 silero_vad.onnx 也一起，新引擎不需要 VAD 模型）。
 pub fn reclaim_legacy_models() -> u64 {
     let root = models_dir();
     if !root.exists() {
@@ -254,7 +217,6 @@ pub fn reclaim_legacy_models() -> u64 {
         }
     }
 
-    // 旧的外置 ONNX VAD 权重：新实现使用静态内嵌权重，不再需要这个文件。
     let vad = root.join("silero_vad.onnx");
     if vad.is_file() {
         let size = std::fs::metadata(&vad).map(|m| m.len()).unwrap_or(0);
@@ -270,7 +232,6 @@ pub fn reclaim_legacy_models() -> u64 {
     freed
 }
 
-/// 供前端查询本次启动回收了多少空间（可用于提示"已释放 XXX MB"）。
 #[tauri::command]
 pub fn legacy_models_reclaimed_bytes() -> u64 {
     RECLAIMED.load(std::sync::atomic::Ordering::Relaxed)
@@ -278,7 +239,6 @@ pub fn legacy_models_reclaimed_bytes() -> u64 {
 
 static RECLAIMED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 启动时在后台回收旧模型（几百 MB 的删除别卡启动路径）。
 pub fn spawn_legacy_reclaim() {
     std::thread::spawn(|| {
         let freed = reclaim_legacy_models();
@@ -301,7 +261,6 @@ mod tests {
         }
         std::fs::write(onnx_dir.join("model.int8.onnx"), b"x").unwrap();
         std::fs::write(gguf_dir.join("m-Q8_0.gguf"), b"x").unwrap();
-        // 同名目录里既有旧 onnx 又有新 gguf 时，必须判为"不是旧模型"，不能删
         std::fs::write(mixed_dir.join("model.int8.onnx"), b"x").unwrap();
         std::fs::write(mixed_dir.join("m-Q8_0.gguf"), b"x").unwrap();
 
@@ -314,7 +273,6 @@ mod tests {
     }
 
     fn run_local_transcribe(audio_b64: String, model_id: &str) -> Result<LocalAsrResult, String> {
-        // 与 main.rs 保持同一启动顺序；dynamic-backends 模式必须先注册 GGML 后端。
         super::super::gguf_asr::init_backends();
         tokio::runtime::Builder::new_current_thread()
             .build()
@@ -328,17 +286,15 @@ mod tests {
             ))
     }
 
-    /// 走真实生产路径：base64 → i16→f32 → Silero VAD → GGUF 引擎。
-    #[test]
+        #[test]
     fn end_to_end_base64_to_text() {
-        let model_id = "sensevoice-small-gguf";
+        let model_id = "nemotron-asr-streaming-0.6b-gguf";
         if !super::super::gguf_asr::model_is_downloaded(model_id) {
             eprintln!("skip: {model_id} 未下载");
             return;
         }
 
-        // 前后各加 2s 静音，验证 VAD 裁剪后仍能识别中间的真实语音。
-        let wav = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/test_zh.wav");
+        let wav = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/test_en.wav");
         let bytes = std::fs::read(&wav).unwrap();
         let speech = &bytes[44..];
         let silence = vec![0u8; SR * 2 * 2]; // 2s、16-bit PCM
@@ -362,13 +318,12 @@ mod tests {
 
     #[test]
     fn silence_short_circuits_before_loading_model() {
-        let pcm_bytes = vec![0u8; SR * 2 * 3]; // 3s、16-bit PCM 纯静音
+        let pcm_bytes = vec![0u8; SR * 2 * 3];
         let b64 = base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,
             &pcm_bytes,
         );
 
-        // 故意传不存在的模型：若 VAD 没有先短路，这里会因模型不存在而报错。
         let result = run_local_transcribe(b64, "model-that-must-not-be-loaded").unwrap();
         assert!(result.text.is_empty());
     }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { applyReplacements, parseBatchReplacements, type TextReplacementRule } from '../textReplacement'
 
 function rule(from: string, to: string, enabled = true): TextReplacementRule {
@@ -6,123 +6,88 @@ function rule(from: string, to: string, enabled = true): TextReplacementRule {
 }
 
 describe('applyReplacements', () => {
-  it('替换匹配的文本', () => {
-    const rules = [rule('你好', 'Hello')]
-    expect(applyReplacements('你好世界', rules)).toBe('Hello世界')
+  it('replaces matching text', () => {
+    expect(applyReplacements('Hello world', [rule('Hello', 'Hi')])).toBe('Hi world')
   })
-
-  it('替换多次出现', () => {
-    const rules = [rule('啊', '')]
-    expect(applyReplacements('啊这个啊那个啊', rules)).toBe('这个那个')
+  it('replaces every occurrence', () => {
+    expect(applyReplacements('um well um okay um', [rule('um ', '')])).toBe('well okay um')
   })
-
-  it('禁用的规则不生效', () => {
-    const rules = [rule('你好', 'Hello', false)]
-    expect(applyReplacements('你好世界', rules)).toBe('你好世界')
+  it('does not apply disabled rules', () => {
+    expect(applyReplacements('Hello world', [rule('Hello', 'Hi', false)])).toBe('Hello world')
   })
-
-  it('空 from 不替换', () => {
-    const rules = [rule('', 'Hello')]
-    expect(applyReplacements('你好世界', rules)).toBe('你好世界')
+  it('does not match an empty source', () => {
+    expect(applyReplacements('Hello', [rule('', 'Hi')])).toBe('Hello')
   })
-
-  it('多条规则按顺序执行', () => {
-    const rules = [
-      rule('A', 'B'),
-      rule('B', 'C'),
-    ]
-    // A → B → C（链式替换）
-    expect(applyReplacements('A', rules)).toBe('C')
+  it('applies multiple replacements in sequence', () => {
+    expect(applyReplacements('A', [rule('A', 'B'), rule('B', 'C')])).toBe('C')
   })
-
-  it('空规则列表返回原文', () => {
-    expect(applyReplacements('你好', [])).toBe('你好')
+  it('keeps text with no rules', () => {
+    expect(applyReplacements('Original', [])).toBe('Original')
   })
-
-  it('空文本返回空', () => {
+  it('accepts empty input', () => {
     expect(applyReplacements('', [rule('a', 'b')])).toBe('')
   })
 })
 
 describe('parseBatchReplacements', () => {
-  it('英文逗号分隔', () => {
-    expect(parseBatchReplacements('安卓说话,按住说话')).toEqual([
-      { from: '安卓说话', to: '按住说话' },
+  it('parses comma-delimited pairs', () => {
+    expect(parseBatchReplacements('Cloud Code,Claude Code')).toEqual([
+      { from: 'Cloud Code', to: 'Claude Code' },
     ])
   })
-
-  it('中文逗号分隔', () => {
-    expect(parseBatchReplacements('安卓说话，按住说话')).toEqual([
-      { from: '安卓说话', to: '按住说话' },
-    ])
-  })
-
-  it('制表符分隔（从表格粘贴）', () => {
+  it('parses tab-delimited pairs from spreadsheets', () => {
     expect(parseBatchReplacements('Cloud Code\tClaude Code')).toEqual([
       { from: 'Cloud Code', to: 'Claude Code' },
     ])
   })
-
-  it('=> 与 -> 分隔', () => {
+  it('accepts arrow separators', () => {
     expect(parseBatchReplacements('a => b\nc -> d')).toEqual([
       { from: 'a', to: 'b' },
       { from: 'c', to: 'd' },
     ])
   })
-
-  it('多行、忽略空行、去除首尾空白', () => {
-    const input = ' 原文1, 替换1 \n\n原文2,替换2\n'
-    expect(parseBatchReplacements(input)).toEqual([
-      { from: '原文1', to: '替换1' },
-      { from: '原文2', to: '替换2' },
+  it('trims whitespace and skips blank lines', () => {
+    expect(parseBatchReplacements(' old , new \n\nstart,finish\n')).toEqual([
+      { from: 'old', to: 'new' },
+      { from: 'start', to: 'finish' },
     ])
   })
-
-  it('无分隔符的行：替换为留空（删除）', () => {
-    expect(parseBatchReplacements('嗯')).toEqual([{ from: '嗯', to: '' }])
+  it('treats a line with no separator as a deletion rule', () => {
+    expect(parseBatchReplacements('filler')).toEqual([{ from: 'filler', to: '' }])
   })
-
-  it('取最靠前的分隔符，替换内容可含其它逗号', () => {
+  it('uses the first separator and preserves later commas', () => {
     expect(parseBatchReplacements('abc,a, b')).toEqual([{ from: 'abc', to: 'a, b' }])
   })
-
-  it('原文为空的行忽略', () => {
-    expect(parseBatchReplacements(',只有替换')).toEqual([])
+  it('ignores lines without a source', () => {
+    expect(parseBatchReplacements(',replacement')).toEqual([])
   })
 })
 
-describe('applyReplacements 的顺序语义', () => {
-  const rule = (id: string, from: string, to: string) => ({ id, from, to, enabled: true })
+describe('replacement precedence', () => {
+  const namedRule = (id: string, from: string, to: string) => ({ id, from, to, enabled: true })
 
-  it('顺序即执行顺序：前一条的结果会参与后一条的匹配（级联）', () => {
-    // A: 甲 → 乙，B: 乙 → 丙。A 在前时会一路级联成"丙"
-    const cascade = applyReplacements('甲', [rule('a', '甲', '乙'), rule('b', '乙', '丙')])
-    expect(cascade).toBe('丙')
-
-    // 换成 B 在前，"乙 → 丙"先跑（此时还没有"乙"），结果停在"乙"
-    const noCascade = applyReplacements('甲', [rule('b', '乙', '丙'), rule('a', '甲', '乙')])
-    expect(noCascade).toBe('乙')
+  it('allows cascading replacements in the declared order', () => {
+    expect(applyReplacements('A', [
+      namedRule('a', 'A', 'B'), namedRule('b', 'B', 'C'),
+    ])).toBe('C')
+    expect(applyReplacements('A', [
+      namedRule('b', 'B', 'C'), namedRule('a', 'A', 'B'),
+    ])).toBe('B')
   })
-
-  it('两条规则匹配同一段文本时，靠前的先生效', () => {
-    const first = applyReplacements('安卓说话', [
-      rule('a', '安卓说话', '按住说话'),
-      rule('b', '安卓', 'Android'),
-    ])
-    expect(first).toBe('按住说话')
-
-    const second = applyReplacements('安卓说话', [
-      rule('b', '安卓', 'Android'),
-      rule('a', '安卓说话', '按住说话'),
-    ])
-    expect(second).toBe('Android说话')
+  it('applies the earlier matching rule before later rules', () => {
+    expect(applyReplacements('Hello world', [
+      namedRule('a', 'Hello world', 'Greetings'),
+      namedRule('b', 'Hello', 'Hi'),
+    ])).toBe('Greetings')
+    expect(applyReplacements('Hello world', [
+      namedRule('b', 'Hello', 'Hi'),
+      namedRule('a', 'Hello world', 'Greetings'),
+    ])).toBe('Hi world')
   })
-
-  it('禁用的规则不参与，也不影响其余规则的顺序', () => {
-    const result = applyReplacements('甲', [
-      { ...rule('a', '甲', '乙'), enabled: false },
-      rule('b', '甲', '丙'),
-    ])
-    expect(result).toBe('丙')
+  it('skips disabled rules without changing the order of other rules', () => {
+    expect(applyReplacements('A', [
+      { ...namedRule('a', 'A', 'B'), enabled: false },
+      namedRule('b', 'A', 'C'),
+    ])).toBe('C')
   })
 })

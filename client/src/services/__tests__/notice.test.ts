@@ -5,17 +5,17 @@ const base = { id: 'notice-1', level: 'info' as const }
 
 describe('normalizeRemoteNotice', () => {
   it('keeps legacy single-language notices compatible', () => {
-    const result = normalizeRemoteNotice({ ...base, title: '旧公告', body: '旧正文' }, 'en')
-    expect(result?.title).toBe('旧公告')
-    expect(result?.body).toBe('旧正文')
+    const result = normalizeRemoteNotice({ ...base, title: 'Legacy notice', body: 'Legacy content' }, 'en')
+    expect(result?.title).toBe('Legacy notice')
+    expect(result?.body).toBe('Legacy content')
   })
 
   it('selects title, body, and link label for the active locale', () => {
     const payload = {
       ...base,
-      title: '维护通知',
-      body: '今晚维护',
-      linkLabel: '查看详情',
+      title: 'Default notice',
+      body: 'Default content',
+      linkLabel: 'View details',
       translations: {
         en: {
           title: 'Maintenance notice',
@@ -28,11 +28,6 @@ describe('normalizeRemoteNotice', () => {
       title: 'Maintenance notice',
       body: 'Maintenance tonight',
       linkLabel: 'Learn more',
-    })
-    expect(normalizeRemoteNotice(payload, 'zh-CN')).toMatchObject({
-      title: '维护通知',
-      body: '今晚维护',
-      linkLabel: '查看详情',
     })
   })
 

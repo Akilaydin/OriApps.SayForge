@@ -1,5 +1,3 @@
-// Ollama AI 供应商
-// 调用本地 Ollama 的 /api/generate 接口
 
 use super::diag;
 use super::prompt::wrap_user_text;
@@ -8,7 +6,6 @@ use std::time::Instant;
 
 const SCOPE: &str = "ai/ollama";
 
-/// 调用 Ollama 进行文本校对
 pub async fn polish(
     text: &str,
     config: &AiProviderConfig,
@@ -23,13 +20,11 @@ pub async fn polish(
     }
 
     let url = normalize_url(&config.api_url);
-    let sys_prompt = system_prompt.unwrap_or("你是语音转文本的校对助手。");
-    // Ollama /api/generate 是单一 prompt 字符串，没有 system/user 角色区分，
-    // 这里手动拼接：system prompt 在前，user 消息（中性标签包裹）在后。
+    let sys_prompt = system_prompt.unwrap_or("You are an accurate speech transcription proofreader.");
     let combined = format!("{}\n\n{}", sys_prompt, wrap_user_text(text, text_context));
 
     let model = if config.model.is_empty() {
-        "qwen2.5:7b"
+        "llama3.2:3b"
     } else {
         &config.model
     };
@@ -102,7 +97,6 @@ pub async fn polish(
         .trim()
         .to_string();
 
-    // 空回复会静默回落成原文 —— 用户以为校对跑过了，其实没有。留证。
     if result_text.is_empty() {
         diag::log(
             SCOPE,
@@ -127,12 +121,11 @@ pub async fn polish(
     })
 }
 
-/// 测试 Ollama 连接 — 实际调用模型，验证模型是否可用
 pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
     let url = normalize_url(&config.api_url);
 
     let model = if config.model.is_empty() {
-        "qwen2.5:7b"
+        "llama3.2:3b"
     } else {
         &config.model
     };

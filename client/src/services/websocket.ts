@@ -32,11 +32,6 @@ export interface FinalResult {
   asrEngine?: string
   asrModel?: string
   contextApplied?: boolean
-  /**
-   * 服务端 AI 的执行证据，从 llm_debug 里只摘 error 与 provider。
-   * 有它才能把「服务端跑了但很快」和「服务端压根没跑」分开 —— llm_ms=0 分不出来。
-   * 刻意不透传整个 llm_debug：服务器开了 debug_llm 时它带完整 prompt 与原始输出。
-   */
   serverAi?: { error?: string; provider?: string }
 }
 
@@ -61,11 +56,9 @@ let ws: WebSocket | null = null
 let callbacks: WSCallbacks = {}
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
-/** 连接建立的时间戳，用于日志里计算连接存活时长 */
 let connectStartMs = 0
 let openedAtMs = 0
 
-/** 抓取一小段调用栈（去掉本函数与 Error 头两行），用于日志里定位「谁触发了连接/关闭」。 */
 function shortCallerStack(): string {
   const raw = new Error().stack || ''
   return raw
@@ -75,15 +68,12 @@ function shortCallerStack(): string {
     .join(' <- ')
 }
 
-// --- 重连退避 ---
 let reconnectAttempts = 0
 const RECONNECT_BASE_MS = 3000
 const RECONNECT_MAX_MS = 30_000
-// 服务端限流类关闭码（1013 服务器满、4029 该 IP 并发超限）：退避更久，避免重连风暴
 const RECONNECT_LIMIT_MIN_MS = 15_000
 const LIMIT_CLOSE_CODES = new Set([1013, 4029])
 
-/** 计算下次重连延迟：指数退避 + ±20% 抖动；限流码时至少退避 RECONNECT_LIMIT_MIN_MS */
 function computeReconnectDelayMs(closeCode?: number): number {
   const exp = Math.min(RECONNECT_BASE_MS * 2 ** reconnectAttempts, RECONNECT_MAX_MS)
   const base = closeCode !== undefined && LIMIT_CLOSE_CODES.has(closeCode)
@@ -170,14 +160,10 @@ export function connect(cbs: WSCallbacks): Promise<void> {
   callbacks = cbs
 
   if (ws?.readyState === WebSocket.OPEN) {
-    // 已经连上，直接复用（connect 幂等）。这是每次开始录音的正常路径，不记日志避免刷屏；
-    // 真正异常的连接场景由 开始连接/连接成功/主动关闭/关闭未就绪连接 等日志覆盖。
     return Promise.resolve()
   }
 
   if (ws) {
-    // 上一条连接还在（可能仍在 CONNECTING，或刚 open 尚未标记就绪）。这里会主动关掉它再重连，
-    // 这正是「连上几秒就被自己关掉、且没发 start」最可能的元凶——记录下来看看是谁触发的。
     const prevState = ws.readyState
     addRuntimeEvent('warn', 'websocket', 'connect() closed the previous unready connection before reconnecting', {
       prevReadyState: prevState, // 0=CONNECTING 1=OPEN 2=CLOSING 3=CLOSED
@@ -235,8 +221,6 @@ export function connect(cbs: WSCallbacks): Promise<void> {
     }
 
     socket.onmessage = (e) => {
-      // 已被 cancel/disconnect 替换的旧 socket 即使队列里还有消息，也绝不能
-      // 投递给新会话的 callbacks。
       if (ws !== socket) return
       if (typeof e.data !== 'string') return
       try {
@@ -285,8 +269,6 @@ export function connect(cbs: WSCallbacks): Promise<void> {
               asrEngine: msg.asr_engine || undefined,
               asrModel: msg.asr_model || undefined,
               contextApplied: explicitContextApplied ?? (legacyContextApplied ? true : undefined),
-              // 只摘这两个结论性字段往下传，llm_debug 本体留在这里（开了 debug_llm 时
-              // 它带完整 prompt 和原始输出，不能顺着结果对象扩散）。
               serverAi: extractServerAiEvidence(msg?.llm_debug),
             })
             break
@@ -344,8 +326,6 @@ export function connect(cbs: WSCallbacks): Promise<void> {
         reconnectAttempts++
         reconnectTimer = setTimeout(() => connect(callbacks), delay)
       } else {
-        // 主动关闭这一路以前是完全静默的（切换供应商/地址、connect() 替换旧连接、disconnect()）。
-        // 现在也记一条，标明是客户端主动关的，便于区分「服务端踢」还是「客户端自己关」。
         addRuntimeEvent('warn', 'websocket', `Connection closed intentionally code=${ev.code} reason=${ev.reason || '-'}`, {
           code: ev.code,
           aliveMs,
@@ -472,7 +452,6 @@ export function sendStart(opts?: {
 
 export function sendStop(opts?: {
   pttHoldMs?: number
-  /** 松键时补上的「这次别做 AI」。服务端在收到 stop 之后才开始 ASR+AI，来得及。 */
   disableAi?: boolean
   audioStats?: AudioStats
 }): boolean {

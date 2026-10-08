@@ -6,18 +6,6 @@ import { useT } from '@/i18n/useT'
 import { addRuntimeEvent } from '../services/debugLog'
 import { formatRecordingTimer } from '../services/recorder/types'
 
-/**
- * `blank` 什么都不渲染，只在**隐藏窗口之前**用一下。
- *
- * 为什么需要它：隐藏悬浮窗只是 `overlay.hide()`，WebView 不销毁、这个组件也不卸载，
- * 所以合成器里留着的最后一帧就是上一条提示。下次 present 时原生窗口先显示出来、
- * 新内容要等 IPC + setState + 重绘才到，那一瞬间用户看到的是**上一次的文案**
- * （用户报的就是这个：切换润色模式后再按开关 AI 整理，悬浮窗先闪一下旧提示）。
- *
- * 于是隐藏时先发一帧 blank —— 那一刻窗口还看得见，重绘是确定会发生的（窗口一旦隐藏
- * 就没这个保证了，rAF 会被节流）。留在合成器里的最后一帧因此是空的，下次显示无从可闪。
- * 视觉上没有代价：blank 连胶囊底色都不画，看起来就是"提示消失了"，本来隐藏就是这个样子。
- */
 type OverlayState =
   | 'blank'
   | 'waiting'
@@ -27,7 +15,6 @@ type OverlayState =
   | 'failure'
   | 'error'
   | 'toast'
-/** 失败卡上那句恢复提示：只有确实存下来了才敢说"可以重新识别"。 */
 type FailureRecovery = 'unknown' | 'history' | 'none'
 type RecordingVisualPhase = 'preparing' | 'listening'
 type OverlayWaveTheme = 'black-white' | 'black-blue' | 'black-rainbow'
@@ -44,22 +31,17 @@ interface OverlayPayload {
   failureTitle?: string
   failureDetail?: string
   failureRecovery?: FailureRecovery
-  /** 这张卡片对应的录音代次。按键事件与关闭回报都要带上它做代次校验。 */
   cardToken?: number
-  /** thinking 的变体：'late' = 已超时、仍在宽限期里等迟到结果。 */
   thinkingNote?: 'late'
   errorMessage?: string
   warning?: string
-  /** warning 的严重级别：warn=琥珀（声音小/未检测到），error=红色高警（麦克风已被静音） */
   warningTone?: 'warn' | 'error'
   toastText?: string
-  /** toast 的语气：info=中性（如切换预设），warn=琥珀色+图标（如未检测到声音） */
   toastTone?: 'info' | 'warn'
   streaming?: boolean
   streamingText?: string
   micSourceMode?: 'auto' | 'fixed' | null
   micSourceLabel?: string
-  /** 界面语言，由主窗随每次更新下发（见 OverlayCommonPayload.locale）。 */
   locale?: string
   _overlayShowId?: number
   _overlayGeneration?: number
@@ -109,10 +91,6 @@ function getThinkingColor(theme: OverlayWaveTheme): string {
 
 export default function Overlay() {
   const t = useT()
-  // 初始 blank 而不是 waiting：这个页面会被**预热**（提前建好 WebView 并保持隐藏），
-  // 首个状态事件到达之前它就已经画过一帧了。默认 waiting 的话那一帧是"准备中"胶囊，
-  // 于是第一次真正显示悬浮窗时会先闪一下它 —— 和隐藏后残留旧提示是同一个毛病。
-  // 没有状态就什么都不画，才是诚实的。
   const [state, setState] = useState<OverlayState>('blank')
   const [recordingVisualPhase, setRecordingVisualPhase] = useState<RecordingVisualPhase>('preparing')
   const [bars, setBars] = useState<number[]>(IDLE_BARS)
@@ -142,13 +120,6 @@ export default function Overlay() {
   const [micSourceLabel, setMicSourceLabel] = useState('')
   const rootRef = useRef<HTMLDivElement | null>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  /**
-   * 给 Ctrl+C 用的当前卡片快照。
-   *
-   * 原生钩子发来的 card-hotkey 事件在 effect 里处理，而那个 effect 只跑一次（[]），
-   * 拿不到后续的 state。用 ref 镜像一份，同时带上 presentationId —— 旧卡片的事件
-   * （来自上一次显示）必须丢掉，不能拿新卡片的文本去响应。
-   */
   const cardRef = useRef<{
     presentationId: number
     state: OverlayState
@@ -164,7 +135,6 @@ export default function Overlay() {
   const pendingListeningVisualRef = useRef(false)
   const elapsedSecRef = useRef(0)
 
-  // 根据录音时长计算预估处理时间（秒）
   const calculateThinkingDuration = (recordingSec: number): number => {
     if (recordingSec <= 5) return 2
     if (recordingSec <= 15) return 3
@@ -173,7 +143,7 @@ export default function Overlay() {
     if (recordingSec <= 120) return 7
     if (recordingSec <= 180) return 9
     if (recordingSec <= 240) return 11
-    return 13 // 240秒以上（4-5分钟）
+    return 13
   }
 
   useEffect(() => {
@@ -191,8 +161,6 @@ export default function Overlay() {
       cancelPreparingPaint()
       pendingListeningVisualRef.current = false
       setRecordingVisualPhase('preparing')
-      // listening 可能在 WebView 的首帧之前就到达。跨两个 rAF 才放行视觉切换，
-      // 保证准备胶囊至少真正绘制一帧；只延后视觉形变，不延后录音采集。
       preparingPaintFrameRef.current = requestAnimationFrame(() => {
         preparingPaintFrameRef.current = requestAnimationFrame(() => {
           preparingPaintFrameRef.current = null
@@ -206,8 +174,6 @@ export default function Overlay() {
     const handleOverlayState = (data: unknown) => {
       const payload = data as OverlayPayload
       if (typeof payload._overlayShowId === 'number') setPresentationId(payload._overlayShowId)
-      // 语言先落地再渲染本帧：悬浮窗没有自己的初始化时机，语言只能随 payload 来。
-      // setLocale 对同值是空操作，所以每帧都调也不会造成额外重渲染。
       if (isLocale(payload.locale)) setLocale(payload.locale)
       const nextElapsedSec = typeof payload.elapsedSec === 'number'
         ? payload.elapsedSec
@@ -229,7 +195,6 @@ export default function Overlay() {
         setState(payload.state)
         if (payload.state !== 'listening') {
           setBars((prev) => Array(prev.length).fill(3))
-          // 离开录音状态即清空实时文字气泡
           setStreamingText('')
           setStreamingOn(false)
         }
@@ -246,8 +211,6 @@ export default function Overlay() {
           setThinkingNote(null)
         }
         if (payload.state !== 'failure') {
-          // 离开失败态就把恢复结论清回 unknown，否则下一张卡片会先闪一下上一次的
-          // "可在历史记录重新识别"——那句话在新的失败里可能根本不成立。
           setFailureRecovery('unknown')
         }
       }
@@ -307,10 +270,6 @@ export default function Overlay() {
           const rootRect = root?.getBoundingClientRect()
           const contentRect = content?.getBoundingClientRect()
           const style = content ? window.getComputedStyle(content) : null
-          // 内容顶部越到视口上方多少 CSS px。overlay.html 给 html/body/#root 设了
-          // overflow:hidden，所以这一段是**真的被裁掉**，不是滚出去了还能拉回来。
-          // healthy 不看它（悬浮窗被裁一条仍然在工作），但必须上报：否则被裁成什么样
-          // 日志里都只有一行 render ack OK。
           const clippedTop = contentRect ? Math.max(0, -contentRect.top) : 0
           const healthy = Boolean(
             rootRect && contentRect
@@ -331,9 +290,6 @@ export default function Overlay() {
             contentWidth: contentRect?.width ?? 0,
             contentHeight: contentRect?.height ?? 0,
             clippedTop,
-            // 原生侧按「逻辑像素 × 显示器 scale」定窗口大小，但 webview 的 1 CSS px 可能是
-            // `显示器 scale × 额外缩放` 个设备像素（Windows 的文本大小设置会被 WebView2
-            // 当页面缩放叠上来）。把 dpr 和真实视口报上去，原生侧才能把窗口开够。
             devicePixelRatio: window.devicePixelRatio,
             viewportWidth: window.innerWidth,
             viewportHeight: window.innerHeight,
@@ -367,20 +323,14 @@ export default function Overlay() {
     }
   }, [])
 
-  // 让只跑一次的 card-hotkey 监听能看到最新的卡片内容与代次。
   const copyHandlerRef = useRef<(source: 'button' | 'hotkey') => void>(() => { })
   copyHandlerRef.current = (source) => { void handleCopyFallback(source) }
   cardRef.current = { presentationId, state, text: fallbackText, token: cardToken }
 
   useEffect(() => {
-    // Ctrl+C 只能从原生钩子来：悬浮窗不抢焦点，按键始终发给用户原来的程序，
-    // 这个 webview 里的 keydown 永远不会触发（与 Esc 同一个原因）。
     const removeCardHotkey = bridge.onCardHotkey(({ action, token }) => {
       if (action !== 'copy') return
       const card = cardRef.current
-      // 代次校验必须在这个入口就做：上一张卡片的按键事件迟到时，只要新卡也是
-      // fallback，不校验就会把**新卡的内容**复制出去。handleCopyFallback 里的
-      // presentationId 只保护"复制开始之后"，补不上这一刀。
       if (card.state !== 'fallback' || !card.text || token !== card.token || token === 0) {
         addRuntimeEvent('info', 'overlay', 'Ignored a card hotkey that does not match the current card', {
           action,
@@ -409,13 +359,7 @@ export default function Overlay() {
     () => formatRecordingTimer(elapsedSec),
     [elapsedSec],
   )
-  // 越接近上限越醒目，但不用刺眼的纯红：琥珀 → 暖橙，最后 10 秒再叠一层脉动。
-  // 悬浮窗是黑底小尺寸，纯红（#f87171）在这上面又艳又跳，和整体配色不搭。
   const urgent = inCountdown && remainingSec <= 10
-  // 胶囊宽度按波形条数固定，文字挤进来时按需让出条数：
-  //   · 同时有警告文字 + 倒计时 → 只画一半（最少 4 根，太少就不像波形了）
-  //   · 只有其中一种 → 画三分之二
-  // 这样波形始终是完整的整根条，不会被裁成半截。
   const normalizedBars = barCount === bars.length
     ? bars
     : Array.from({ length: barCount }, (_, index) => bars[index] ?? 3)
@@ -435,8 +379,6 @@ export default function Overlay() {
 
   const handleCopyFallback = async (source: 'button' | 'hotkey' = 'button') => {
     if (!fallbackText) return
-    // 复制期间可能开始新一次录音（present 会换掉 presentationId）。旧回调绝不能
-    // 关掉新悬浮窗 —— 那是"复制完上一张卡，正在录的这一次提示突然消失"的成因。
     const cardAtStart = presentationId
 
     try {
@@ -464,8 +406,6 @@ export default function Overlay() {
         hideTimerRef.current = null
       }, 500)
     } catch (error) {
-      // 复制失败**保留卡片**：文本此刻既不在输入框里、也不在剪贴板里，把卡片关掉
-      // 等于把它彻底丢掉。剪贴板被安全软件占用是真实场景（见 pitfalls 16）。
       addRuntimeEvent('error', 'overlay', 'Result card copy failed', {
         error: String(error),
         source,
@@ -476,22 +416,13 @@ export default function Overlay() {
     }
   }
 
-  /**
-   * 收起当前卡片。
-   *
-   * 三件事必须一起做，缺一件都留下真实故障：
-   *  1. 解除原生按键接管（否则用户的 Esc / Ctrl+C 继续被吞）；
-   *  2. 隐藏窗口；
-   *  3. **回报主窗**。卡片的生命周期归主窗的 OverlayService 管，它持有续期定时器；
-   *     不回报的话 8 秒后它又把按键注册回来，而且原生侧会重新抓当前前台窗口。
-   */
   const dismissCard = (reason: string) => {
     const token = cardRef.current.token
     addRuntimeEvent('info', 'overlay', 'Card dismissed', { reason, state: cardRef.current.state, token })
     void bridge.setEscapeActionMode('off')
     void bridge.setCardHotkeys([])
     void bridge.hideOverlay()
-    void bridge.notifyCardDismissed(reason, token).catch(() => { /* 主窗不在也不该卡住关闭 */ })
+    void bridge.notifyCardDismissed(reason, token).catch(() => {  })
   }
 
   const handleDismissCard = () => { dismissCard('user_closed') }
@@ -501,9 +432,6 @@ export default function Overlay() {
       ref={rootRef}
       className="pointer-events-none flex h-full items-end justify-center pb-4"
     >
-      {/* blank：一个子节点都不要（连胶囊底色都不画）。见 OverlayState 上的注释 ——
-          它的整个用途就是让"隐藏前留在合成器里的那一帧"是空的。
-          ⚠️ 别顺手给它补个占位元素，那就白做了。 */}
       {state === 'blank' ? null : state === 'fallback' ? (
         <div
           data-overlay-content
@@ -517,9 +445,6 @@ export default function Overlay() {
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <span className="block text-xs font-medium tracking-[0.16em]" style={{ color: 'var(--overlay-text-muted)' }}>{t('overlay.recognizedText')}</span>
-              {/* 卡片必须说清它为什么在这里。reason 以前只进日志，界面一律显示
-                  「当前目标不支持直接写入」—— 而插入卡死那条路上，文字**可能已经
-                  写进去了**，那句话是错的，会让用户再粘一遍。 */}
               <span className="block text-xs" style={{ color: copyError ? '#fca5a5' : 'var(--overlay-text-dim)' }}>
                 {copyError
                   ? t('overlay.copyFailedHint')
@@ -532,7 +457,6 @@ export default function Overlay() {
               <button
                 type="button"
                 onClick={() => { void handleCopyFallback('button') }}
-                // 悬浮窗的 bundle 里没有 Tooltip 组件，用原生 title 带出快捷键。
                 title={copied ? t('overlay.copied') : t('overlay.copyTextWithHotkey')}
                 aria-keyshortcuts="Control+C"
                 className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${copied
@@ -560,19 +484,6 @@ export default function Overlay() {
           </div>
         </div>
       ) : state === 'failure' ? (
-        /* 识别失败卡片。没有文本可交付，所以只有关闭按钮，也不注册 Ctrl+C。
-         *
-         * 两列网格：第 1 列只放图标，三段文字全部落在第 2 列。**别改回「图标 + 文字」
-         * 嵌套 flex** —— 那份实现里恢复提示是卡片根节点的直接子元素，左边缘对齐的是
-         * 卡片内边距，比标题和原因少缩进整整一个图标宽（24px），看着像掉出去了。
-         * 对齐交给网格线，不要靠手写 padding 去凑。
-         *
-         * 关闭按钮刻意脱离网格流（absolute）：它 32px 高，留在流里会把第一行整体撑到
-         * 32px，于是"标题↔原因 4px"这个紧凑间距实际变成 16px，分组节奏就没了。
-         *
-         * 尺寸与 window/mod.rs 的 OVERLAY_FAILURE_WIDTH / _HEIGHT 是一对，改一边就要改另一边：
-         * 下面的 max-w 比窗口窄时，多出来的透明边照样吞掉下面程序的点击（这是 is_interactive
-         * 布局）；比窗口宽则被 overflow:hidden 裁掉。高度上限另见那条布局自检单测。 */
         <div
           data-overlay-content
           className="pointer-events-auto relative grid w-full max-w-[480px] grid-cols-[auto_1fr] items-start gap-x-2 rounded-xl border px-4 py-4"
@@ -582,9 +493,7 @@ export default function Overlay() {
             borderColor: 'var(--overlay-border)',
           }}
         >
-          {/* mt-0.5 是光学对齐，不是随手加的：图标 16px、标题行高 20px，(20-16)/2 = 2px。 */}
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" aria-hidden />
-          {/* pr-9 给绝对定位的关闭按钮让位（32px 按钮 + 4px 间隙），否则长标题会压到它下面。 */}
           <span className="min-w-0 pr-9 text-sm font-medium leading-5">
             {failureTitle || t('overlay.genericError')}
           </span>
@@ -597,15 +506,6 @@ export default function Overlay() {
           >
             <X className="h-4 w-4" />
           </button>
-          {/* 间距节奏是刻意的：原因紧跟标题（4px，同一件事），恢复提示隔开一档
-              （8px，另一类信息）。两段都用 --overlay-text-muted 而不是 -dim ——
-              #666 在 #0b0b0c 上只有 3.4:1，够不上正文 4.5:1 的无障碍底线；#999 是 6.9:1。
-              层级交给顺序和间距表达，不靠把其中一段压暗。
-
-              textWrap: 'pretty' 治孤字末行（只剩「试。」这种）。用内联 style 而不是
-              Tailwind 的 text-pretty：那个类要扫源码才产出，跑旧 CSS 产物时这层保护会
-              静默失效（见 pitfalls 11 同款教训）。它只调整断行，不增加行数，所以不会
-              顶到高度上限。 */}
           {failureDetail && (
             <span
               className="col-start-2 mt-1 pr-9 text-xs leading-5 select-text"
@@ -614,9 +514,6 @@ export default function Overlay() {
               {failureDetail}
             </span>
           )}
-          {/* 只有确实存下来了才提恢复。'unknown' 什么都不说 —— 存档是异步的，
-              与其在这里许一个可能作废的承诺，不如等结论到了再补上（见
-              OverlayService.updateFailureRecovery）。 */}
           {failureRecovery !== 'unknown' && (
             <span
               className="col-start-2 mt-2 text-xs leading-5"
@@ -670,7 +567,6 @@ export default function Overlay() {
               >
                 {t('overlay.liveCaption')}
               </span>
-              {/* 内容驱动尺寸：小默认，随文字增行慢慢变大，超过 3 行才滚动，只显示最新内容 */}
               <div
                 className="flex max-h-[72px] flex-col justify-end overflow-hidden text-left text-sm leading-6"
                 style={{ color: hasStreamingText ? 'var(--overlay-text)' : 'var(--overlay-text-dim)' }}
@@ -688,7 +584,6 @@ export default function Overlay() {
                   )}
                 </div>
               </div>
-              {/* 底部朝下尖角：提示文字来自下方的录音胶囊 */}
               <span
                 className="absolute left-1/2 h-0 w-0 -translate-x-1/2"
                 style={{
@@ -700,14 +595,6 @@ export default function Overlay() {
               />
             </div>
           )}
-          {/* 胶囊：窗口宽度按波形条数固定，所以这里必须禁止换行 —— 否则文字一多
-              （如「剩余 28s」+「请靠近麦克风」同时出现）就会折成两行，把圆角撑破。
-              超出时让**波形**让位（见下方 bars 容器的 min-w-0 + overflow-hidden），
-              文字保持完整：文字是信息，波形只是陪衬。 */}
-          {/* max-w 是配套的另一半：根容器是 justify-center，胶囊内容一宽就向两侧溢出、
-              被窗口裁掉，看着像"两端被切平的圆角矩形"。给了宽度上限，压缩压力才会
-              传到波形上（bars 的 min-w-0），胶囊本身始终保持完整的胶囊形状。
-              用 100vw 而不是 max-w-full：父层宽度也是按内容算的，撑不出约束。 */}
           <div
             className={`relative flex max-w-[calc(100vw-8px)] items-center overflow-hidden whitespace-nowrap rounded-full px-4 py-2${recordingPhase && recordingVisualPhase === 'preparing' ? ' overlay-pill-recording-waiting' : ''}${recordingPhase && recordingVisualPhase === 'listening' ? ' overlay-pill-recording-listening' : ''}`}
             style={{ minHeight: '38px' }}
@@ -740,8 +627,6 @@ export default function Overlay() {
                   aria-hidden={recordingVisualPhase !== 'listening'}
                 >
                   {warning && warningTone === 'error' ? (
-                    // 静音高警：波形此时是平的、无意义，直接在胶囊里居中显示红字，
-                    // 既更醒目、也避免波形+长文字撑破固定宽度把胶囊圆角裁掉。
                     <div
                       className="flex items-center whitespace-nowrap px-1 text-xs font-semibold text-red-500 animate-pulse"
                       style={{ height: '20px' }}
@@ -750,9 +635,6 @@ export default function Overlay() {
                     </div>
                   ) : (
                     <>
-                      {/* 有文字要占位时**少画几根**，而不是让 overflow 把波形裁一半 —— 裁出来的
-                          半根条子看着像坏了。少画是"看起来就是这么设计的"。
-                          min-w-0 仍然留着兜底：万一文字特别长，宁可裁波形也不折行。 */}
                       <div className="flex min-w-0 items-center gap-[2px] overflow-hidden" style={{ height: '20px' }}>
                         {visibleBars.map((height, index) => {
                           const color = getListeningBarColor(index, normalizedBars.length, theme)
@@ -771,8 +653,6 @@ export default function Overlay() {
                           )
                         })}
                       </div>
-                      {/* 计时**不再**被警告顶掉：警告是一闪而过的提示，计时是持续状态。
-                          以前条件里带 !warning，导致 4 分钟提示一出现，剩下一整分钟都看不到秒数。 */}
                       {showDuration && (
                         <span
                           className={`ml-1.5 shrink-0 whitespace-nowrap text-right font-mono tabular-nums text-xs${inCountdown ? ' font-semibold' : ''}${urgent ? ' animate-pulse' : ''}`}
@@ -808,12 +688,6 @@ export default function Overlay() {
                     <span className="text-xs whitespace-nowrap" style={{ color: thinkingColor }}>
                       {thinkingNote === 'late' ? t('overlay.awaitingLateResult') : t('overlay.processing')}
                     </span>
-                    {/* 这里**故意**不写「Esc 取消」。Esc 取消的能力照常生效（原生钩子 +
-                        escape-action，与本组件无关），只是这行提示不该出现在悬浮窗上：
-                        悬浮窗是贴在光标附近、每次口述都会闪一下的东西，越安静越好，而
-                        「按 Esc 能取消」是知道一次就一直知道的事实，不需要每次复述。
-                        这件事已在 设置 → 键盘快捷键 的说明里静态交代（见 GeneralSettingsPage）。
-                        要加回来之前先想清楚：它每次处理都出现，收益只有第一次。 */}
                   </div>
                 )}
 

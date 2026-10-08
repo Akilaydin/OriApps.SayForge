@@ -1,11 +1,4 @@
-// 配置导出 / 导入弹窗。
 //
-// 设计约束（改过两轮，记一下免得又走回头路）：
-// 1. 主题里 --primary 在浅色下接近纯黑，bg-primary/5 与 accent 悬停几乎同色，
-//    所以选中态不靠底色/描边，靠「勾选框填充 + 未选中文字降为 muted」的对比表达。
-// 2. 少用描边。同类条目收进一块 rounded-xl 面板里用发丝分割线，不做一行一个框。
-// 3. 层级靠字号、颜色和留白拉开；颜色只用主题 token，不用裸色阶。
-// 4. 入场动画复用 index.css 的 animate-fade-in-scale。
 
 import { useEffect, useState, type ReactNode } from 'react'
 import {
@@ -31,7 +24,6 @@ import { useT } from '@/i18n/useT'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import { promptPresetDisplayName } from '@/i18n/displayNames'
 
-/** 头部图标底托，弹窗的视觉锚点。 */
 function IconTile({ children, tone = 'default' }: { children: ReactNode; tone?: 'default' | 'warning' }) {
   const warning = tone === 'warning'
   return (
@@ -44,7 +36,6 @@ function IconTile({ children, tone = 'default' }: { children: ReactNode; tone?: 
   )
 }
 
-/** 弹窗外壳：头部与底栏固定、中间滚动；支持 Esc 与点遮罩关闭。 */
 function DialogShell({
   icon,
   title,
@@ -115,7 +106,6 @@ function DialogShell({
   )
 }
 
-/** 分段切换器：muted 轨道 + card 滑块，比描边按钮组更干净。 */
 function SegmentedTabs<T extends string>({
   value,
   options,
@@ -147,14 +137,12 @@ function SegmentedTabs<T extends string>({
   )
 }
 
-/** 条目面板：一组同类条目共用一块面板 + 发丝分割线。 */
 function Panel({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 divide-y divide-border/60">{children}</div>
   )
 }
 
-/** 小标题：分组名 + 右侧轻量文字按钮。 */
 function GroupLabel({
   icon,
   title,
@@ -187,7 +175,6 @@ function TextButton({ onClick, children }: { onClick: () => void; children: Reac
   )
 }
 
-/** 只读信息行，用于「完整配置」清单。 */
 function InfoRow({
   icon,
   title,
@@ -209,7 +196,6 @@ function InfoRow({
   )
 }
 
-/** 勾选行：选中靠填充框 + 正常文字色，未选中整行降为 muted。 */
 function ChoiceRow({
   checked,
   onChange,
@@ -253,7 +239,6 @@ function EmptyRow({ children }: { children: ReactNode }) {
   return <p className="px-3.5 py-3 text-xs text-muted-foreground/70">{children}</p>
 }
 
-/** 警示条，只在真正需要提醒时出现。 */
 function WarningNote({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning/[0.07] px-3.5 py-2.5 text-xs leading-relaxed text-foreground/75">
@@ -629,7 +614,6 @@ export function ConfigImportDialog({
   )
 }
 
-/** 全部数据导入的覆盖确认。与配置导入共用外壳，避免同一面板里出现两套弹窗风格。 */
 export function FullImportConfirmDialog({
   filePath,
   onClose,
@@ -680,7 +664,6 @@ export function FullImportConfirmDialog({
   )
 }
 
-/** 导入成功提示，稍后自动重启。居中图标样式与自动更新弹窗一致。 */
 export function ImportDoneDialog() {
   const t = useT()
   return (

@@ -23,101 +23,46 @@ import {
   type PromptPreset,
 } from '../store'
 
-describe('内置 Prompt 语言', () => {
+describe('English-only built-in prompts', () => {
   beforeEach(() => bridgeState.values.clear())
 
-  it('默认使用中文，非法持久化值也安全回落到中文', () => {
-    expect(getDefault('ai.builtinPromptLanguage')).toBe('zh-CN')
-    expect(normalizeBuiltinPromptLanguage('zh-CN')).toBe('zh-CN')
-    expect(normalizeBuiltinPromptLanguage('en')).toBe('en')
-    for (const value of ['', 'zh', 'en-US', null, undefined, 1]) {
-      expect(normalizeBuiltinPromptLanguage(value), String(value)).toBe('zh-CN')
+  it('uses English for new and legacy language preferences', () => {
+    expect(getDefault('ai.builtinPromptLanguage')).toBe('en')
+    for (const value of ['en', 'zh-CN', '', null, undefined, 1]) {
+      expect(normalizeBuiltinPromptLanguage(value)).toBe('en')
     }
   })
-
-  it('中英文定义的 id 和顺序一致，且四份英文 Prompt 均已提供', () => {
-    const zh = getBuiltinPromptPresets('zh-CN')
+  it('exposes three distinct English presets and no Chinese translation preset', () => {
     const en = getBuiltinPromptPresets('en')
-
-    expect(zh.map((preset) => preset.id)).toEqual(BUILTIN_PRESETS.map((preset) => preset.id))
-    expect(en.map((preset) => preset.id)).toEqual(zh.map((preset) => preset.id))
-    expect(en).toHaveLength(4)
-    for (let index = 0; index < en.length; index += 1) {
-      expect(en[index].systemPrompt.trim()).not.toBe('')
-      expect(en[index].systemPrompt).not.toBe(zh[index].systemPrompt)
-      expect(en[index].builtinPromptLanguage).toBe('en')
-      expect(zh[index].builtinPromptLanguage).toBe('zh-CN')
-    }
+    expect(en.map((preset) => preset.id)).toEqual(['intent', 'faithful', 'casual'])
+    expect(en.map((preset) => preset.id)).toEqual(BUILTIN_PRESETS.map((preset) => preset.id))
+    expect(en.every((preset) => preset.systemPrompt.length > 100 && preset.builtinPromptLanguage === 'en')).toBe(true)
   })
-
-  it('持久化选择后按对应语言加载', async () => {
+  it('persists custom English overrides without touching unrelated user data', async () => {
     await setBuiltinPromptLanguage('en')
-    const presets = await getPromptPresets()
-
-    expect(bridgeState.values.get('ai.builtinPromptLanguage')).toBe('en')
-    expect(presets.every((preset) => !preset.builtin || preset.builtinPromptLanguage === 'en')).toBe(true)
-  })
-
-  it('中英文内置修改分开保存，恢复默认只清理当前语言', async () => {
-    const zhIntent = getBuiltinPromptPresets('zh-CN')[0]
-    const enIntent = getBuiltinPromptPresets('en')[0]
-
-    await savePromptPreset({ ...zhIntent, systemPrompt: '中文自定义 Prompt' })
-    await savePromptPreset({ ...enIntent, systemPrompt: 'Custom English prompt' })
-
+    const current = getBuiltinPromptPresets('en')[0]
+    await savePromptPreset({ ...current, systemPrompt: 'Custom instruction' })
     const stored = bridgeState.values.get('promptPresets') as PromptPreset[]
-    expect(stored.find((preset) => preset.builtinPromptLanguage === 'zh-CN')?.builtinPromptBaseHash)
-      .toBe(builtinPromptContentHash(zhIntent.systemPrompt))
-    expect(stored.find((preset) => preset.builtinPromptLanguage === 'en')?.builtinPromptBaseHash)
-      .toBe(builtinPromptContentHash(enIntent.systemPrompt))
-
-    expect((await getPromptPresets('zh-CN'))[0].systemPrompt).toBe('中文自定义 Prompt')
-    expect((await getPromptPresets('en'))[0].systemPrompt).toBe('Custom English prompt')
-
-    await savePromptPreset(zhIntent)
-    expect((await getPromptPresets('zh-CN'))[0].systemPrompt).toBe(zhIntent.systemPrompt)
-    expect((await getPromptPresets('en'))[0].systemPrompt).toBe('Custom English prompt')
+    expect(stored[0].builtinPromptBaseHash).toBe(builtinPromptContentHash(current.systemPrompt))
+    expect((await getPromptPresets())[0].systemPrompt).toBe('Custom instruction')
+    await savePromptPreset(current)
+    expect((await getPromptPresets())[0].systemPrompt).toBe(current.systemPrompt)
   })
-
-  it('旧版无语言字段的 override 只归入中文', async () => {
-    const legacyOverride: PromptPreset = {
-      id: 'intent',
-      name: '旧名称',
-      systemPrompt: '旧中文 Prompt',
-    }
-    bridgeState.values.set('promptPresets', [legacyOverride])
-
-    expect((await getPromptPresets('zh-CN'))[0].systemPrompt).toBe(legacyOverride.systemPrompt)
-    expect((await getPromptPresets('zh-CN'))[0].builtinPromptModified).toBe(true)
-    expect((await getPromptPresets('zh-CN'))[0].builtinPromptUpdateAvailable).toBe(false)
-    expect((await getPromptPresets('en'))[0].systemPrompt)
-      .toBe(getBuiltinPromptPresets('en')[0].systemPrompt)
+  it('keeps legacy user-written overrides but displays them as English-profile customizations', async () => {
+    bridgeState.values.set('promptPresets', [{ id: 'intent', name: 'old', systemPrompt: 'User-authored prompt' }])
+    const preset = (await getPromptPresets())[0]
+    expect(preset.systemPrompt).toBe('User-authored prompt')
+    expect(preset.builtinPromptModified).toBe(true)
   })
-
-  it('保存基线与当前内置定义不同时提示有更新', async () => {
+  it('reports an outdated modified base hash and removes redundant saved snapshots', async () => {
     bridgeState.values.set('promptPresets', [{
-      id: 'intent',
-      name: 'Intent cleanup',
-      systemPrompt: 'My customized prompt',
-      builtinPromptLanguage: 'en',
+      id: 'intent', name: 'Intent cleanup', systemPrompt: 'Custom', builtinPromptLanguage: 'en',
       builtinPromptBaseHash: 'older-version',
     } satisfies PromptPreset])
-
-    const preset = (await getPromptPresets('en'))[0]
-    expect(preset.builtinPromptModified).toBe(true)
-    expect(preset.builtinPromptUpdateAvailable).toBe(true)
-  })
-
-  it('读取时清理与当前官方内容完全相同的旧快照', async () => {
-    const current = getBuiltinPromptPresets('zh-CN')[0]
-    bridgeState.values.set('promptPresets', [{
-      id: current.id,
-      name: '旧名称',
-      systemPrompt: current.systemPrompt,
-    } satisfies PromptPreset])
-
-    const presets = await getPromptPresets('zh-CN')
-    expect(presets[0].builtinPromptModified).toBeUndefined()
+    expect((await getPromptPresets('en'))[0].builtinPromptUpdateAvailable).toBe(true)
+    const current = getBuiltinPromptPresets('en')[0]
+    bridgeState.values.set('promptPresets', [{ ...current, systemPrompt: current.systemPrompt }])
+    expect((await getPromptPresets('en'))[0].builtinPromptModified).toBeUndefined()
     expect(bridgeState.values.get('promptPresets')).toEqual([])
   })
 })

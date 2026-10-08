@@ -13,7 +13,7 @@ function fixture() {
   const controller = new UpdateNotificationController({
     readUpdate: () => state,
     isIdle: () => idle,
-    appearance: () => ({ theme, locale: 'zh-CN', currentVersion: '0.2.1' }),
+    appearance: () => ({ theme, locale: 'en', currentVersion: '0.2.1' }),
     publish,
     install,
     onError,
@@ -21,7 +21,6 @@ function fixture() {
   const tick = async (time: number) => {
     vi.setSystemTime(time)
     controller.tick()
-    // 排空发布链与错误处理。
     for (let i = 0; i < 6; i++) await Promise.resolve()
   }
   return {

@@ -25,7 +25,6 @@ window.addEventListener('unhandledrejection', (event) => {
 
 async function bootstrap() {
   await initRuntimeConfig()
-  // 必须在 render 之前 await：否则首帧会用默认语言画一遍再跳，冷启动能看见闪动。
   const locale = await initLanguage()
   await initLocaleDefaults(locale)
   await initProviderFromStore()

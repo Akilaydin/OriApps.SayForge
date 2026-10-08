@@ -8,10 +8,7 @@ pub fn set_escape_action_mode(mode: String, token: u64) -> Result<(), String> {
     crate::keyboard::set_escape_action_mode(&mode, token)
 }
 
-/// 开启/续期/解除悬浮窗卡片上的临时组合键（目前只有 `copy` = Ctrl+C）。
 ///
-/// 传空数组即解除。**必须与卡片生命周期绑定**：这些键在别的程序里本来就有用途，
-/// 绝不能永久注册（详见 keyboard::set_card_hotkeys 的注释）。
 #[tauri::command]
 pub fn set_card_hotkeys(actions: Vec<String>, token: u64) -> Result<(), String> {
     crate::keyboard::set_card_hotkeys(&actions, token)
@@ -25,8 +22,6 @@ pub fn shortcuts_changed(
 ) {
     // Read settings
     let ptt_setting = storage.get("shortcutPTT", None);
-    // 兜底键与 keyboard::DEFAULT_PTT_SETTING、storage 种子、前端 defaults.ts 一致。
-    // 绝不能是 Shift：长按右 Shift 会触发 Windows 筛选键，录音就停不下来了。
     let ptt_str = ptt_setting.as_str().unwrap_or("ControlRight");
     let hf_val = storage.get("shortcutHandsFree", None);
     let hf_key = hf_val.as_str().unwrap_or("AltRight");
@@ -36,21 +31,16 @@ pub fn shortcuts_changed(
     // Reconfigure PTT + hands-free + AI cleanup single-key/mouse hook
     hook.reconfigure(&app, ptt_str, hf_key, ai_toggle_key);
 
-    // 重新注册所有 global_shortcut（免提组合键 + 各润色模式切换快捷键）
     register_all_global_shortcuts(&app, storage.inner());
 }
 
-/// 集中注册所有 global_shortcut：免提组合键、AI 整理开关和各润色模式切换快捷键。
 ///
-/// `unregister_all` 会清空全部已注册的 global_shortcut，因此这两类必须在同一处
-/// 一次性重注册，否则会互相覆盖。单键（PTT/免提单键）不走这里，由底层键盘钩子处理。
 pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
 
-    // 免提组合键
     let hf_val = storage.get("shortcutHandsFree", None);
     let hf_key = hf_val.as_str().unwrap_or("AltRight").to_string();
     if !hf_key.is_empty() && hf_key.contains('+') {
@@ -68,7 +58,6 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
         }
     }
 
-    // AI 整理开关快捷键。留空即不注册，避免默认占用用户已有组合键。
     let ai_toggle = storage.get("shortcutToggleAi", None);
     let ai_toggle_key = ai_toggle.as_str().unwrap_or("").to_string();
     if !ai_toggle_key.is_empty() && ai_toggle_key.contains('+') {
@@ -84,7 +73,6 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
         }
     }
 
-    // 润色模式切换快捷键：presetShortcuts = { presetId: 组合键 }
     let preset_map = storage.get("presetShortcuts", None);
     if let Some(obj) = preset_map.as_object() {
         for (preset_id, val) in obj {
@@ -95,7 +83,6 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
             let pid = preset_id.clone();
             let accel_for_log = accel.clone();
             if let Err(e) = gs.on_shortcut(accel.as_str(), move |app, _shortcut, event| {
-                // 只在按下时触发一次，避免松开时重复触发
                 if event.state == ShortcutState::Pressed {
                     let _ = app.emit(
                         "switch-preset",
@@ -112,14 +99,7 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
     }
 }
 
-/// 探测快捷键是否可用。
-/// - 单键（不含 '+'）由底层键盘钩子处理，任意单键都可用 → 返回 true。
-/// - 组合键通过 global_shortcut 试注册探测：注册成功说明系统未被其他
-///   （使用 RegisterHotKey 的）程序占用，随即注销并返回 true；失败返回 false。
 ///
-/// 注意：此探测只能发现"用 RegisterHotKey 注册的程序"造成的冲突，
-/// 无法发现用底层键盘钩子（如本应用自身、部分输入法/工具）占用的键——
-/// 这是 Windows API 的固有限制。
 #[tauri::command]
 pub fn get_ptt_physical_key_states(codes: Vec<String>) -> Vec<bool> {
     crate::keyboard::ptt_physical_key_states(&codes)
@@ -139,8 +119,6 @@ pub fn test_shortcut(
 
     let gs = app.global_shortcut();
 
-    // 先清空本应用自己的全部注册，避免把“自己已占用同一组合键”误判成冲突。
-    // （直接用 is_registered 判断不可靠：字符串与内部 Shortcut 可能不一致。）
     let _ = gs.unregister_all();
 
     let available = match gs.register(accelerator.as_str()) {
@@ -154,18 +132,11 @@ pub fn test_shortcut(
         }
     };
 
-    // 恢复本应用自己的全部注册（免提 + 各预设快捷键）
     register_all_global_shortcuts(&app, storage.inner());
 
     Ok(available)
 }
 
-/// 打开"录制捕获"模式：设置页开始录制快捷键时调用。开启后：
-/// - 底层鼠标钩子把下一个侧键按下吞掉（避免 webview 把它当"后退"导航）并通过
-///   `mouse-shortcut-captured` 事件回报给前端用于绑定；
-/// - 键盘钩子放行 PTT/免提单键，不再触发录音（否则按到已绑定的键会直接开始口述）；
-/// - 注销全部 global_shortcut。RegisterHotKey 注册的组合键会被系统直接吞掉、送不到
-///   webview，不注销的话按已绑定的组合键只会触发它自己，永远录不进新设置。
 #[tauri::command]
 pub fn begin_shortcut_capture(app: AppHandle) {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -173,7 +144,6 @@ pub fn begin_shortcut_capture(app: AppHandle) {
     let _ = app.global_shortcut().unregister_all();
 }
 
-/// 关闭录制捕获模式（录制结束/取消时调用），并恢复全部 global_shortcut 注册。
 #[tauri::command]
 pub fn end_shortcut_capture(app: AppHandle, storage: State<Storage>) {
     crate::keyboard::set_shortcut_capture(false);

@@ -1,12 +1,3 @@
-/**
- * 把底层异常翻译成用户能据此行动的一句话。
- *
- * 为什么需要这个：设置页原来直接把 `String(error)` 贴到界面上，用户看到的是
- * 「连接失败：TypeError: Failed to fetch」——这句话不区分「网址打错了」「本机没网」
- * 「服务挂了」「被 WAF 拦了」，四种情况的下一步完全不同，用户无从下手。
- *
- * 原始文本不丢弃：`detail` 保留原文给能看懂的人排查，UI 以次要字号展示。
- */
 
 import { t } from '@/i18n'
 
@@ -35,13 +26,9 @@ export type FriendlyErrorCode =
   | 'connect_failed'
 
 export interface FriendlyError {
-  /** 稳定分类；可持久化，展示时再按当前界面语言取文案。 */
   code: FriendlyErrorCode
-  /** 一句话说清发生了什么，以及该往哪个方向查 */
   message: string
-  /** 原始异常文本，供排查用；UI 以次要字号展示 */
   detail: string
-  /** 建议提供的动作按钮类型，由调用方决定要不要渲染 */
   action: ErrorActionHint
 }
 
@@ -93,15 +80,6 @@ function decodeError(error: unknown): DecodedError {
     : { code: null, text }
 }
 
-/**
- * 从各种异常文本里抠出 HTTP 状态码（`HTTP 401` / `status: 403` / `http=403` / `(404)`）。
- *
- * `http=403` 这一种是**我们自己**的格式：Rust 侧 `diag::http_summary` 写的就是
- * `[http=403 x-request-id=…]`。原来的正则把 `[:=]?` 只挂在 status 那个分支上，
- * 于是 `http=403` 认不出来 —— 我们自己产出的诊断串，自己的解析器读不懂。
- * 平时不显形是因为 Rust 会把稳定错误码一起带过来（走 stableCode 分支），
- * 只有拿不到错误码、退回按文本分类时才会暴露成"认不出的错误"。
- */
 function extractHttpStatus(text: string): number | null {
   const match = text.match(/\b(?:HTTP|status(?:\s*code)?)\s*[:=]?\s*(\d{3})\b/i)
     || text.match(/\((\d{3})\)/)
@@ -111,18 +89,14 @@ function extractHttpStatus(text: string): number | null {
 }
 
 function isNetworkFailure(text: string): boolean {
-  return /failed to fetch|networkerror|error sending request|econnrefused|enotfound|dns|connection refused|unreachable|websocket 连接失败/i // i18n-allow: 匹配底层中文错误串
+  return /failed to fetch|networkerror|error sending request|econnrefused|enotfound|dns|connection refused|unreachable|websocket connection failed/i
     .test(text)
 }
 
 function isTimeout(text: string): boolean {
-  return /timeout|timed out|超时/i.test(text) // i18n-allow: 匹配底层中文错误串
+  return /timeout|timed out/i.test(text)
 }
 
-/**
- * 服务器地址类错误（健康检查、WebSocket 连接）。
- * `hasCustomUrl` 为 true 时才建议「恢复默认地址」——地址本来就是默认值时这个动作没意义。
- */
 export function describeServerError(error: unknown, hasCustomUrl: boolean): FriendlyError {
   const { code: stableCode, text } = decodeError(error)
   const status = extractHttpStatus(text)
@@ -175,7 +149,6 @@ export function describeServerError(error: unknown, hasCustomUrl: boolean): Frie
   }
 }
 
-/** 云 API 供应商类错误（密钥校验、试拨一次识别） */
 export function describeProviderError(error: unknown): FriendlyError {
   const { code: stableCode, text } = decodeError(error)
   const status = extractHttpStatus(text)
@@ -191,10 +164,7 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'retry',
     }
   }
-  // 401 才是明确的鉴权失败。403 单独一类（见下方分支）：403 的常见成因是
-  // 「这个请求根本不该到这儿」——CDN 按地区拒绝、账号没开通该模型，响应里
-  // 一个字都不提密钥。把它报成密钥问题只会让用户反复重建密钥。
-  if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized|认证失败|鉴权/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'provider_bad_key' || status === 401 || /invalid.*(key|token)|unauthorized/i.test(text)) {
     return {
       code: 'provider_bad_key',
       message: t('err.provider.badKey'),
@@ -202,13 +172,9 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'check_key',
     }
   }
-  // 402 必须排在限流之前，且不能和它合并：两者给用户的动作是相反的 ——
-  // 限流等一会儿就好，余额不足等下去永远不会好，得去充值。
-  // action 用 check_key 而不是 retry：它会把用户带到那份配置上，
-  // 而充值入口就在同一个服务商后台（detail 里带着服务商给的具体金额和链接）。
   if (stableCode === 'provider_insufficient_balance'
     || status === 402
-    || /payment required|insufficient balance|in balance|insufficient_quota|余额不足/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+    || /payment required|insufficient balance|in balance|insufficient_quota/i.test(text)) {
     return {
       code: 'provider_insufficient_balance',
       message: t('err.provider.insufficientBalance'),
@@ -216,7 +182,7 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'check_key',
     }
   }
-  if (stableCode === 'provider_rate_limit' || status === 429 || /rate.?limit|quota|欠费|余额/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'provider_rate_limit' || status === 429 || /rate.?limit|quota/i.test(text)) {
     return {
       code: 'provider_rate_limit',
       message: t('err.provider.rateLimit'),
@@ -224,9 +190,6 @@ export function describeProviderError(error: unknown): FriendlyError {
       action: 'retry',
     }
   }
-  // 排在限流之后：403 + quota 字样更可能是配额问题。
-  // action 用 switch_source 而不是 retry —— 地区不可用重试一万次也是同一个结果，
-  // 能解决问题的动作是换一家供应商。
   if (stableCode === 'provider_forbidden' || status === 403) {
     return {
       code: 'provider_forbidden',
@@ -246,7 +209,6 @@ export function describeProviderError(error: unknown): FriendlyError {
   return { code: 'connect_failed', message: t('err.connectFailed'), detail: text, action: 'retry' }
 }
 
-/** 模型下载类错误 */
 export function describeDownloadError(error: unknown): FriendlyError {
   const { code: stableCode, text } = decodeError(error)
 
@@ -274,7 +236,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'switch_source',
     }
   }
-  if (stableCode === 'download_no_space' || /no space|磁盘|disk full|not enough space/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_no_space' || /no space|disk full|not enough space/i.test(text)) {
     return {
       code: 'download_no_space',
       message: t('err.download.noSpace'),
@@ -282,7 +244,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'none',
     }
   }
-  if (stableCode === 'download_permission' || /permission|denied|access is denied|拒绝访问/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_permission' || /permission|denied|access is denied/i.test(text)) {
     return {
       code: 'download_permission',
       message: t('err.download.permission'),
@@ -290,7 +252,7 @@ export function describeDownloadError(error: unknown): FriendlyError {
       action: 'none',
     }
   }
-  if (stableCode === 'download_checksum' || /checksum|sha256|校验/i.test(text)) { // i18n-allow: 匹配底层中文错误串
+  if (stableCode === 'download_checksum' || /checksum|sha256/i.test(text)) {
     return {
       code: 'download_checksum',
       message: t('err.download.checksum'),

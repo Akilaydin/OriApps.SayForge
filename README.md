@@ -8,7 +8,7 @@
   [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
   [![Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://github.com/Akilaydin/OriApps.SayForge)
 
-  [Releases](https://github.com/Akilaydin/OriApps.SayForge/releases) · [Issues](https://github.com/Akilaydin/OriApps.SayForge/issues) · [中文](README.zh-CN.md)
+  [Releases](https://github.com/Akilaydin/OriApps.SayForge/releases) · [Issues](https://github.com/Akilaydin/OriApps.SayForge/issues)
 </div>
 
 ## About
@@ -30,7 +30,8 @@ by the original maintainer; changes and support belong to this project.
 - Cloud providers including custom OpenAI-compatible chat/audio endpoints.
 - **Standard OpenAI input_audio** with **WAV or optional MP3** (64 kbps mono), and
   separate **System Instruction** and **User Prompt** for transcription.
-- Local ASR backends (native components built with Rust/CMake/Vulkan).
+- Local ASR via NVIDIA Parakeet (English) or Nemotron (multilingual, including Russian),
+  built with Rust/CMake/Vulkan.
 
 ## Install
 

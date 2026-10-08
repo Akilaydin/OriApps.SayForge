@@ -1,8 +1,3 @@
-/**
- * 缓冲式 Provider 基类
- * CloudAPIProvider 和 LocalProvider 共享的 PCM 缓冲、合并、生命周期逻辑。
- * 子类只需实现 onConnect() 和 processAudio()。
- */
 
 import { uint8ArrayToBase64 } from '@/lib/encoding'
 import { addRuntimeEvent } from '../debugLog'
@@ -24,21 +19,12 @@ export abstract class BufferedProvider implements TranscriptionProvider {
   protected ready = false
   protected activeRunId = 0
 
-  /**
-   * 子类可覆盖，用于连接时的额外初始化（如预加载模型）。
-   *
-   * **返回 false 表示"连上了但用不了"**，此时 isReady() 会是 false，
-   * RecorderOrchestrator 那道前置拦截就会挡住录音并给出提示。
-   * 返回 void / true 视为就绪（CloudAPIProvider 等不关心的子类无需改动）。
-   */
   protected async onConnect(_callbacks: TranscriptionCallbacks): Promise<void | boolean> { }
 
   async connect(callbacks: TranscriptionCallbacks): Promise<void> {
     this.callbacks = callbacks
     this.ready = true
     callbacks.onStateChange?.('connected')
-    // 以前这里只是 await，子类无从否决 —— 于是本地模式把模型全删了 isReady() 仍为 true，
-    // 按快捷键照样开录、录完才在识别阶段报错（而设置页写着"按下快捷键不会有反应"）。
     const usable = await this.onConnect(callbacks)
     if (usable === false) {
       this.ready = false
@@ -88,20 +74,13 @@ export abstract class BufferedProvider implements TranscriptionProvider {
     return this.ready
   }
 
-  // ─── 子类实现 ───
 
-  /**
-   * 处理合并后的音频数据。
-   * @param audioB64 base64 编码的 PCM 数据
-   * @param durationSec 音频时长（秒）
-   */
   protected abstract processAudio(audioB64: string, durationSec: number, runId: number): Promise<void>
 
   protected isRunCurrent(runId: number): boolean {
     return runId !== 0 && this.activeRunId === runId
   }
 
-  // ─── 内部逻辑 ───
 
   private async runProcessAudio(runId: number): Promise<void> {
     try {

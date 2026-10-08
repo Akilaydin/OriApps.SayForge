@@ -6,11 +6,6 @@ import { cn } from '@/lib/utils'
 export interface SelectOption {
   value: string
   label: string
-  /**
-   * 悬停提示。只有在 label 可能被 truncate 截掉、而完整内容对用户有用时才设
-   * （麦克风列表就是：设备名很长，但那串后缀正是辨认设备的依据）。
-   * 不设就没有 tooltip —— 别给所有下拉都挂上，那是噪音。
-   */
   title?: string
 }
 
@@ -22,8 +17,6 @@ export interface SelectProps {
   className?: string
   placeholder?: string
   disabled?: boolean
-  /** 关联可见标题的 id。触发器是个 <button>，屏幕阅读器只会念它内部的当前值，
-   *  旁边那行 <label> 文本不会自动关联（没有 htmlFor 可指）。与 Segmented 同款。 */
   labelledBy?: string
 }
 
@@ -33,7 +26,6 @@ const Select = forwardRef<HTMLDivElement, SelectProps>(
     const [isOpen, setIsOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    // 如果传入了 children（原生 option），则解析它们
     const parsedOptions: SelectOption[] = options || []
 
     if (!options && children) {

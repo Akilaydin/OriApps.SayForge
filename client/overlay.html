@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,8 +10,7 @@
       padding: 0;
       background: transparent !important;
       overflow: hidden;
-      /* 必须撑满窗口高度，否则 Overlay 根节点的 h-full/items-end 失效，
-         内容会贴窗口顶部；流式气泡让窗口变高时就会整体上移。 */
+      /* Fill the overlay window so the bottom-aligned voice card stays in place. */
       height: 100%;
     }
   </style>

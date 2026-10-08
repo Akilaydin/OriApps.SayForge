@@ -1,4 +1,3 @@
-// 本地模式配置面板 — 模型管理
 
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -24,8 +23,6 @@ import {
   localModelDisplayName,
 } from '@/i18n/displayNames'
 
-/** 模型存储位置变更的窗口事件：次级设置卡片（LocalModeAdvancedSection）里改了
- *  目录后，通知模型列表卡片刷新已下载状态——两个卡片各自持有状态、不在同一组件树。 */
 const MODELS_DIR_CHANGED_EVENT = 'sayit:models-dir-changed'
 
 function formatList(items: string[]): string {
@@ -89,14 +86,11 @@ interface ModelsDirInfo {
   is_custom: boolean
 }
 
-// 本地 GGUF 引擎的诊断信息（Rust 命令 gguf_asr_diagnostics）
 interface GgufDevice {
   kind: string
   name: string
   memory_mb: number
-  /** 持久化用的稳定标识（PCI 总线 id，拿不到时是 "kind:name"）。设置里存这个。 */
   id: string
-  /** ggml registry 索引。只用于排序展示，别拿它当持久化标识——驱动更新会让它变。 */
   index: number
   is_gpu: boolean
 }
@@ -104,16 +98,12 @@ interface GgufDevice {
 interface GgufDiagnostics {
   devices: GgufDevice[]
   current_backend: string | null
-  /** 实际绑定的设备描述。与用户选的那张可能不同（详见 Rust 侧 resolve_gpu_device），
-   *  所以"当前使用"一行显示的必须是这个，不是设置值。 */
   current_device: string | null
-  /** 正在加载中的模型 id。非 null 时 current_backend 一定是 null。 */
   loading_model: string | null
   native_version: string
   process_memory_mb: number
 }
 
-/** 显卡名里的商标噪音（(R) / (TM)）去掉，列表里已经够长了。 */
 function cleanDeviceName(name: string): string {
   return name.replace(/\((R|TM)\)/gi, '').trim()
 }
@@ -124,21 +114,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
-/** 常驻内存的展示：350 → "~350 MB"，1400 → "~1.4 GB"。
- *  统一按 1024 进制、统一写「GB/MB」——同一页原来出现过 /1000 的「~1.4G」、
- *  /1024³ 的「1.4 GB」和 /1024 的「8 GB」三种口径，用户没法横向比。 */
 function formatMemory(mb: number): string {
   if (mb < 1024) return `~${mb} MB`
   return `~${(mb / 1024).toFixed(1)} GB`
 }
 
-/** 下载源的展示名。同一个源在模型卡里叫「HF Mirror（国内推荐）」、在离线指引里叫
- *  「HF Mirror (China)」，收敛到一处。 */
 function sourceLabel(source: string): string {
   return source === 'HuggingFace Mirror' ? t('local.source.mirror') : source
 }
 
-/** 速度/准确度评级：10 分制细柱状条（无数字），与参数排同一行 */
 function MiniRating({ label, value }: { label: string; value: number }) {
   const pct = Math.max(0, Math.min(100, (value / 10) * 100))
   return (
@@ -157,7 +141,6 @@ function CopyLink({ url, label }: { url: string; label: string }) {
     <div className="rounded-md bg-muted/30 px-3 py-2">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{label}</span>
-        {/* 纯图标按钮必须自带 aria-label：Tooltip 只响应鼠标悬停，键盘和读屏用户拿不到它 */}
         <Tooltip content={copied ? t('record.copied') : t('common.copyLink')}>
           <button
             type="button"
@@ -183,20 +166,17 @@ function CopyLink({ url, label }: { url: string; label: string }) {
 function OfflineGuideDialog({ models, onClose }: { models: ModelInfo[]; onClose: () => void }) {
   const [selectedSource, setSelectedSource] = useState(0)
 
-  // 收集所有源名称
   const sourceNames = models[0]?.sources.map((s) => s.source) || []
 
   return (
     <Modal title={t('local.offlineGuideTitle')} onClose={onClose} showCloseButton panelClassName="w-[640px]">
       <>
-        {/* 步骤 */}
         <div className="mt-3 space-y-1 text-xs text-muted-foreground">
           <p>{t('local.offlineStep1')}</p>
           <p>{t('local.offlineStep2')}</p>
           <p>{t('local.offlineStep3')}</p>
         </div>
 
-        {/* 源切换 */}
         <div role="radiogroup" aria-label={t('local.downloadSourceAria')} className="mt-4 flex gap-1 rounded-lg border border-border p-0.5">
           {sourceNames.map((name, i) => (
             <button
@@ -215,16 +195,12 @@ function OfflineGuideDialog({ models, onClose }: { models: ModelInfo[]; onClose:
           ))}
         </div>
 
-        {/* 模型文件链接 */}
         <div className="mt-4 space-y-4">
           {models.map((model) => {
             const modelName = localModelDisplayName(model)
-            // 某模型没有当前标签对应的源时，回退到它的第一个源（防御，正常不会发生：
-            // catalog 的测试保证所有模型提供同一组源）
             const source = model.sources[selectedSource] ?? model.sources[0]
             const isArchive = !source && !!model.archive_url
             if (!source && !isArchive) return null
-            // GitHub 地址用国内代理加速手动下载
             const archiveUrl = model.archive_url
               ? (model.archive_url.startsWith('https://github.com/')
                 ? `https://gh-proxy.com/${model.archive_url}`
@@ -269,12 +245,10 @@ function OfflineGuideDialog({ models, onClose }: { models: ModelInfo[]; onClose:
   )
 }
 
-/** 模型存储位置：查看 / 更改 / 恢复默认。更改时可选把已下载模型一并迁移。 */
 function ModelsDirSection({ onChanged }: { onChanged: () => void }) {
   const [info, setInfo] = useState<ModelsDirInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // 待确认的目录变更：null=无。dir=null 表示恢复默认。
   const [pending, setPending] = useState<{ dir: string | null } | null>(null)
 
   const load = async () => {
@@ -286,8 +260,8 @@ function ModelsDirSection({ onChanged }: { onChanged: () => void }) {
     setError('')
     try {
       const selected = await open({ directory: true, multiple: false, title: t('local.pickDirTitle') })
-      if (typeof selected !== 'string') return // 取消
-      if (info && selected === info.current) return // 未变化
+      if (typeof selected !== 'string') return
+      if (info && selected === info.current) return
       setPending({ dir: selected })
     } catch (err) {
       setError(String(err))
@@ -304,11 +278,10 @@ function ModelsDirSection({ onChanged }: { onChanged: () => void }) {
     setBusy(true)
     setError('')
     try {
-      // 一律自动迁移已下载的模型到新目录
       await invoke<string>('set_models_dir', { dir: pending.dir, moveExisting: true })
       setPending(null)
       await load()
-      onChanged() // 路径变了，刷新已下载模型列表
+      onChanged()
     } catch (err) {
       setError(String(err))
     } finally {
@@ -396,16 +369,10 @@ export default function LocalModeSection() {
   )
   const [preloadingModelId, setPreloadingModelId] = useState('')
   const [downloading, setDownloading] = useState<Record<string, DownloadProgress>>({})
-  // 「更多模型」折叠。默认只展示 featured 的小/中/大三个，其余点开才看到。
   const [showMore, setShowMore] = useState(false)
-  // 模型清单的加载状态。原来 loadData 的 catch 是空的，list_available_models 失败时
-  // 页面只剩标题 + 下载源一行 + 下面一片空白，看起来像"本地模式坏了"。
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [listError, setListError] = useState('')
-  // 离线下载指引的开关提到这一层：下载失败时也要能把用户直接送进去
   const [offlineGuideOpen, setOfflineGuideOpen] = useState(false)
-  // 检测到的 GPU 摘要。选模型时最该知道的就是"这台机器什么水平"，
-  // 而这条信息原来只出现在两张卡片之后的「计算后端」里。
   const [gpuSummary, setGpuSummary] = useState<string | null>(null)
 
   useEffect(() => {
@@ -417,7 +384,6 @@ export default function LocalModeSection() {
         void refreshDownloaded()
       }
     })
-    // 模型存储位置（在次级设置卡片里）变更后，刷新已下载列表
     const onDirChanged = () => { void refreshDownloaded() }
     window.addEventListener(MODELS_DIR_CHANGED_EVENT, onDirChanged)
     return () => {
@@ -443,7 +409,6 @@ export default function LocalModeSection() {
       setListError(String(err))
     }
 
-    // GPU 摘要：只为在模型列表顶部给一句硬件背景，失败就当没有（不影响选模型）
     try {
       const diag = await invoke<GgufDiagnostics>('gguf_asr_diagnostics')
       const gpus = diag.devices.filter((d) => d.kind !== 'cpu')
@@ -455,12 +420,11 @@ export default function LocalModeSection() {
       setGpuSummary(null)
     }
 
-    const selected = await getSetting('localAsr.modelId', 'sensevoice-small-gguf') as string
+    const selected = await getSetting('localAsr.modelId', 'nemotron-asr-streaming-0.6b-gguf') as string
     setSelectedModelId(selected)
-    const defaultSource = getLocale() === 'en' ? 'HuggingFace' : 'HuggingFace Mirror'
+    const defaultSource = 'HuggingFace'
     setDownloadSource(await getSetting('localAsr.downloadSource', defaultSource) as string)
 
-    // 当前选中的模型在折叠区时自动展开，避免"当前模型在列表里找不到"
     const selectedInfo = available.find((m) => m.id === selected)
     if (selectedInfo && !selectedInfo.featured) setShowMore(true)
   }
@@ -475,17 +439,14 @@ export default function LocalModeSection() {
   async function handleDownload(modelId: string) {
     try {
       await invoke('download_model', { modelId, source: downloadSource })
-      // 下载完成后自动选中并预加载
       setSelectedModelId(modelId)
       await setSetting('localAsr.modelId', modelId)
-      void refreshModeStatus() // 同步左下角的引擎指示
+      void refreshModeStatus()
       try {
         const accelerator = await getSetting('localAsr.accelerator', 'auto') as string
         const gpuDevice = await getSetting('localAsr.gpuDevice', '') as string
         await invoke<string>('preload_local_model', { modelId, accelerator, gpuDevice })
       } catch { /* ignore */ }
-      // provider 缓存着上次的就绪结果，不重连的话刚下载完第一次按快捷键仍会被判未就绪。
-      // 同 handleSelectModel：排在预加载之后，避免它的 onConnect 再排一轮加载。
       reconnectProvider()
     } catch (err) {
       setDownloading((prev) => ({
@@ -516,14 +477,11 @@ export default function LocalModeSection() {
         delete next[modelId]
         return next
       })
-      // 删掉的可能正是当前选中的模型 → 就绪状态变了，通知徽标与侧栏指示
       void refreshModeStatus()
-      // 同时让 provider 重新判定：否则它仍缓存着"已就绪"，模型都删了还能照常开录
       reconnectProvider()
     } catch { /* ignore */ }
   }
 
-  /** 切到另一个下载源并立刻重试。下载失败时最常见的下一步就是这个。 */
   async function retryWithOtherSource(modelId: string) {
     const options = availableModels[0]?.sources.map((s) => s.source) ?? []
     const next = options.find((s) => s !== downloadSource) ?? downloadSource
@@ -538,41 +496,30 @@ export default function LocalModeSection() {
   }
 
   async function handleSelectModel(modelId: string) {
-    if (preloadingModelId) return // 防止切换/加载中重复触发
+    if (preloadingModelId) return
     setSelectedModelId(modelId)
     setPreloadingModelId(modelId)
     await setSetting('localAsr.modelId', modelId)
-    void refreshModeStatus() // 同步左下角的引擎指示
+    void refreshModeStatus()
     try {
       const accelerator = await getSetting('localAsr.accelerator', 'auto') as string
       const gpuDevice = await getSetting('localAsr.gpuDevice', '') as string
       await invoke<string>('preload_local_model', { modelId, accelerator, gpuDevice })
-    } catch { /* 未下载 / 加载失败都由就绪判定与识别阶段报出，这里不打断选择 */ } finally {
+    } catch {  } finally {
       setPreloadingModelId('')
-      // reconnectProvider 必须排在预加载**之后**：它的 onConnect 自己也会发一次
-      // preload_local_model，而引擎的加载是全局单锁串行的。放在前面（原来的写法）
-      // 等于一次点击排两轮"卸旧 + 载新"，等待时间可能翻倍。
-      // 放在后面，它只会命中已经加载好的缓存，立刻返回。
-      // 未下载的模型走的是同一条路：预加载报错后仍然要 reconnect 让 provider
-      // 重新判定为未就绪，所以这行放在 finally 里而不是 try 的末尾。
       reconnectProvider()
     }
   }
 
   const downloadedIds = new Set(downloadedModels.filter((m) => m.complete).map((m) => m.id))
 
-  // 小/中/大三个直接展示，其余折叠进「更多」。后端没标 featured 时全部展示兜底。
   const featuredModels = availableModels.some((m) => m.featured)
     ? availableModels.filter((m) => m.featured)
     : availableModels
   const moreModels = availableModels.filter((m) => !featuredModels.includes(m))
   const visibleModels = showMore ? [...featuredModels, ...moreModels] : featuredModels
 
-  // 下载源按钮从 catalog 生成，保证和后端提供的源一一对应
-  // （catalog 的测试保证了所有模型的源集合一致，取第一个模型的即可）
   const sourceOptions = availableModels[0]?.sources.map((s) => s.source) ?? []
-  // 存储里的旧值（如已下线的 ModelScope）对不上任何源时，实际下载会回落到
-  // 第一个源，这里让 UI 显示和实际行为一致
   const effectiveSource = sourceOptions.includes(downloadSource)
     ? downloadSource
     : sourceOptions[0] ?? downloadSource
@@ -608,8 +555,6 @@ export default function LocalModeSection() {
             />
           )}
 
-          {/* 硬件背景。选模型是这一页最难的决定，而"这台机器什么水平"这条信息
-              原来要往下翻两张卡才看得到。 */}
           {gpuSummary !== null && (
             <p className="mb-4 text-xs text-muted-foreground">
               {gpuSummary
@@ -677,8 +622,6 @@ export default function LocalModeSection() {
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">{modelDescription}</p>
-                    {/* 参数行：评分柱状条 + 下载体积（硬盘图标）+ 内存占用 + 语种，一行小字。
-                        量化档（Q8_0 之类）不展示——普通用户看不懂，文件名里查得到 */}
                     <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
                       {model.speed ? <MiniRating label={t('local.speed')} value={model.speed} /> : null}
                       {model.accuracy ? <MiniRating label={t('local.accuracy')} value={model.accuracy} /> : null}
@@ -710,7 +653,6 @@ export default function LocalModeSection() {
                             style={{ width: `${progress.percent}%` }}
                           />
                         </div>
-                        {/* aria-live：下载过去对读屏用户是完全静默的 */}
                         <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
                           {progress.file_count > 1
                             ? t('local.fileProgress', { index: progress.file_index, count: progress.file_count })
@@ -725,9 +667,6 @@ export default function LocalModeSection() {
                         </p>
                       </div>
                     )}
-                    {/* 下载失败原来只有一行原始异常。而"换个源重试"和"手动下载指引"这两条
-                        降级路径就在同一张卡上，失败信息却不指向任何一个——用户会以为
-                        本地模式不能用。现在直接把两个动作放进错误块里。 */}
                     {progress?.status === 'failed' && (() => {
                       const friendly = describeDownloadError(progress.error ?? '')
                       const hasOtherSource = sourceOptions.some((s) => s !== effectiveSource)
@@ -781,13 +720,6 @@ export default function LocalModeSection() {
             })}
           </div>
 
-          {/* 加载一个模型要读完整个权重文件再预热一次推理，大模型几十秒也正常。
-              原来这段只让按钮变灰，界面看起来就是卡死了 —— 0.1.4 有用户因此强杀了进程。
-              所以这条必须显眼：配色沿用 Feedback 的 warning/error 写法（5% 底 + 25% 描边
-              + strong 图标色），但**用不停转的图标承担"还在动"的信息** —— 静态色块
-              说不出"没卡住"，转圈能。不用绿色：绿在这套配色里代表"成功/已完成"，
-              加载中打绿灯会让人以为已经好了。
-              role=status + aria-live：这条状态对读屏用户否则完全静默。 */}
           {preloadingModelId && (
             <div
               role="status"
@@ -796,8 +728,6 @@ export default function LocalModeSection() {
             >
               <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-info-strong" aria-hidden />
               <p className="text-sm leading-relaxed text-foreground">
-                {/* 显式 {' '}：两个表达式之间的换行会被 JSX 整个吃掉，
-                    英文下就会粘成 "…Loading" 这种没有空格的样子 */}
                 {t('local.preloading', { name: availableModels.find((m) => m.id === preloadingModelId)?.name || preloadingModelId })}
                 {' '}
                 {t('local.preloadingNote')}
@@ -805,7 +735,6 @@ export default function LocalModeSection() {
             </div>
           )}
 
-          {/* 更多模型：小众需求（更多语种 / 中间量化档）折叠收纳 */}
           {moreModels.length > 0 && (
             <button
               type="button"
@@ -834,7 +763,6 @@ export default function LocalModeSection() {
         <OfflineGuideDialog models={availableModels} onClose={() => setOfflineGuideOpen(false)} />
       )}
 
-      {/* 删除确认对话框 */}
       {confirmDeleteId && (
         <Modal title={t('local.deleteModelTitle')} onClose={() => setConfirmDeleteId(null)} panelClassName="w-80">
           <>
@@ -852,27 +780,19 @@ export default function LocalModeSection() {
   )
 }
 
-/** 本地模式的次级设置：识别语言、计算后端、模型驻留、模型存储位置。
- *  单独一个导出，由 VoiceEnginePage 放在「识别测试」之后——选模型是主操作，
- *  这些是偶尔动一次的，不该排在测试入口前面。 */
 export function LocalModeAdvancedSection() {
   useT()
   const [asrLanguage, setAsrLanguage] = useState('auto')
   const [accelerator, setAccelerator] = useState('auto')
-  /** GgufDevice.id，'' = 自动。只在多显卡机器上有界面，见下面 showGpuPicker。 */
   const [gpuDevice, setGpuDevice] = useState('')
   const [unloadIdleMinutes, setUnloadIdleMinutes] = useState(0)
   const [devices, setDevices] = useState<GgufDevice[]>([])
   const [currentBackend, setCurrentBackend] = useState<string | null>(null)
   const [currentDevice, setCurrentDevice] = useState<string | null>(null)
-  // 打开本页时可能正好有一次加载在进行（最常见：本地模式启动时的后台预热）。
-  // 那时后端还没绑定，显示"正在加载"比什么都不显示准确。
   const [loadingModel, setLoadingModel] = useState<string | null>(null)
   const [diagnosticsState, setDiagnosticsState] = useState<'loading' | 'ready' | 'error'>('loading')
-  // 切换计算后端会就地重载当前模型（几秒），期间禁掉按钮防连点
   const [rebinding, setRebinding] = useState(false)
 
-  /** 拉一次引擎实况。挂载时与换后端后都要用，别把这几个 setState 抄两份。 */
   async function refreshDiagnostics() {
     try {
       const diag = await invoke<GgufDiagnostics>('gguf_asr_diagnostics')
@@ -901,13 +821,8 @@ export function LocalModeAdvancedSection() {
   const gpuSummary = formatList(gpuDevices
     .map((d) => `${cleanDeviceName(d.name)}${d.memory_mb > 0 ? t('local.vram', { gb: (d.memory_mb / 1024).toFixed(0) }) : ''}`))
 
-  /** 只有真的有多张显卡才给这个选择器。单卡机器上它永远只有一个有意义的值，
-   *  摆在设置里只是多一个要读懂的东西。CPU 后端下也藏起来——那时它不起作用。 */
   const showGpuPicker = gpuDevices.length > 1 && accelerator !== 'cpu'
 
-  /** 切换计算后端。引擎按 (模型, 后端, 显卡) 缓存，换任意一项都要重载模型——
-   *  就地重新预加载当前模型，让切换立刻生效而不是等下次口述。
-   *  模型未下载时预加载会报错，忽略即可（下载后会按新设置加载）。 */
   async function handleSelectAccelerator(value: string) {
     if (rebinding) return
     setAccelerator(value)
@@ -915,7 +830,6 @@ export function LocalModeAdvancedSection() {
     await rebindEngine({ accelerator: value, gpuDevice })
   }
 
-  /** 切换显卡。与换后端同一条路径：设置落盘 + 就地重载。 */
   async function handleSelectGpuDevice(value: string) {
     if (rebinding) return
     setGpuDevice(value)
@@ -923,12 +837,10 @@ export function LocalModeAdvancedSection() {
     await rebindEngine({ accelerator, gpuDevice: value })
   }
 
-  /** 重新绑定引擎。两个切换共用，别把这段抄两份——漏掉 refreshDiagnostics 的那份
-   *  会让"当前使用"一行停在换卡之前的设备上，看着像设置没生效。 */
   async function rebindEngine(opts: { accelerator: string; gpuDevice: string }) {
     setRebinding(true)
     try {
-      const modelId = await getSetting('localAsr.modelId', 'sensevoice-small-gguf') as string
+      const modelId = await getSetting('localAsr.modelId', 'nemotron-asr-streaming-0.6b-gguf') as string
       await invoke<string>('preload_local_model', {
         modelId,
         accelerator: opts.accelerator,
@@ -945,7 +857,7 @@ export function LocalModeAdvancedSection() {
     try {
       await setSetting('localAsr.unloadIdleMinutes', value)
       await invoke('set_local_model_idle_unload', { idleMinutes: value })
-    } catch { /* 重启后仍会从持久化设置读取；即时更新失败不影响识别 */ }
+    } catch {  }
   }
 
   return (
@@ -1001,10 +913,6 @@ export function LocalModeAdvancedSection() {
           {diagnosticsState === 'ready' && hasGpu && (
             <p className="mt-2 text-xs text-muted-foreground">
               {gpuSummary}
-              {/* 加载中就说加载中：后端是在模型加载时才绑定的，这期间 currentBackend
-                  一定是空，原来这里会什么都不显示，看着像检测失败。
-                  多显卡机器上报设备名而不是后端名——那时用户真正想确认的是
-                  "用的是哪张卡"，而 currentDevice 是实际绑定结果（可能与所选不同）。 */}
               {loadingModel
                 ? t('local.backendLoadingModel')
                 : showGpuPicker && currentDevice
@@ -1024,7 +932,6 @@ export function LocalModeAdvancedSection() {
                   : t('local.backendHintCpu')}
           </p>
 
-          {/* 多显卡才出现。单卡机器上这个下拉只有一个有意义的值，摆出来纯属噪音。 */}
           {showGpuPicker && (
             <div className="mt-4 border-t border-border pt-4">
               <label id="gpu-device-heading" className="mb-2 block text-sm text-foreground">

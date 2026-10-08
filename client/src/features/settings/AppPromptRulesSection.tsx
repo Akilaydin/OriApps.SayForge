@@ -12,20 +12,8 @@ import type { AppPromptRule } from '@/services/personalization/types'
 import { useT } from '@/i18n/useT'
 import { appPromptRuleDisplayName, promptPresetDisplayName } from '@/i18n/displayNames'
 
-/**
- * 「检测当前应用」的倒计时秒数。
- *
- * 这段时间是留给用户切窗口的：点完按钮得 Alt+Tab 或用鼠标找到目标程序并点进去，
- * 3 秒对着一堆窗口翻找根本不够，超时后读到的还是 SayIt 自己，白跑一轮。
- * 界面上的按钮文字与提示都从这个值推导，改这里一处即可。
- */
 const DETECT_COUNTDOWN_SEC = 5
 
-/**
- * 只展示"真正决定命中"的条件。
- * 写了进程名的规则一律只按进程名判定（见 promptRouter.matchesAppPromptRule），
- * 此时再把窗口标题/类名列出来会让人误以为它们也会触发。
- */
 function formatMatcher(rule: AppPromptRule, t: ReturnType<typeof useT>) {
   if (rule.matcher.processNames.length > 0) {
     return t('appPrompt.matcherProcess', { value: rule.matcher.processNames.join(', ') })
@@ -65,7 +53,6 @@ export default function AppPromptRulesSection({
   presets: PromptPreset[]
   rules: AppPromptRule[]
   onSaveRule: (rule: AppPromptRule) => Promise<void> | void
-  /** 开关不走草稿，按下即落库（并把启用的规则置顶），见 AIInstructionsPage.handleToggleAppRule */
   onToggleRule: (ruleId: string, enabled: boolean) => Promise<void> | void
   onMoveRule: (from: number, to: number) => Promise<void> | void
   onResetRule: (ruleId: string) => Promise<void> | void
@@ -76,13 +63,10 @@ export default function AppPromptRulesSection({
   const [drafts, setDrafts] = useState<Record<string, AppPromptRule>>({})
   const [expandedRules, setExpandedRules] = useState<Set<string>>(new Set())
   const [savingId, setSavingId] = useState<string | null>(null)
-  // 新建规则表单（null = 未展开）
   const [newRule, setNewRule] = useState<{ name: string; processName: string; presetId: string; promptAppend: string } | null>(null)
-  // 「检测当前应用」倒计时：给用户时间切到目标程序，否则测到的就是 SayIt 自己
   const [countdown, setCountdown] = useState(0)
   const [detectHint, setDetectHint] = useState<DetectHint>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  /** 上一轮的已存值，用来分辨"外部真改了内容"和"只是开关或顺序变了" */
   const savedSnapshot = useRef<Record<string, AppPromptRule>>({})
   const expansionInitialized = useRef(false)
 
@@ -95,9 +79,6 @@ export default function AppPromptRulesSection({
       for (const rule of rules) {
         const previous = savedSnapshot.current[rule.id]
         const draft = current[rule.id]
-        // 开关和拖拽都是即时落库的，一动就会走到这里。此时若把草稿整个重置，
-        // 用户正在编辑、还没点"保存规则"的附加提示词就被静默冲掉了。
-        // 所以只在「除 enabled 之外确实变了」（保存过、恢复默认）时才用已存值覆盖草稿。
         const contentChanged = !previous || !isSameRule({ ...previous, enabled: rule.enabled }, rule)
         nextDrafts[rule.id] = draft && !contentChanged
           ? { ...draft, enabled: rule.enabled }
@@ -107,9 +88,6 @@ export default function AppPromptRulesSection({
     })
     savedSnapshot.current = Object.fromEntries(rules.map((rule) => [rule.id, rule]))
 
-    // 展开状态只在首次载入时按"已启用"推一次。以前每次 rules 变化都重算，
-    // 而现在开关即时落库、拖动也会改 rules —— 那样每动一下都会把用户手动
-    // 折叠/展开的状态弹回去。
     if (!expansionInitialized.current && rules.length > 0) {
       expansionInitialized.current = true
       setExpandedRules(new Set(rules.filter((rule) => rule.enabled).map((rule) => rule.id)))
@@ -135,11 +113,6 @@ export default function AppPromptRulesSection({
     })
   }
 
-  /**
-   * 启用/停用即时落库（不需要再点"保存规则"）—— 开关是个状态类控件，
-   * 按下去却要另外点保存才算数，用户会以为已经生效了。
-   * 顺手同步展开状态：刚启用的规则通常要接着看一眼它的配置。
-   */
   const handleToggle = (rule: AppPromptRule) => {
     const enabled = !rule.enabled
     setExpandedRules((current) => {
@@ -163,10 +136,6 @@ export default function AppPromptRulesSection({
     })
   }
 
-  /**
-   * 检测当前应用：先倒计时，让用户切到目标程序，再读前台窗口的进程名。
-   * 直接读的话只会读到 SayIt 自己（用户正在点这个按钮）。
-   */
   const detectCurrentApp = async () => {
     setDetectHint(null)
     for (let s = DETECT_COUNTDOWN_SEC; s > 0; s -= 1) {
@@ -250,7 +219,6 @@ export default function AppPromptRulesSection({
           )}
         </div>
 
-        {/* 新建规则表单 */}
         {newRule && (
           <div className="rounded-lg border border-dashed p-4">
             <div className="space-y-3">
@@ -352,7 +320,6 @@ export default function AppPromptRulesSection({
                 {...(canSort ? ruleSortable.rowProps(index) : {})}
                 className={cn('group rounded-lg border bg-card', canSort && ruleSortable.rowClassName(index))}
               >
-                {/* 标题栏 */}
                 <div
                   className="flex cursor-pointer items-center justify-between gap-4 rounded-t-lg bg-muted/30 px-4 py-2.5"
                   onClick={() => toggleExpanded(rule.id)}
@@ -385,7 +352,6 @@ export default function AppPromptRulesSection({
                   </div>
                 </div>
 
-                {/* 展开内容 */}
                 {isExpanded && (
                   <div className="border-t px-4 pb-3 pt-3">
                     <div className="space-y-3">

@@ -1,31 +1,7 @@
-// OpenAI 实时转写 — gpt-live-transcribe
 //
-// 走 Realtime API 的「转写会话」（`?intent=transcription`），不是语音对话那套：
-// 只上传音频、只收文字，模型不说话。
 //
-// ⚠️ 与 asr_qwen_realtime.rs 长得像但**不是同一套事件**。千问那份是照 OpenAI 的
-// 老形态抄的，字段停在 `session.input_audio_format` / `sample_rate` 这一层；
-// OpenAI 现在把这些收进了 `session.audio.input.*`，还多了 `keywords` / `delay`。
-// 别拿千问那份的 payload 往这里套。
 //
-// 协议（官方 Realtime transcription 指南）：
-//   1. 连 wss://api.openai.com/v1/realtime?intent=transcription
-//   2. 发 session.update，type=transcription，配模型 / 音频格式 / 关掉自动断句
-//   3. input_audio_buffer.append 发 base64 PCM（音频在 JSON 里，不是二进制帧）
-//   4. input_audio_buffer.commit 结束这一轮
-//   5. 收 conversation.item.input_audio_transcription.delta（增量）
-//      与 .completed（该轮最终文本）
 //
-// ── 未经真实接口验证的三处（没有 OpenAI key，只能照文档实现）──
-// 用 `dev-scripts/probe_openai_live_transcribe.py` 打一次真实接口即可逐条确认：
-//   A. **采样率 16000**。官方示例一律写 24000，但格式字段是 `{type, rate}` 这种
-//      显式声明形态，按说 16k 应当被接受（我们整条链路都是 16k，见 services/audio.ts）。
-//      若服务端拒绝，只能在这里对 PCM 做 16k→24k 重采样。
-//   B. **就绪事件名**。这里同时接受 `session.updated` 与 `transcription_session.updated`
-//      （历史上用过后者），任一到达即算就绪。
-//   C. **keywords 字段的位置**。文档把它放在 `audio.input.transcription.keywords`，
-//      这也正好是我们热词功能最合适的落点 —— 比 Whisper 那种「拿带标点的句子做示范」
-//      可靠得多。若服务端不认，退化的表现是热词不生效，不影响转写本身。
 
 use super::{diag, types::AsrProviderConfig};
 use futures_util::stream::{SplitSink, SplitStream};
@@ -44,28 +20,16 @@ use tungstenite::http::HeaderValue;
 const WS_URL: &str = "wss://api.openai.com/v1/realtime?intent=transcription";
 const SCOPE: &str = "openai/live";
 
-/// 流式默认模型。**别把它用在 `/audio/transcriptions`** —— 那个端点要 `gpt-transcribe`，
-/// 两者不通用（见 asr_groq.rs 的 endpoint_for，关掉实时字幕时走的是那条路）。
 const DEFAULT_MODEL: &str = "gpt-live-transcribe";
 
-/// 采样率。整条链路都是 16k 单声道 s16le（services/audio.ts 的 TARGET_SAMPLE_RATE）。
 const SAMPLE_RATE: u32 = 16000;
 
-/// 延迟档位：minimal | low | medium | high | xhigh。
 ///
-/// 取 `low` 而不是 `minimal`：这个值决定模型在吐字前先攒多少音频，档位越低越早出字、
-/// 但错字更多。我们的用法是「说完插入到光标」，实时字幕只是过程反馈，最终文本的
-/// 准确率比首字延迟重要；`minimal` 换来的那点提前量不值得多出来的错字。
 const DELAY: &str = "low";
 
-/// 热词条数上限。keywords 是提示不是强制，给太多反而会稀释每一个的作用；
-/// 文档要求每条单行、且不含 `<` `>` 与换行，违反会让整个 session.update 被拒 ——
-/// 那会让识别**完全不可用**，所以这里过滤掉而不是原样上送。
 ///
-/// ⚠️ 这是**客户端自设**的，不是服务端限制（见 capabilities.rs 的 client_cap）。
 const KEYWORD_LIMIT: usize = 100;
 
-/// 给 `capabilities.rs` 的测试用，理由同 asr_qwen_audio_stream::hotword_limit_for_docs。
 #[cfg(test)]
 pub fn keyword_limit_for_docs() -> usize {
     KEYWORD_LIMIT
@@ -76,9 +40,7 @@ type WsStream = tokio_tungstenite::WebSocketStream<
 >;
 type WsSink = SplitSink<WsStream, tungstenite::Message>;
 
-// ─────────────────────────── 协议编解码 ───────────────────────────
 
-/// 本次要用的模型：前端选定的优先，否则默认。
 fn resolve_model(config: &AsrProviderConfig) -> String {
     config
         .extra
@@ -90,10 +52,7 @@ fn resolve_model(config: &AsrProviderConfig) -> String {
         .to_string()
 }
 
-/// 热词 → `keywords` 数组。
 ///
-/// 按文档要求剔掉带 `<` `>` 或换行的词条：留着会让 session.update 整条被拒，
-/// 代价是识别完全不能用，而丢掉一个热词只是它不生效。
 fn build_keywords(hotwords: &[String]) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     hotwords
@@ -108,11 +67,7 @@ fn build_keywords(hotwords: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// 首条 session.update。
 ///
-/// `turn_detection: null` 是刻意的：我们自己知道用户什么时候松开热键，由
-/// `input_audio_buffer.commit` 明确收一轮。交给服务端 VAD 断句会在说话停顿处
-/// 提前收尾，把一段话切成几轮。
 fn session_update_payload(model: &str, hotwords: &[String]) -> serde_json::Value {
     let mut transcription = serde_json::json!({
         "model": model,
@@ -162,29 +117,21 @@ fn error_message(ev: &serde_json::Value) -> String {
         .to_string()
 }
 
-/// 就绪事件。两个名字都接受，见文件头 B 条。
 fn is_session_ready(event: &str) -> bool {
     event == "session.updated" || event == "transcription_session.updated"
 }
 
-// ─────────────────────────── 累积状态 ───────────────────────────
 
-/// 一次会话累积到的文本。
 ///
-/// committed = 已 `.completed` 的轮次，partial = 当前轮的增量拼接。
-/// 我们把 turn_detection 关了，正常只有一轮；但服务端仍可能分轮返回，
-/// 所以按多轮处理 —— 只认一轮的话，多出来的会被丢掉。
 #[derive(Default)]
 struct Transcript {
     committed: String,
     partial: String,
     finished: bool,
     error: Option<String>,
-    /// 收到过多少条 delta，只用于日志
-    delta_events: usize,
+        delta_events: usize,
 }
 
-/// 一条事件对累积状态做了什么。
 enum Applied {
     Ignored,
     Updated,
@@ -204,15 +151,12 @@ impl Transcript {
                 if delta.is_empty() {
                     return Applied::Ignored;
                 }
-                // delta 是**增量**（与千问那份的 text 全量语义相反），要追加
                 self.partial.push_str(delta);
                 self.delta_events += 1;
                 Applied::Updated
             }
             "conversation.item.input_audio_transcription.completed" => {
                 let transcript = ev.get("transcript").and_then(|t| t.as_str()).unwrap_or("");
-                // completed 给的是该轮**最终**文本，用它替掉本轮攒的 delta：
-                // 模型会在后续 delta 里修正前面的字，最终文本才是它认准的那版。
                 self.partial.clear();
                 if !transcript.is_empty() {
                     self.committed.push_str(transcript);
@@ -230,9 +174,7 @@ impl Transcript {
     }
 }
 
-// ─────────────────────────── 建连 ───────────────────────────
 
-/// 建连 → 发 session.update → 等就绪。拿到 WsStream 才算可以发音频。
 async fn open_session(
     config: &AsrProviderConfig,
     hotwords: &[String],
@@ -265,12 +207,9 @@ async fn open_session(
             )
         })?,
     );
-    // Realtime 的 beta 头。GA 之后带着它也无害，缺了则老账号连不上。
     request
         .headers_mut()
         .insert("openai-beta", HeaderValue::from_static("realtime=v1"));
-    // 所有出网请求都带 UA：自有 ALB 与第三方网关会按「无 UA」直接 403，
-    // 且报错里绝不提 UA（见 pitfalls 第 1 条）。
     request.headers_mut().insert(
         USER_AGENT,
         HeaderValue::from_static(concat!("SayIt/", env!("CARGO_PKG_VERSION"))),
@@ -309,9 +248,6 @@ async fn open_session(
         )
     })?;
 
-    // 必须等到就绪事件：配置被拒（模型没开通、采样率不接受、keywords 违规）时
-    // 服务端会回 error 或直接关连接，都要在这里变成 Err，让上层回落到一次性 HTTP，
-    // 而不是抱着一条不工作的连接空转。
     let ready = tokio::time::timeout(Duration::from_secs(15), async {
         while let Some(msg) = ws.next().await {
             let msg = msg.map_err(|e| {
@@ -373,7 +309,6 @@ async fn open_session(
     Ok((ws, model))
 }
 
-// ─────────────────────────── 流式会话 ───────────────────────────
 
 static SINK: once_cell::sync::Lazy<Arc<Mutex<Option<WsSink>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -383,11 +318,7 @@ static STATE: once_cell::sync::Lazy<Arc<Mutex<Transcript>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(Transcript::default())));
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// 打开流式转写会话。
 ///
-/// 和 asr_qwen_audio_stream 一样**不分「实时 / 普通」两条代码路径**：无论要不要上抛
-/// 中间结果，后台 reader 都必须一直读 —— 服务端在发音频期间持续推 delta，
-/// 没人读会把连接堵死。realtime 只决定要不要 emit。
 #[tauri::command]
 pub async fn openai_live_open(
     app: AppHandle,
@@ -462,8 +393,6 @@ async fn run_reader(
                 }
             }
             Applied::Finished => {
-                // 最终文本也要上屏一次：completed 会把 delta 里的错字修正掉，
-                // 不 emit 的话悬浮窗会一直停在修正前那版
                 if realtime {
                     let _ = app.emit(
                         "asr-partial",
@@ -482,9 +411,6 @@ async fn run_reader(
     }
     let mut s = state.lock().await;
     s.finished = true;
-    // 协议没跑完就断了必须留痕。否则 finish 只能返回空串，而空串会被显示成
-    // 「未检测到有效声音」，把用户引去查麦克风 —— 真实原因（额度、鉴权、
-    // 模型没开通）就此消失。见 pitfalls 第 15 条。
     if !ended_cleanly && s.error.is_none() {
         s.error = Some(format!(
             "connection closed before the transcript completed: {}",
@@ -521,8 +447,6 @@ pub async fn openai_live_send(pcm_b64: String) -> Result<(), String> {
             "Session is not open".to_string(),
         ));
     }
-    // 音频本来就是 base64 过来的，这个协议也要 base64 塞 JSON，所以不解码 ——
-    // 解一遍再编一遍纯属浪费（与千问 realtime 那份同理）。
     let payload = serde_json::to_string(&append_audio_payload(&pcm_b64)).unwrap();
     let mut sink = SINK.lock().await;
     let s = sink.as_mut().ok_or_else(|| {
@@ -555,7 +479,6 @@ pub async fn openai_live_finish() -> Result<String, String> {
                 "Session is not open".to_string(),
             )
         })?;
-        // 发送失败不致命：可能服务端已经收尾，继续读已累计的文本即可。
         if let Err(e) = s
             .send(tungstenite::Message::Text(
                 serde_json::to_string(&commit_payload()).unwrap().into(),
@@ -576,8 +499,6 @@ pub async fn openai_live_finish() -> Result<String, String> {
                 let deltas = st.delta_events;
                 drop(st);
                 cleanup().await;
-                // 已经识别出文字就交回去，哪怕收尾时断了 —— 丢掉它等于让用户白说一遍。
-                // 但断连原因仍要留痕。
                 if !text.is_empty() {
                     if let Some(err) = &err {
                         diag::log(SCOPE, "finished_with_error", err);
@@ -604,7 +525,6 @@ pub async fn openai_live_finish() -> Result<String, String> {
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
 
-    // 超时也把已拿到的文本交回去：丢掉它等于让用户白说一遍。
     let text = STATE.lock().await.display().trim().to_string();
     diag::log(
         SCOPE,
@@ -621,12 +541,8 @@ pub async fn openai_live_close() -> Result<(), String> {
     Ok(())
 }
 
-// ─────────────────────────── 连通性测试 ───────────────────────────
 
-/// 只建连 + 开会话 + 立刻关：能开出转写会话就说明密钥和模型都对得上。
 ///
-/// 不发音频 —— 这个命令只回答「能不能连」，真实转写由设置页的识别测试负责，
-/// 而那条走的是 HTTP 一次性路径（见 registry.rs）。
 pub async fn test_connection(config: &AsrProviderConfig) -> super::types::TestResult {
     let start = Instant::now();
     let model = resolve_model(config);
@@ -680,9 +596,7 @@ mod tests {
         );
     }
 
-    /// session.update 的形状是这份实现的全部前提，写错一个层级就是「连上了但没有字」。
-    /// 尤其 turn_detection 必须是 **JSON null**，不是缺省、也不是字符串 "null"。
-    #[test]
+            #[test]
     fn session_update_matches_the_documented_shape() {
         let payload = session_update_payload(DEFAULT_MODEL, &[]);
         assert_eq!(payload["type"], "session.update");
@@ -693,7 +607,6 @@ mod tests {
         assert_eq!(input["transcription"]["model"], DEFAULT_MODEL);
         assert_eq!(input["transcription"]["delay"], DELAY);
         assert!(input["turn_detection"].is_null());
-        // 没有热词时不带 keywords 字段（空数组也可能被判成"限定只认这些词"）
         assert!(input["transcription"].get("keywords").is_none());
     }
 
@@ -706,9 +619,7 @@ mod tests {
         assert_eq!(keywords[1], "Kiro");
     }
 
-    /// 带 `<` `>` 或换行的词条会让服务端拒掉整条 session.update —— 那是「识别完全不可用」，
-    /// 比「这个热词不生效」严重得多，所以必须在这里剔掉。
-    #[test]
+            #[test]
     fn illegal_keywords_are_dropped_not_forwarded() {
         let words = vec![
             "good".to_string(),
@@ -727,9 +638,7 @@ mod tests {
         assert_eq!(build_keywords(&many).len(), KEYWORD_LIMIT);
     }
 
-    /// delta 是**增量**（要追加），completed 给的是该轮最终文本（要替掉本轮的 delta）。
-    /// 把 delta 当全量覆盖会只剩最后一个字；把 completed 当增量追加会让文本重复一遍。
-    #[test]
+            #[test]
     fn deltas_accumulate_and_completed_replaces_them() {
         let mut t = Transcript::default();
         t.apply(&serde_json::json!({
@@ -782,9 +691,7 @@ mod tests {
         assert!(t.finished);
     }
 
-    /// 历史上用过 transcription_session.updated，两个名字都要认 —— 只认一个的症状是
-    /// 建连超时后静默回落到一次性识别，字幕永远不出来。
-    #[test]
+            #[test]
     fn both_ready_event_names_are_accepted() {
         assert!(is_session_ready("session.updated"));
         assert!(is_session_ready("transcription_session.updated"));

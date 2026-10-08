@@ -31,7 +31,6 @@ struct NotificationInner {
 #[derive(Default)]
 pub struct UpdateNotificationState(Mutex<NotificationInner>);
 
-/// 必须异步创建 WebView，避免 Windows 主线程等待页面初始化时死锁。
 #[tauri::command]
 pub async fn sync_update_notification(
     app: AppHandle,
@@ -89,7 +88,6 @@ pub async fn sync_update_notification(
             .build()
             .map_err(|e| e.to_string())?;
 
-            // Alt+F4 与卡片的关闭按钮语义一致，隐藏由主窗口统一处理。
             let app_for_close = app.clone();
             notification.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -109,7 +107,6 @@ pub async fn sync_update_notification(
             notification
         }
     };
-    // 首次发送可能早于前端监听；get_update_notification 提供同一份快照补齐。
     notification.emit(STATE_EVENT, &snapshot).map_err(|e| e.to_string())
 }
 
@@ -120,7 +117,6 @@ pub fn get_update_notification(
     Ok(state.0.lock().map_err(|e| e.to_string())?.snapshot.clone())
 }
 
-/// 前端布局完成后才展示，revision 防止延迟的 ResizeObserver 把已关闭卡片重新打开。
 #[tauri::command]
 pub async fn fit_update_notification(
     app: AppHandle,
@@ -136,8 +132,6 @@ pub async fn fit_update_notification(
     if ![width, height, device_pixel_ratio].iter().all(|n| n.is_finite() && *n > 0.0) {
         return Err("Invalid notification dimensions".into());
     }
-    // 校验状态与显示窗口在 UI 线程内完成，避免关闭和延迟的布局请求交错。
-    // 不能在工作线程持锁调用窗口 API：同步命令或 CloseRequested 回调也可能要读状态。
     let (sender, mut receiver) = tauri::async_runtime::channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -173,7 +167,6 @@ fn fit_on_main_thread(
         .or_else(|| app.primary_monitor().ok().flatten())
         .ok_or("No monitor available")?;
     let work = monitor.work_area();
-    // Windows「文本大小」会给 WebView2 叠加缩放，CSS px 不能直接当成 Tauri 逻辑像素。
     let css_zoom = (device_pixel_ratio / window.scale_factor().map_err(|e| e.to_string())?).clamp(0.5, 4.0);
     let (x, y, w, h) = notification_bounds(
         (work.position.x, work.position.y, work.size.width, work.size.height),
@@ -197,8 +190,6 @@ fn fit_on_main_thread(
 fn notification_bounds(work: (i32, i32, u32, u32), scale: f64, design: (f64, f64)) -> (i32, i32, u32, u32) {
     let (left, top, work_width, work_height) = work;
     let gap = (8.0 * scale).round().max(1.0) as u32;
-    // 与语音悬浮窗一致：工作区底部居中，离底边 72 个逻辑像素。
-    // 前端底部留白也与 Overlay 的 pb-4 对齐，因此可见卡片底边位置相同。
     let bottom_gap = (72.0 * scale).round().max(gap as f64) as u32;
     let width = ((design.0 * scale).ceil().max(1.0) as u32).min(work_width.saturating_sub(gap * 2).max(1));
     let height = ((design.1 * scale).ceil().max(1.0) as u32).min(work_height.saturating_sub(gap * 2).max(1));

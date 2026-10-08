@@ -19,8 +19,6 @@ pub fn save_audio_file(id: String, wav_base64: String) -> Result<String, String>
     Ok(path.to_string_lossy().to_string())
 }
 
-/// 接收 PCM Int16 LE 原始数据（base64），在 Rust 侧编码 WAV header 并写入文件。
-/// 避免前端拼 WAV + base64 编码的开销。
 #[tauri::command]
 pub fn save_pcm_as_wav(id: String, pcm_base64: String, sample_rate: Option<u32>) -> Result<String, String> {
     let dir = audio_dir();
@@ -53,11 +51,7 @@ pub fn save_pcm_as_wav(id: String, pcm_base64: String, sample_rate: Option<u32>)
     Ok(path.to_string_lossy().to_string())
 }
 
-/// 录音文件还在不在。
 ///
-/// 单独一个命令而不是复用 `read_audio_file`：后者会把整份 WAV 读出来再 base64
-/// （五分钟录音约 13MB 的字符串），只为判断"文件存不存在"的话代价太大 ——
-/// 历史列表里每条记录都要判一次。
 #[tauri::command]
 pub fn audio_file_exists(file_path: String) -> bool {
     !file_path.is_empty() && PathBuf::from(&file_path).is_file()

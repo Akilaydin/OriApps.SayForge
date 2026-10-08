@@ -1,4 +1,3 @@
-// 服务器模式配置 — 服务地址 + 连接状态
 
 import { useEffect, useState } from 'react'
 import { Info } from 'lucide-react'
@@ -29,7 +28,6 @@ interface ServiceResult {
 export default function ServerSection() {
   const t = useT()
   const [backendBaseUrl, setBackendBaseUrl] = useState('')
-  /** 已保存的地址。输入框与它不一致就是「未保存」 */
   const [savedBaseUrl, setSavedBaseUrl] = useState('')
   const [defaultBaseUrl, setDefaultBaseUrl] = useState('')
   const [result, setResult] = useState<ServiceResult | null>(null)
@@ -42,7 +40,6 @@ export default function ServerSection() {
     setSavedBaseUrl(current)
     setDefaultBaseUrl(getDefaultBackendBaseUrl())
     void getSetting('server.language', 'auto').then((v) => setAsrLanguage(String(v || 'auto')))
-    // 切走路由时把"有未保存改动"复位，别把脏状态留给下一次进入
     return () => setEngineDraftDirty(false)
   }, [])
 
@@ -57,15 +54,12 @@ export default function ServerSection() {
     setEngineDraftDirty(normalize(value) !== normalize(savedBaseUrl))
   }
 
-  /** 探一次 /healthz。成功返回后端上报的 ASR/LLM 开关，失败抛出原始异常。 */
   async function probeHealth(url: string): Promise<{ asr?: boolean; llm?: boolean }> {
     const response = await fetch(`${url}/healthz`, { cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return await response.json() as { asr?: boolean; llm?: boolean }
   }
 
-  /** 把 /healthz 的 asr/llm 布尔量翻译成人话。原来直接显示「ASR=on，LLM=off」，
-   *  那是把后端的 JSON 字段原样贴给用户。 */
   function describeHealth(payload: { asr?: boolean; llm?: boolean }, prefix: string): ServiceResult {
     if (payload.asr === false) {
       return {
@@ -82,13 +76,6 @@ export default function ServerSection() {
     return { tone: 'success', message: t('server.allGood', { prefix }) }
   }
 
-  /**
-   * 保存并测试。
-   *
-   * 这里原来是两个同权重的按钮：「测试连接」只测不存（用输入框里的值），「保存」存了再测。
-   * 用户点前者看到「连接成功」，合理地以为配置生效了——它没有。两个动作合并成一个之后，
-   * 界面上就不再存在"测试通过但没保存"这种状态。
-   */
   async function handleSaveAndTest() {
     if (busy) return
     const normalized = normalize(backendBaseUrl)
@@ -113,8 +100,6 @@ export default function ServerSection() {
       setBackendBaseUrl(next)
       setSavedBaseUrl(next)
       setEngineDraftDirty(false)
-      // 地址已变更：无论下方健康检查成功与否，都按新地址强制重连，
-      // 让左下角连接状态反映新配置（改成错误地址后应显示未连接，而非仍旧"已连接"）
       reconnectProvider()
       // Changing a transcription backend must not change where app updates come from.
     } catch (error) {
@@ -138,7 +123,6 @@ export default function ServerSection() {
     }
   }
 
-  /** 恢复到内置默认地址并立刻重连，省得用户自己回忆默认值是什么 */
   async function handleResetDefault() {
     if (busy) return
     setBusy(true)
@@ -183,15 +167,12 @@ export default function ServerSection() {
               <label htmlFor="server-base-url" className="text-sm text-muted-foreground">
                 {t('server.title')}
               </label>
-              {/* 输入框内容只活在 local state 里，切页就没了。原来这件事完全无提示，
-                  用户会以为改完就生效了。 */}
               {isDirty && (
                 <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-strong">
                   {t('server.unsaved')}
                 </span>
               )}
             </div>
-            {/* flex-wrap：800×600 最小窗口下侧栏占掉 192px，输入框 + 按钮挤在一行会溢出 */}
             <div className="flex flex-wrap items-center gap-2">
               <input
                 id="server-base-url"
@@ -214,10 +195,6 @@ export default function ServerSection() {
             </div>
           </div>
 
-          {/* 这里原来在失败提示里再挂一个「恢复默认地址（https://…）」按钮：
-              一是把整条 URL 塞进按钮文字，全应用没有第二处这么写；
-              二是它和输入框旁边那个「恢复默认」完全同义——而后者在地址被改过时一直都在，
-              正好覆盖会出现这条失败提示的全部情况。留一个就够。 */}
           {result && (
             <Feedback
               className="mt-3"

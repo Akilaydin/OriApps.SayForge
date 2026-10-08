@@ -54,14 +54,12 @@
         "installMode": "currentUser",
         "displayLanguageSelector": false,
         "languages": [
-          "SimpChinese",
           "English"
         ],
         "installerIcon": "icons/icon.ico"
       },
       "wix": {
         "language": [
-          "zh-CN",
           "en-US"
         ]
       }

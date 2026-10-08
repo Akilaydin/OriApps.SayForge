@@ -1,10 +1,6 @@
 import type { ThemeDefinition } from './types'
 import { t } from '@/i18n'
 
-/**
- * Claude UI 风格主题
- * 灵感来源：Claude 的暖色调、米色背景、棕橙色强调色
- */
 const claude: ThemeDefinition = {
   id: 'claude',
   get name() { return t('theme.warm') },
@@ -16,29 +12,27 @@ const claude: ThemeDefinition = {
     accent: '#eeece7',
   },
   vars: {
-    // 基础色 — 暖色调米色系
-    '--background': '40 33% 97%',       // #faf9f5 米白
-    '--foreground': '25 8% 20%',         // #3b3530 深棕
-    '--card': '40 33% 98%',              // #fbfaf7 卡片白
+    '--background': '40 33% 97%',
+    '--foreground': '25 8% 20%',
+    '--card': '40 33% 98%',
     '--card-foreground': '25 8% 20%',
-    '--primary': '22 85% 38%',           // #b5490f 棕橙（Claude 标志色）
+    '--primary': '22 85% 38%',
     '--primary-foreground': '40 33% 97%',
-    '--secondary': '37 22% 90%',         // #eeece7 暖灰
+    '--secondary': '37 22% 90%',
     '--secondary-foreground': '25 8% 20%',
     '--muted': '37 22% 90%',
-    '--muted-foreground': '25 6% 50%',   // #877f76 中棕
+    '--muted-foreground': '25 6% 50%',
     '--accent': '37 22% 90%',
     '--accent-foreground': '25 8% 20%',
     '--destructive': '0 72% 51%',
     '--destructive-foreground': '0 0% 100%',
-    '--destructive-strong': '0 74% 44%',    // 米白底 5.9:1
-    '--border': '37 18% 84%',            // #ddd9d1 暖边框
+    '--destructive-strong': '0 74% 44%',
+    '--border': '37 18% 84%',
     '--input': '37 18% 84%',
     '--ring': '22 85% 38%',
     '--radius': '0.5rem',
 
-    // 区域色
-    '--sidebar-bg': '37 22% 92%',        // #f0eee9 侧边栏暖灰
+    '--sidebar-bg': '37 22% 92%',
     '--sidebar-border': '37 18% 84%',
     '--sidebar-item-active-bg': '37 22% 86%',
     '--sidebar-item-hover-bg': '37 22% 88%',
@@ -49,14 +43,12 @@ const claude: ThemeDefinition = {
     '--titlebar-close-hover-bg': '0 72% 51%',
     '--titlebar-close-hover-text': '0 0% 100%',
 
-    // 表单控件
     '--input-bg': '40 33% 98%',
     '--input-border': '37 18% 84%',
     '--input-focus-border': '22 85% 38%',
     '--input-focus-ring': '22 85% 38%',
     '--input-placeholder': '25 6% 62%',
 
-    // 状态色（-strong 为米白底上达标的文字色，色相向暖侧靠，与主题一致）
     '--success': '142 76% 36%',
     '--success-foreground': '0 0% 100%',
     '--success-strong': '150 60% 27%',
@@ -68,7 +60,6 @@ const claude: ThemeDefinition = {
     '--info-strong': '203 80% 32%',
   },
 
-  // Claude 主题特色扩展
   extras: {
     '--claude-accent-warm': '22 85% 38%',
     '--claude-bg-subtle': '40 25% 95%',

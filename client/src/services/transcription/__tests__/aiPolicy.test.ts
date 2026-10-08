@@ -40,7 +40,6 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
   })
 
   it('服务器 + 自配 AI → custom，仍然允许调用', () => {
-    // custom 只表示"服务端不做整理"，客户端会接着调。它永远不是跳过原因。
     const p = policy({ serverAiSource: 'custom' })
     expect(p.route).toBe('custom')
     expect(p.allowCall).toBe(true)
@@ -48,7 +47,6 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
   })
 
   it.each(['local', 'cloud_api'] as const)('%s 模式一律 custom 路由', (workMode) => {
-    // 这两种模式没有服务端 AI，serverAiSource 是残留值也不该影响路由
     expect(policy({ workMode, serverAiSource: 'managed' }).route).toBe('custom')
   })
 
@@ -56,7 +54,6 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
     const p = policy({ aiEnabled: false, aiMinDurationSec: 60, audioDurationSec: 4.8 })
     expect(p.route).toBe('none')
     expect(p.allowCall).toBe(false)
-    // 同时低于门槛时也要报总开关：让用户去调一个根本不生效的门槛是误导
     expect(p.reason).toBe('ai_off')
   })
 
@@ -74,7 +71,6 @@ describe('resolveAiPolicy：路由与是否允许调用', () => {
   })
 
   it('时长恰好等于门槛时允许调用', () => {
-    // 判据是 <，不是 <=。用毫秒整数比较，避免浮点误差把这一档判反。
     expect(policy({ aiMinDurationSec: 2, audioDurationSec: 2 }).allowCall).toBe(true)
     expect(policy({ aiMinDurationSec: 2, audioDurationSec: 1.999 }).allowCall).toBe(false)
   })
@@ -108,8 +104,6 @@ describe('resolveAiOutcome：结果与原因', () => {
   })
 
   it('managed：服务端回了 error → failed，不是 unavailable', () => {
-    // 这是本轮修的核心错判：服务端异常时返回原文 + llm_ms=0，
-    // 旧代码按耗时判断，把"调用失败"记成了"不可用"。
     const o = resolveAiOutcome(policy(), { serverError: 'HTTP 400 temperature', llmMs: 0 })
     expect(o).toMatchObject({ source: 'server', status: 'failed', reason: 'call_failed', attempted: true })
   })
@@ -162,7 +156,6 @@ describe('resolveAiOutcome：结果与原因', () => {
   })
 
   it('不拿文本相等当判据：整理成功但文本没变化仍算成功', () => {
-    // 判据里压根没有文本参数，这条钉的是"以后也不许加进来"
     const o = resolveAiOutcome(policy(), { serverProvider: 'openai', llmMs: 5 })
     expect(o.status).toBe('applied')
   })
@@ -248,7 +241,6 @@ describe('resolveAndLogAiOutcome：每次处理恰好一条，且不含正文', 
     resolveAndLogAiOutcome(ctx, policy())
     const second = resolveAndLogAiOutcome(ctx, policy())
     expect(mocks.addRuntimeEvent).toHaveBeenCalledTimes(1)
-    // 但返回值仍然正确，调用方不必关心去重
     expect(second.status).toBeDefined()
   })
 

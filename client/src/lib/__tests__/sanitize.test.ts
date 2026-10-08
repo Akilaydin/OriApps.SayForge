@@ -56,12 +56,10 @@ describe('sanitizeObject', () => {
     }
     const result = sanitizeObject(input)
 
-    // 普通字段不变
     expect(result.theme).toBe('dark')
     expect(result.cloudAsr.provider).toBe('doubao')
     expect(result.cloudAi.model).toBe('deepseek-chat')
 
-    // 敏感字段被脱敏
     expect(result.cloudAsr.apiKey).toBe('sk-***ef')
     expect(result.cloudAsr.appId).toBe('app***10')
     expect(result.cloudAi.apiKey).toBe('key***mn')
