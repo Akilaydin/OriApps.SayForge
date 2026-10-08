@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"
+     viewBox="0 0 1024 1024" role="img" aria-label="SayForge icon">
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#183747"/>
+      <stop offset="1" stop-color="#0C1C2B"/>
+    </linearGradient>
+    <linearGradient id="voice" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#42C9B1"/>
+      <stop offset="1" stop-color="#7BEAD7"/>
+    </linearGradient>
+  </defs>
+  <!-- The rounded forged blank is deliberately separate from the symbol. -->
+  <rect x="36" y="36" width="952" height="952" rx="214" fill="url(#surface)"/>
+  <!-- Subtle bevel, quiet enough not to alias at small sizes. -->
+  <rect x="48" y="48" width="928" height="928" rx="202"
+        fill="none" stroke="#385C64" stroke-opacity=".64" stroke-width="12"/>
+  <!-- A spoken pulse hardens into the precision of a text caret. -->
+  <path d="M 260,538 H 333 L 418,368 L 508,663 L 594,464 H 632"
+        fill="none" stroke="url(#voice)" stroke-width="79"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- The terminal/caret remains separated by a purposeful negative-space gap. -->
+  <path d="M 745,351 V 681" fill="none" stroke="#F3FCF9"
+        stroke-width="67" stroke-linecap="round"/>
+  <path d="M 696,343 H 794 M 696,689 H 794" fill="none"
+        stroke="#F3FCF9" stroke-width="51" stroke-linecap="round"/>
+</svg>
