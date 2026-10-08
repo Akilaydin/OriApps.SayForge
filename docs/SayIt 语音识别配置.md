@@ -145,6 +145,9 @@ Omni 都不支持实时字幕（整段说完再出结果）。
   - `chat_standard` → `POST /v1/chat/completions`，音频作为 `input_audio: { "data": "<base64>", "format": "wav" }`。标准 OpenAI-compatible 音频接口及 Gemini 网关通常要求这一套。
   - 这两条都不是 FunASR 自己的 WebSocket 实时服务，那套协议不同，SayIt 不通过这张卡接入。
 - **模型名**：按目标服务 `GET /v1/models` 返回的值填。注意 `whisper-1` 在不少实现里只是映射到启动时所选模型的兼容别名，填了它并不代表加载的是 Whisper。
+- **上传音频格式**：默认 WAV，与旧版兼容。`chat_standard` 可选 MP3（16 kHz 单声道、64 kbps），显著减少上传体积，但编码也消耗 CPU。其他协议保持 WAV。两种格式仍录制为原始 PCM，仅上传前编码。
+- **System Instruction**：作为独立 `system` 消息传给聊天式识别模型。留空时使用现有默认转写指令，可以写「音频主要是俄语，保留英文技术术语」之类的约束。
+- **User Prompt**：作为 `user.content` 中的独立文本项，与音频一起上传。留空时只传音频。两项提示和音频格式各自存储在服务档案中，在口述、测试与历史重跑时生效。
 
 **热词**
 

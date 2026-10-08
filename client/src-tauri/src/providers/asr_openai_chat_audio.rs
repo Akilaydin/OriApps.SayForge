@@ -184,6 +184,14 @@ enum AudioPayloadFormat {
     OpenAi,
 }
 
+/// Audio codec is independent from the chat payload shape. Bailian's data URL
+/// remains WAV; standard OpenAI input_audio supports WAV and MP3.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AudioEncoding {
+    Wav,
+    Mp3,
+}
+
 fn audio_payload_format(provider: &str) -> AudioPayloadFormat {
     if provider == "openai_chat_audio_standard" {
         AudioPayloadFormat::OpenAi
@@ -192,18 +200,93 @@ fn audio_payload_format(provider: &str) -> AudioPayloadFormat {
     }
 }
 
+fn audio_encoding(config: &AsrProviderConfig, payload: AudioPayloadFormat) -> AudioEncoding {
+    if matches!(payload, AudioPayloadFormat::OpenAi)
+        && config.extra.get("audioEncoding").and_then(|v| v.as_str()) == Some("mp3")
+    {
+        AudioEncoding::Mp3
+    } else {
+        AudioEncoding::Wav
+    }
+}
+
+/// Encode 16-bit little-endian mono PCM at 64 kbps. MP3 encoding is opt-in
+/// because lossless WAV is the existing behavior and not every endpoint accepts MP3.
+fn pcm_to_mp3(pcm: &[u8], sample_rate: u32) -> Result<Vec<u8>, String> {
+    use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, MonoPcm, Quality, VbrMode};
+
+    if pcm.len() % 2 != 0 {
+        return Err("Invalid PCM: the 16-bit sample buffer has an odd length".into());
+    }
+    let samples: Vec<i16> = pcm.chunks_exact(2)
+        .map(|bytes| i16::from_le_bytes([bytes[0], bytes[1]]))
+        .collect();
+    let mut encoder = Builder::new().ok_or("Cannot create MP3 encoder")?
+        .with_num_channels(1).map_err(|e| format!("MP3 channels: {e:?}"))?
+        .with_sample_rate(sample_rate).map_err(|e| format!("MP3 sample rate: {e:?}"))?
+        .with_brate(Bitrate::Kbps64).map_err(|e| format!("MP3 bitrate: {e:?}"))?
+        .with_quality(Quality::Good).map_err(|e| format!("MP3 quality: {e:?}"))?
+        .with_vbr_mode(VbrMode::Off).map_err(|e| format!("MP3 CBR: {e:?}"))?
+        .with_to_write_vbr_tag(false).map_err(|e| format!("MP3 tag: {e:?}"))?
+        .build().map_err(|e| format!("MP3 initialization: {e:?}"))?;
+
+    let mut output = Vec::with_capacity(mp3lame_encoder::max_required_buffer_size(samples.len()));
+    encoder.encode_to_vec(MonoPcm(&samples), &mut output)
+        .map_err(|e| format!("MP3 encoding: {e:?}"))?;
+    output.reserve(7200); // documented maximum flush size
+    encoder.flush_to_vec::<FlushNoGap>(&mut output)
+        .map_err(|e| format!("MP3 finalization: {e:?}"))?;
+    Ok(output)
+}
+
+fn resolve_instruction(
+    config: &AsrProviderConfig,
+    model: &str,
+    payload: AudioPayloadFormat,
+    hotwords: &[String],
+) -> Option<String> {
+    let mut instruction = config.extra.get("instructions")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| (needs_transcribe_instruction(model) || matches!(payload, AudioPayloadFormat::OpenAi))
+            .then(|| DEFAULT_TRANSCRIBE_INSTRUCTION.to_string()));
+    if let Some(ctx) = super::asr_qwen::build_hotword_context_text(hotwords) {
+        let base = instruction.take().unwrap_or_default();
+        instruction = Some(format!("{}\n\n请特别注意以下专业术语/词汇的识别：{}", base, ctx));
+    }
+    instruction
+}
+
+fn resolve_user_prompt(config: &AsrProviderConfig, payload: AudioPayloadFormat) -> Option<&str> {
+    // Only the standard OpenAI audio object uses the optional user text. A
+    // legacy gateway may silently discard an unsupported data-URL audio part;
+    // user text would then make the request look successful without transcription.
+    if !matches!(payload, AudioPayloadFormat::OpenAi) {
+        return None;
+    }
+    config.extra.get("userPrompt").and_then(|v| v.as_str())
+        .map(str::trim).filter(|s| !s.is_empty())
+}
+
 /// 组请求体。
 fn build_body(
     model: &str,
-    wav: &[u8],
+    audio: &[u8],
     instruction: Option<&str>,
+    user_prompt: Option<&str>,
     language: Option<&str>,
-    audio_format: AudioPayloadFormat,
+    payload: AudioPayloadFormat,
+    encoding: AudioEncoding,
 ) -> serde_json::Value {
-    let data = base64::engine::general_purpose::STANDARD.encode(wav);
-    let input_audio = match audio_format {
+    let data = base64::engine::general_purpose::STANDARD.encode(audio);
+    let input_audio = match payload {
         AudioPayloadFormat::DataUrl => serde_json::json!(format!("data:audio/wav;base64,{}", data)),
-        AudioPayloadFormat::OpenAi => serde_json::json!({ "data": data, "format": "wav" }),
+        AudioPayloadFormat::OpenAi => serde_json::json!({
+            "data": data,
+            "format": if encoding == AudioEncoding::Mp3 { "mp3" } else { "wav" },
+        }),
     };
     let mut messages = Vec::new();
     if let Some(text) = instruction {
@@ -212,9 +295,14 @@ fn build_body(
             "content": [{ "type": "text", "text": text }],
         }));
     }
+    let mut content = Vec::new();
+    if let Some(text) = user_prompt.filter(|s| !s.trim().is_empty()) {
+        content.push(serde_json::json!({ "type": "text", "text": text }));
+    }
+    content.push(serde_json::json!({ "type": "input_audio", "input_audio": input_audio }));
     messages.push(serde_json::json!({
         "role": "user",
-        "content": [{ "type": "input_audio", "input_audio": input_audio }],
+        "content": content,
     }));
 
     let mut body = serde_json::json!({ "model": model, "messages": messages });
@@ -266,46 +354,44 @@ pub async fn transcribe(
 
     let model = resolve_model(config, endpoint);
     let url = resolve_url(config, endpoint)?;
-    let audio_format = audio_payload_format(&config.provider);
+    let payload = audio_payload_format(&config.provider);
+    let encoding = audio_encoding(config, payload);
     let language = resolve_language(config);
     let audio_sec = pcm.len() as f64 / (sample_rate.max(1) as f64 * 2.0);
-    let wav = pcm_to_wav(&pcm, sample_rate);
-
-    // 指令：用户填过就用他的，否则对 omni 这类对话模型上默认指令。
-    // 热词接在指令后面 —— 百炼的 system 消息正是它的术语表通道。
-    let mut instruction = config
-        .extra
-        .get("instructions")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            (needs_transcribe_instruction(&model) || matches!(audio_format, AudioPayloadFormat::OpenAi))
-                .then(|| DEFAULT_TRANSCRIBE_INSTRUCTION.to_string())
-        });
-    if let Some(ctx) = super::asr_qwen::build_hotword_context_text(hotwords) {
-        let base = instruction.take().unwrap_or_default();
-        instruction = Some(format!("{}\n\n请特别注意以下专业术语/词汇的识别：{}", base, ctx));
-    }
+    // Report total ASR work including MP3 encoding, not only network time.
+    let start = Instant::now();
+    // Keep MP3 compression off the async executor; it can process five minutes of audio.
+    let audio = match encoding {
+        AudioEncoding::Wav => pcm_to_wav(&pcm, sample_rate),
+        AudioEncoding::Mp3 => tokio::task::spawn_blocking(move || pcm_to_mp3(&pcm, sample_rate))
+            .await
+            .map_err(|e| format!("MP3 encoding task failed: {e}"))??,
+    };
+    let instruction = resolve_instruction(config, &model, payload, hotwords);
+    let user_prompt = resolve_user_prompt(config, payload);
 
     diag::log(
         scope,
         "start",
         &format!(
-            "model={} url={} audio_sec={:.1} language={} instruction={} hotwords={}",
+            "model={} url={} audio_sec={:.1} encoding={:?} upload_bytes={} language={} instruction={} user_prompt={} hotwords={}",
             model,
             url,
             audio_sec,
+            encoding,
+            audio.len(),
             language.as_deref().unwrap_or("auto(omitted)"),
             instruction.is_some(),
+            user_prompt.is_some(),
             hotwords.len(),
         ),
     );
 
-    let body = build_body(&model, &wav, instruction.as_deref(), language.as_deref(), audio_format);
+    let body = build_body(
+        &model, &audio, instruction.as_deref(), user_prompt,
+        language.as_deref(), payload, encoding,
+    );
     let client = super::http_client::shared();
-    let start = Instant::now();
 
     let resp = client
         .post(&url)
@@ -376,7 +462,8 @@ pub async fn transcribe(
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let endpoint = endpoint_for(&config.provider);
     let model = resolve_model(config, endpoint);
-    let audio_format = audio_payload_format(&config.provider);
+    let payload = audio_payload_format(&config.provider);
+    let encoding = audio_encoding(config, payload);
     let url = match resolve_url(config, endpoint) {
         Ok(u) => u,
         Err(e) => {
@@ -385,10 +472,16 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     };
 
     // 0.5s 静音：够过服务端的「音频太短」门槛，又几乎不花钱。
-    let wav = pcm_to_wav(&vec![0u8; 16000], 16000);
-    let instruction = (needs_transcribe_instruction(&model) || matches!(audio_format, AudioPayloadFormat::OpenAi))
-        .then_some(DEFAULT_TRANSCRIBE_INSTRUCTION);
-    let body = build_body(&model, &wav, instruction, None, audio_format);
+    let silence = vec![0u8; 16000];
+    let audio = match encoding {
+        AudioEncoding::Wav => pcm_to_wav(&silence, 16000),
+        AudioEncoding::Mp3 => match pcm_to_mp3(&silence, 16000) {
+            Ok(audio) => audio,
+            Err(e) => return TestResult { ok: false, message: e, elapsed_ms: 0, detail: String::new() },
+        },
+    };
+    let instruction = resolve_instruction(config, &model, payload, &[]);
+    let body = build_body(&model, &audio, instruction.as_deref(), resolve_user_prompt(config, payload), None, payload, encoding);
 
     let client = super::http_client::shared();
     let start = Instant::now();
@@ -483,7 +576,7 @@ mod tests {
     /// 完全看不出少了前缀 —— 所以这条得钉住。
     #[test]
     fn legacy_audio_is_sent_as_a_data_url() {
-        let body = build_body("qwen3-asr-flash", &pcm_to_wav(&[0, 0, 0, 0], 16000), None, None, AudioPayloadFormat::DataUrl);
+        let body = build_body("qwen3-asr-flash", &pcm_to_wav(&[0, 0, 0, 0], 16000), None, None, None, AudioPayloadFormat::DataUrl, AudioEncoding::Wav);
         let audio = body["messages"][0]["content"][0]["input_audio"]
             .as_str()
             .expect("input_audio must be a string");
@@ -493,7 +586,7 @@ mod tests {
     #[test]
     fn standard_audio_is_sent_as_an_openai_object_with_raw_base64() {
         let wav = pcm_to_wav(&[1, 2, 3, 4], 16000);
-        let body = build_body("gemini-example", &wav, Some(DEFAULT_TRANSCRIBE_INSTRUCTION), None, AudioPayloadFormat::OpenAi);
+        let body = build_body("gemini-example", &wav, Some(DEFAULT_TRANSCRIBE_INSTRUCTION), None, None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav);
         let audio = &body["messages"][1]["content"][0]["input_audio"];
         assert_eq!(audio["format"], "wav");
         let data = audio["data"].as_str().expect("input_audio.data must be a string");
@@ -509,6 +602,69 @@ mod tests {
         assert!(matches!(audio_payload_format("qwen_chat_audio"), AudioPayloadFormat::DataUrl));
     }
 
+    #[test]
+    fn mp3_is_opt_in_only_for_standard_openai_chat_audio() {
+        let config = config_for("openai_chat_audio_standard", serde_json::json!({ "audioEncoding": "mp3" }));
+        assert_eq!(audio_encoding(&config, AudioPayloadFormat::OpenAi), AudioEncoding::Mp3);
+        assert_eq!(audio_encoding(&config, AudioPayloadFormat::DataUrl), AudioEncoding::Wav);
+        assert_eq!(audio_encoding(&config_for("qwen_chat_audio", serde_json::json!({})), AudioPayloadFormat::DataUrl), AudioEncoding::Wav);
+    }
+
+    #[test]
+    fn standard_mp3_is_smaller_than_wav_and_has_the_correct_format() {
+        // One second of non-silent audio, as captured by the recorder (16 kHz mono).
+        let pcm: Vec<u8> = (0..16000).flat_map(|i| {
+            let sample = ((i as f32 * 2.0 * std::f32::consts::PI * 440.0 / 16000.0).sin() * 8000.0) as i16;
+            sample.to_le_bytes()
+        }).collect();
+        let mp3 = pcm_to_mp3(&pcm, 16000).expect("MP3 encoding failed");
+        assert!(!mp3.is_empty());
+        assert!(mp3.len() < pcm.len() / 2, "mp3={} pcm={}", mp3.len(), pcm.len());
+        let body = build_body("gemini-example", &mp3, None, None, None, AudioPayloadFormat::OpenAi, AudioEncoding::Mp3);
+        let field = &body["messages"][0]["content"][0]["input_audio"];
+        assert_eq!(field["format"], "mp3");
+        let sent = base64::engine::general_purpose::STANDARD.decode(field["data"].as_str().unwrap()).unwrap();
+        assert_eq!(sent, mp3);
+    }
+
+    #[test]
+    fn mp3_stream_can_be_decoded_when_ffprobe_is_available() {
+        // Optional local decoder smoke test, with no ffmpeg runtime dependency.
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let pcm = vec![0u8; 16000 * 2];
+        let mp3 = pcm_to_mp3(&pcm, 16000).expect("MP3 encoding failed");
+        let mut child = match Command::new("ffprobe")
+            .args(["-v", "error", "-f", "mp3", "-show_entries", "stream=codec_name,sample_rate,channels", "-of", "default=noprint_wrappers=1", "-i", "pipe:0"])
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+            Ok(child) => child,
+            Err(_) => return, // ffprobe is not required by the application
+        };
+        child.stdin.take().unwrap().write_all(&mp3).unwrap();
+        let result = child.wait_with_output().unwrap();
+        let output = String::from_utf8_lossy(&result.stdout);
+        assert!(result.status.success(), "ffprobe: {}", String::from_utf8_lossy(&result.stderr));
+        assert!(output.contains("codec_name=mp3"), "{output}");
+        assert!(output.contains("sample_rate=16000"), "{output}");
+        assert!(output.contains("channels=1"), "{output}");
+    }
+
+    #[test]
+    fn custom_system_instruction_and_user_prompt_are_separate_messages() {
+        let config = config_for("openai_chat_audio_standard", serde_json::json!({
+            "instructions": "Transcribe in Russian.", "userPrompt": "Keep C# and RabbitMQ unchanged."
+        }));
+        let instruction = resolve_instruction(&config, "gemini-example", AudioPayloadFormat::OpenAi, &[]);
+        assert_eq!(instruction.as_deref(), Some("Transcribe in Russian."));
+        let body = build_body("gemini-example", &[1, 2], instruction.as_deref(), resolve_user_prompt(&config, AudioPayloadFormat::OpenAi), None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav);
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][0]["content"][0]["text"], "Transcribe in Russian.");
+        assert_eq!(body["messages"][1]["content"][0]["text"], "Keep C# and RabbitMQ unchanged.");
+        assert_eq!(body["messages"][1]["content"][1]["type"], "input_audio");
+        assert_eq!(resolve_user_prompt(&config, AudioPayloadFormat::DataUrl), None);
+    }
+
     /// Omni 是对话模型，不给指令它会回答想象出来的问题（实测拿到过
     /// 「澳大利亚的首都是堪培拉」）。这条防的就是那种输出被当成转写插进文档。
     #[test]
@@ -520,11 +676,11 @@ mod tests {
         assert!(!needs_transcribe_instruction("qwen3-asr-flash"));
         assert!(!needs_transcribe_instruction("whisper-1"));
 
-        let omni = build_body("qwen3.8-omni-flash", &[], Some(DEFAULT_TRANSCRIBE_INSTRUCTION), None, AudioPayloadFormat::DataUrl);
+        let omni = build_body("qwen3.8-omni-flash", &[], Some(DEFAULT_TRANSCRIBE_INSTRUCTION), None, None, AudioPayloadFormat::DataUrl, AudioEncoding::Wav);
         assert_eq!(omni["messages"][0]["role"], "system");
         assert_eq!(omni["messages"][1]["role"], "user");
 
-        let asr = build_body("qwen3-asr-flash", &[], None, None, AudioPayloadFormat::DataUrl);
+        let asr = build_body("qwen3-asr-flash", &[], None, None, None, AudioPayloadFormat::DataUrl, AudioEncoding::Wav);
         assert_eq!(asr["messages"][0]["role"], "user");
         assert!(asr["messages"].as_array().unwrap().len() == 1);
     }
@@ -536,9 +692,9 @@ mod tests {
         let explicit = config_for("qwen_chat_audio", serde_json::json!({ "language": "zh" }));
         assert_eq!(resolve_language(&explicit).as_deref(), Some("zh"));
 
-        let body = build_body("qwen3-asr-flash", &[], None, Some("zh"), AudioPayloadFormat::DataUrl);
+        let body = build_body("qwen3-asr-flash", &[], None, None, Some("zh"), AudioPayloadFormat::DataUrl, AudioEncoding::Wav);
         assert_eq!(body["asr_options"]["language"], "zh");
-        let without = build_body("qwen3-asr-flash", &[], None, None, AudioPayloadFormat::DataUrl);
+        let without = build_body("qwen3-asr-flash", &[], None, None, None, AudioPayloadFormat::DataUrl, AudioEncoding::Wav);
         assert!(without.get("asr_options").is_none());
     }
 

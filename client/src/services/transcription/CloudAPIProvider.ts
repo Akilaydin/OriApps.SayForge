@@ -546,11 +546,19 @@ export class CloudAPIProvider implements TranscriptionProvider {
         // 地址自己填的那两张卡才有值；其余卡片这个键是空串（见 asrEndpointUrl）
         const asrBaseUrl = await getSetting('cloudAsr.baseUrl', '') as string
         const asrProtocol = await getSetting('cloudAsr.protocol', 'auto') as string
+        const asrSystemInstruction = asrProvider === 'openai_compat'
+          ? await getSetting('cloudAsr.systemInstruction', '') as string : ''
+        const asrUserPrompt = asrProvider === 'openai_compat'
+          ? await getSetting('cloudAsr.userPrompt', '') as string : ''
+        const asrAudioEncoding = asrProvider === 'openai_compat'
+          ? await getSetting('cloudAsr.audioEncoding', 'wav') as string : 'wav'
         if (!this.isRunCurrent(runId)) return
 
         const extra = buildAsrExtra(asrProvider, {
           model: asrModel,
-          instructions: omniInstructions,
+          instructions: isQwenOmni ? omniInstructions : asrSystemInstruction,
+          userPrompt: asrUserPrompt,
+          audioEncoding: asrAudioEncoding,
           baseUrl: asrBaseUrl,
           protocol: asrProtocol,
         })

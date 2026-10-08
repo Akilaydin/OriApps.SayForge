@@ -453,10 +453,36 @@ describe('parseAsrProfiles 容错', () => {
     expect(p.appId).toBe('')
     expect(p.workspaceId).toBe('')
     expect(p.omniPrompt).toBe('')
+    expect(p.systemInstruction).toBe('')
+    expect(p.userPrompt).toBe('')
+    expect(p.audioEncoding).toBe('wav')
     expect(p.console).toBe('new')
     // 老配置没有 model 字段，会按 provider 迁移出对应的那个模型
     expect(p.provider).toBe('qwen')
     expect(p.model).toBe('qwen3-asr-flash')
+  })
+
+  it('OpenAI-compatible ASR configuration keeps both prompt fields and audio encoding', () => {
+    const [p] = parseAsrProfiles([{
+      id: 'p-custom', provider: 'openai_compat', model: 'gemini-example',
+      protocol: 'chat_standard', audioEncoding: 'mp3',
+      systemInstruction: 'Russian transcription only',
+      userPrompt: 'Keep the exact API names',
+    }])
+    expect(p.audioEncoding).toBe('mp3')
+    expect(p.systemInstruction).toBe('Russian transcription only')
+    expect(p.userPrompt).toBe('Keep the exact API names')
+    expect(p.model).toBe('gemini-example')
+    expect(parseAsrProfiles([{ ...p, audioEncoding: 'not-a-codec' }])[0].audioEncoding).toBe('wav')
+  })
+
+  it('custom model ID survives legacy provider migration', () => {
+    const [profile] = parseAsrProfiles([{
+      id: 'old-compat', provider: 'openai_chat_audio',
+      model: 'custom-russian-transcriber', apiKey: 'key',
+    }])
+    expect(profile.provider).toBe('openai_compat')
+    expect(profile.model).toBe('custom-russian-transcriber')
   })
 
   /**

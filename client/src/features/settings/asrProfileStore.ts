@@ -87,6 +87,9 @@ async function syncRuntimeActive(profile: AsrProfile | null): Promise<void> {
     setSetting('cloudAsr.appId', creds.appId),
     setSetting('cloudAsr.qwen.workspaceId', profile?.workspaceId?.trim() ?? ''),
     setSetting('cloudAsr.omniSystemPrompt', profile?.omniPrompt ?? ''),
+    setSetting('cloudAsr.systemInstruction', profile?.provider === 'openai_compat' ? profile.systemInstruction : ''),
+    setSetting('cloudAsr.userPrompt', profile?.provider === 'openai_compat' ? profile.userPrompt : ''),
+    setSetting('cloudAsr.audioEncoding', profile?.provider === 'openai_compat' ? profile.audioEncoding : 'wav'),
     // 自定义端点地址。经 asrEndpointUrl 取值，所以只有 customEndpoint 的卡会写出
     // 非空值 —— 换成内置卡之后这里会被清成空串，不会把音频发到上一张卡的地址去。
     setSetting('cloudAsr.baseUrl', profile ? asrEndpointUrl(profile) : ''),

@@ -43,6 +43,7 @@ import {
   asrEndpointHost,
   asrEndpointUrl,
   parseAsrCompatProtocol,
+  parseAsrAudioEncoding,
   resolveAsrApiModel,
   resolveAsrModel,
   resolveAsrModelOption,
@@ -146,7 +147,11 @@ async function runAsrTest(
       model: resolveAsrApiModel(profile),
       // 指令只给 omni 那类模型 —— 千问卡上的 omniPrompt 即使选了非 omni 模型
       // 也可能有值，无条件带上会把它发给一个根本不读它的实现。
-      instructions: resolveAsrModelOption(profile)?.omni ? profile.omniPrompt : '',
+      instructions: profile.provider === 'openai_compat'
+        ? profile.systemInstruction
+        : resolveAsrModelOption(profile)?.omni ? profile.omniPrompt : '',
+      userPrompt: profile.provider === 'openai_compat' ? profile.userPrompt : '',
+      audioEncoding: profile.provider === 'openai_compat' ? profile.audioEncoding : 'wav',
       baseUrl: asrEndpointUrl(profile),
       protocol: profile.protocol,
     })
@@ -798,6 +803,48 @@ export default function CloudAPISection() {
               </select>
               <p className="mt-1 text-xs text-muted-foreground">{t('asr.protocolHint')}</p>
             </div>
+          )}
+
+          {draftEntry?.id === 'openai_compat' && (
+            <>
+              <div>
+                <label htmlFor="asr-audio-encoding" className="mb-1 block text-sm text-muted-foreground">{t('asr.audioEncoding')}</label>
+                <select
+                  id="asr-audio-encoding"
+                  className={selectClass}
+                  value={draft.audioEncoding}
+                  onChange={(e) => patchDraft({ audioEncoding: parseAsrAudioEncoding(e.target.value) })}
+                >
+                  <option value="wav">WAV (lossless)</option>
+                  <option value="mp3">MP3 (64 kbps, mono)</option>
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">{t('asr.audioEncodingHint')}</p>
+              </div>
+              <div>
+                <label htmlFor="asr-system-instruction" className="mb-1 block text-sm text-muted-foreground">{t('asr.systemInstruction')}</label>
+                <textarea
+                  id="asr-system-instruction"
+                  value={draft.systemInstruction}
+                  onChange={(e) => patchDraft({ systemInstruction: e.target.value })}
+                  placeholder={t('asr.systemInstructionPlaceholder')}
+                  rows={3}
+                  className="w-full resize-y rounded-md border border-input-border bg-input-bg px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{t('asr.systemInstructionHint')}</p>
+              </div>
+              <div>
+                <label htmlFor="asr-user-prompt" className="mb-1 block text-sm text-muted-foreground">{t('asr.userPrompt')}</label>
+                <textarea
+                  id="asr-user-prompt"
+                  value={draft.userPrompt}
+                  onChange={(e) => patchDraft({ userPrompt: e.target.value })}
+                  placeholder={t('asr.userPromptPlaceholder')}
+                  rows={2}
+                  className="w-full resize-y rounded-md border border-input-border bg-input-bg px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{t('asr.userPromptHint')}</p>
+              </div>
+            </>
           )}
 
           {/* 协议卡的模型是**自由文本**：对面挂什么模型我们无从知道，

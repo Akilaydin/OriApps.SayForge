@@ -270,9 +270,17 @@ async function reprocessViaCloudApi(
 
   const baseUrl = await getSetting('cloudAsr.baseUrl', '') as string
   const protocol = await getSetting('cloudAsr.protocol', 'auto') as string
+  const systemInstruction = asrProvider === 'openai_compat'
+    ? await getSetting('cloudAsr.systemInstruction', '') as string : ''
+  const userPrompt = asrProvider === 'openai_compat'
+    ? await getSetting('cloudAsr.userPrompt', '') as string : ''
+  const audioEncoding = asrProvider === 'openai_compat'
+    ? await getSetting('cloudAsr.audioEncoding', 'wav') as string : 'wav'
   const extra = buildAsrExtra(asrProvider, {
     model: asrModel,
-    instructions: omniInstructions,
+    instructions: isQwenOmni ? omniInstructions : systemInstruction,
+    userPrompt,
+    audioEncoding,
     baseUrl,
     protocol,
   })

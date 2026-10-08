@@ -68,6 +68,12 @@ export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
  */
 export type AsrCompatProtocol = 'auto' | 'transcriptions' | 'chat' | 'chat_standard'
 
+export type AsrAudioEncoding = 'wav' | 'mp3'
+
+export function parseAsrAudioEncoding(value: unknown): AsrAudioEncoding {
+  return value === 'mp3' ? 'mp3' : 'wav'
+}
+
 export const ASR_COMPAT_PROTOCOLS: AsrCompatProtocol[] = ['auto', 'transcriptions', 'chat', 'chat_standard']
 
 export function parseAsrCompatProtocol(value: unknown): AsrCompatProtocol {
@@ -645,13 +651,16 @@ function migrateLegacyProvider(
     trimmed !== '' && asrModelsOf(entry).some((m) => m.id === trimmed)
 
   if (direct && belongsTo(direct)) return { provider, model: trimmed }
+  // Custom endpoints accept arbitrary model IDs. A saved user model must never
+  // be replaced by the catalog's illustrative whisper-1 default on reload.
+  if (direct?.customEndpoint && trimmed) return { provider, model: trimmed }
 
   const legacy = LEGACY_PROVIDERS[provider]
   if (legacy) {
     const card = findAsrProvider(legacy.provider)
     return {
       provider: legacy.provider,
-      model: card && belongsTo(card) ? trimmed : legacy.model,
+      model: card && (belongsTo(card) || (card.customEndpoint && trimmed)) ? trimmed : legacy.model,
     }
   }
 
@@ -827,9 +836,15 @@ export interface AsrProfile {
   apiUrl: string
   /**
    * 「OpenAI 兼容」那张卡说哪种协议。其余卡片这个值无意义（协议是写死的）。
-   * 默认 `auto`，由 Rust 侧探测；两个显式值是探测判不准时的退路。
+   * 默认 `auto`，由 Rust 侧探测；显式值在探测不准确时作为手动退路。
    */
   protocol: AsrCompatProtocol
+  /** OpenAI-compatible chat_standard: WAV by default; optionally MP3/64 kbps mono. */
+  audioEncoding: AsrAudioEncoding
+  /** OpenAI-compatible chat: override the built-in transcription system instruction. */
+  systemInstruction: string
+  /** OpenAI-compatible chat: optional user text alongside the input audio. */
+  userPrompt: string
   /**
    * 选定的模型 id（该卡 models 清单里的一个）。
    *
@@ -873,6 +888,9 @@ export function emptyAsrProfile(provider = ASR_PROVIDERS[0].id): AsrProfile {
     name: '',
     apiUrl: '',
     protocol: 'auto',
+    audioEncoding: 'wav',
+    systemInstruction: '',
+    userPrompt: '',
     model: entry ? asrModelsOf(entry)[0].id : '',
     apiKey: '',
     appId: '',
@@ -939,6 +957,9 @@ export function parseAsrProfilesDetailed(
       name: str(v.name),
       apiUrl: str(v.apiUrl),
       protocol: parseAsrCompatProtocol(v.protocol),
+      audioEncoding: parseAsrAudioEncoding(v.audioEncoding),
+      systemInstruction: str(v.systemInstruction),
+      userPrompt: str(v.userPrompt),
       // 不在这里校验模型名：清单会变，而校验放在 resolveAsrModelOption 里，
       // 存了个已下线的名字也只会回落到默认，不至于让整条配置被丢掉
       model,

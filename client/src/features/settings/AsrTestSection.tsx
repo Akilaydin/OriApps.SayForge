@@ -106,9 +106,17 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
         // baseUrl 只有「地址自己填」那两张卡是非空的，其余一律空串（见 asrEndpointUrl）
         const baseUrl = await getSetting('cloudAsr.baseUrl', '') as string
         const protocol = await getSetting('cloudAsr.protocol', 'auto') as string
+        const systemInstruction = asrProvider === 'openai_compat'
+          ? await getSetting('cloudAsr.systemInstruction', '') as string : ''
+        const userPrompt = asrProvider === 'openai_compat'
+          ? await getSetting('cloudAsr.userPrompt', '') as string : ''
+        const audioEncoding = asrProvider === 'openai_compat'
+          ? await getSetting('cloudAsr.audioEncoding', 'wav') as string : 'wav'
         const extra = buildAsrExtra(asrProvider, {
           model: asrModel,
-          instructions: savedPrompt,
+          instructions: isOmni ? savedPrompt : systemInstruction,
+          userPrompt,
+          audioEncoding,
           baseUrl,
           protocol,
         })

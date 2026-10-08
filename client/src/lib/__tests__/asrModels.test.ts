@@ -114,6 +114,23 @@ describe('流式实时字幕判据', () => {
 })
 
 describe('buildAsrExtra', () => {
+  it('carries user and system instructions and MP3 for an OpenAI-compatible ASR endpoint', () => {
+    expect(buildAsrExtra('openai_compat', {
+      model: 'gemini-example',
+      protocol: 'chat_standard',
+      instructions: 'Transcribe Russian speech.',
+      userPrompt: 'Preserve C# and RabbitMQ spelling.',
+      audioEncoding: 'mp3',
+    })).toEqual({
+      model: 'gemini-example',
+      protocol: 'chat_standard',
+      instructions: 'Transcribe Russian speech.',
+      userPrompt: 'Preserve C# and RabbitMQ spelling.',
+      audioEncoding: 'mp3',
+    })
+    expect(buildAsrExtra('openai_compat', { audioEncoding: 'wav' })).toBeUndefined()
+  })
+
   it('普通服务：选过模型才带 extra', () => {
     expect(buildAsrExtra('groq_whisper')).toBeUndefined()
     expect(buildAsrExtra('groq_whisper', { model: '' })).toBeUndefined()

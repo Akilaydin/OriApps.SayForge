@@ -68,6 +68,8 @@ export function resolveAsrDisplayModel(providerKey: string, selectedModel?: stri
 export interface AsrConfigExtra extends Record<string, unknown> {
   model?: string
   instructions?: string
+  userPrompt?: string
+  audioEncoding?: string
   /** 自定义端点地址。空 = 用实现里内置的官方地址 */
   baseUrl?: string
   /**
@@ -96,21 +98,27 @@ export function buildAsrExtra(
   options: {
     model?: string
     instructions?: string
+    userPrompt?: string
+    audioEncoding?: string
     baseUrl?: string
     protocol?: string
   } = {},
 ): AsrConfigExtra | undefined {
   const model = options.model?.trim() || resolveQwenOmniModel(provider) || ''
   const instructions = options.instructions?.trim() ?? ''
+  const userPrompt = options.userPrompt?.trim() ?? ''
+  const audioEncoding = options.audioEncoding === 'mp3' ? 'mp3' : ''
   const baseUrl = options.baseUrl?.trim() ?? ''
   // `auto` 不往下传：Rust 侧「没有这个字段」和「auto」是同一个意思，
   // 少传一个字段就少一处两边要对齐的约定。
   const protocol = options.protocol?.trim() ?? ''
   const explicitProtocol = protocol === 'auto' ? '' : protocol
-  if (!model && !instructions && !baseUrl && !explicitProtocol) return undefined
+  if (!model && !instructions && !userPrompt && !audioEncoding && !baseUrl && !explicitProtocol) return undefined
   return {
     ...(model ? { model } : {}),
     ...(instructions ? { instructions } : {}),
+    ...(userPrompt ? { userPrompt } : {}),
+    ...(audioEncoding ? { audioEncoding } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(explicitProtocol ? { protocol: explicitProtocol } : {}),
   }

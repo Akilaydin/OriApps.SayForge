@@ -168,27 +168,30 @@ pub async fn transcribe(
             diag::truncate(&first_error, 200)
         ),
     );
-    match run(AS_CHAT, audio_pcm_b64, sample_rate, config, hotwords).await {
+    // Prefer the standard OpenAI object. A strict gateway may discard the Bailian
+    // string payload; when a custom user prompt is present it could otherwise
+    // return a plausible text answer and be incorrectly cached as transcription.
+    match run(AS_CHAT_STANDARD, audio_pcm_b64, sample_rate, config, hotwords).await {
         Ok(result) => {
-            remember_protocol(&key, AS_CHAT);
-            diag::log(SCOPE, "detected", "protocol=chat");
+            remember_protocol(&key, AS_CHAT_STANDARD);
+            diag::log(SCOPE, "detected", "protocol=chat_standard");
             Ok(result)
         }
-        Err(second_error) => {
-            // 百炼 data URL 不一定能被兼容网关解析；换标准 OpenAI 对象再试一次。
-            match run(AS_CHAT_STANDARD, audio_pcm_b64, sample_rate, config, hotwords).await {
+        Err(standard_error) => {
+            // Bailian/legacy services accept data URL strings instead.
+            match run(AS_CHAT, audio_pcm_b64, sample_rate, config, hotwords).await {
                 Ok(result) => {
-                    remember_protocol(&key, AS_CHAT_STANDARD);
-                    diag::log(SCOPE, "detected", "protocol=chat_standard");
+                    remember_protocol(&key, AS_CHAT);
+                    diag::log(SCOPE, "detected", "protocol=chat");
                     Ok(result)
                 }
-                Err(standard_error) => {
+                Err(data_url_error) => {
                     // 优先反馈标准格式的真实错误；但别用它的 404
                     // 覆盖另一个协议更具体的报错。
                     let error = if !looks_like_wrong_route(&standard_error) {
                         standard_error
-                    } else if !looks_like_wrong_route(&second_error) {
-                        second_error
+                    } else if !looks_like_wrong_route(&data_url_error) {
+                        data_url_error
                     } else {
                         first_error
                     };
@@ -215,20 +218,20 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         remember_protocol(&key, AS_TRANSCRIPTIONS);
         return labelled(AS_TRANSCRIPTIONS, first);
     }
-    let second = run_test(AS_CHAT, config).await;
+    let second = run_test(AS_CHAT_STANDARD, config).await;
     if second.ok {
-        remember_protocol(&key, AS_CHAT);
-        return labelled(AS_CHAT, second);
-    }
-    let third = run_test(AS_CHAT_STANDARD, config).await;
-    if third.ok {
         remember_protocol(&key, AS_CHAT_STANDARD);
-        return labelled(AS_CHAT_STANDARD, third);
+        return labelled(AS_CHAT_STANDARD, second);
     }
-    if !looks_like_wrong_route(&third.message) {
-        third
-    } else if !looks_like_wrong_route(&second.message) {
+    let third = run_test(AS_CHAT, config).await;
+    if third.ok {
+        remember_protocol(&key, AS_CHAT);
+        return labelled(AS_CHAT, third);
+    }
+    if !looks_like_wrong_route(&second.message) {
         second
+    } else if !looks_like_wrong_route(&third.message) {
+        third
     } else {
         first
     }

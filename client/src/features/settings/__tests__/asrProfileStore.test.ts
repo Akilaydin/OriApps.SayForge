@@ -215,4 +215,27 @@ describe('loadAsrProfiles / saveAsrProfiles 的落盘往返', () => {
     expect(store.get('cloudAsr.model')).toBe('qwen3-asr-flash')
     expect(store.get('cloudAsr.apiKey')).toBe('sk-1')
   })
+
+  it('OpenAI-compatible prompt and MP3 settings survive a save and follow the active profile', async () => {
+    const first = profile('openai_compat', {
+      id: 'custom', model: 'gemini-example', apiKey: 'test',
+      protocol: 'chat_standard', audioEncoding: 'mp3',
+      systemInstruction: 'Speak Russian', userPrompt: 'Keep API names',
+    })
+    const qwen = profile('qwen', { id: 'qwen', apiKey: 'test-qwen' })
+    store.set(ASR_PROFILES_KEY, [first, qwen])
+    store.set(ASR_ACTIVE_PROFILE_KEY, 'custom')
+    await loadAsrProfiles() // also resets orphan state before saving
+    await saveAsrProfiles({ profiles: [first, qwen], activeId: 'custom' })
+    expect(store.get('cloudAsr.systemInstruction')).toBe('Speak Russian')
+    expect(store.get('cloudAsr.userPrompt')).toBe('Keep API names')
+    expect(store.get('cloudAsr.audioEncoding')).toBe('mp3')
+    const restored = await loadAsrProfiles()
+    expect(restored.profiles[0]).toMatchObject(first)
+
+    await saveAsrProfiles({ profiles: [first, qwen], activeId: 'qwen' })
+    expect(store.get('cloudAsr.systemInstruction')).toBe('')
+    expect(store.get('cloudAsr.userPrompt')).toBe('')
+    expect(store.get('cloudAsr.audioEncoding')).toBe('wav')
+  })
 })
