@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Sparkles, Globe, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle, Keyboard } from 'lucide-react'
+import { Mic, Sparkles, Globe, ArrowRight, ArrowLeft, CheckCircle2, Keyboard } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { getSetting, setSetting } from '@/services/store'
 import { getWorkMode } from '@/services/transcription'
-import { healthCheck } from '@/services/api'
 import { setPttSuppressed } from '@/services/recorder'
 import * as bridge from '@/services/bridge'
 import {
@@ -100,7 +99,6 @@ function KeyboardHint({ activeKeys, pressed }: { activeKeys: string[]; pressed?:
 }
 
 const MODE_LABEL_KEYS: Record<string, TranslationKey> = {
-  server: 'mode.server',
   cloud_api: 'mode.cloudApi',
   local: 'mode.local',
 }
@@ -142,7 +140,6 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
   const [hfKey, setHfKey] = useState('AltRight')
   const hfLabel = displayShortcut(hfKey).join(' + ')
   const [workMode, setWorkMode] = useState('')
-  const [serverOk, setServerOk] = useState<boolean | null>(null)
   const [testText, setTestText] = useState('')
   // 热键确认步骤的状态
   const [keyConfirmed, setKeyConfirmed] = useState(false)
@@ -177,9 +174,6 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
     })
     const mode = getWorkMode()
     setWorkMode(mode)
-    if (mode === 'server') {
-      healthCheck().then(() => setServerOk(true)).catch(() => setServerOk(false))
-    }
   }, [])
 
   // 热键确认步骤：录制免提热键。
@@ -313,7 +307,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
     }
   }, [step])
 
-  const canTest = workMode === 'server' && serverOk === true
+  const canTest = workMode === 'cloud_api' || workMode === 'local'
   const totalSteps = 5
   const isLast = step === totalSteps - 1
 
@@ -442,20 +436,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
                   <p className="text-sm font-medium">{t('welcome.currentMode')}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{MODE_LABEL_KEYS[workMode] ? t(MODE_LABEL_KEYS[workMode]) : workMode}</p>
                 </div>
-                {workMode === 'server' && (
-                  <div className="flex items-center gap-1.5">
-                    {serverOk === null ? (
-                      <span className="text-xs text-muted-foreground">{t('common.checking')}</span>
-                    ) : serverOk ? (
-                      <><CheckCircle2 className="h-4 w-4 text-emerald-500" /><span className="text-xs text-emerald-600">{t('welcome.connected')}</span></>
-                    ) : (
-                      <><AlertCircle className="h-4 w-4 text-destructive" /><span className="text-xs text-destructive">{t('welcome.notConnected')}</span></>
-                    )}
-                  </div>
-                )}
-                {workMode !== 'server' && (
-                  <span className="text-xs text-muted-foreground">{t('welcome.needsSetup')}</span>
-                )}
+                <span className="text-xs text-muted-foreground">{t('welcome.needsSetup')}</span>
               </CardContent>
             </Card>
 

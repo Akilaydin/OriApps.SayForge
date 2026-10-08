@@ -1,9 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Home, Clock, BookOpen, Settings, Info, Wifi, WifiOff, Cpu, Cloud, AudioLines, Sparkles, Wand2 } from 'lucide-react'
+import { Home, Clock, BookOpen, Settings, Info, Cpu, Cloud, AudioLines, Sparkles, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/tooltip'
-import { useConnectionStatus } from '@/hooks/useConnectionStatus'
 import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/modeStatus'
 import { hasPendingUpdate } from '@/features/update/autoUpdate'
 import { useUpdateState } from '@/features/update/useUpdateState'
@@ -129,49 +128,12 @@ function FooterIcons() {
   )
 }
 
-/**
- * 服务器模式的连接状态。
- *
- * 只有这一个模式配得上"状态指示"：它有一条真在跑的连接（30s 心跳），所以图标能诚实地
- * 报出此刻通不通——信号图标 + 颜色，断线换成带斜杠的那只。
- * 本地/云 API 没有这种持续探测，见 ModeIndicator 的注释。
- */
-const statusConfig = {
-  connected: { icon: Wifi, color: 'text-success', labelKey: 'connection.connected' },
-  connecting: { icon: Wifi, color: 'text-warning animate-pulse', labelKey: 'connection.connecting' },
-  disconnected: { icon: WifiOff, color: 'text-muted-foreground', labelKey: 'connection.disconnected' },
-  error: { icon: WifiOff, color: 'text-destructive', labelKey: 'connection.error' },
-} as const satisfies Record<string, { icon: typeof Wifi; color: string; labelKey: TranslationKey }>
-
-/**
- * 左下角的引擎指示：始终只占一个图标位，细节全在悬停提示里。
- *
- * 这里和「语音引擎」页那三张模式卡**不是同一件事**，所以图标也不必事事对齐：
- * 卡片上的图标是在给模式起名（Cpu / Cloud / Server，一个静态属性）；
- * 这里报的是"此刻怎么样"。于是只有服务器模式换成信号图标——它有一条真在跑的连接可报。
- *
- * 本地 / 云 API 一律是中性单色，**不给任何"好"的颜色**：我们唯一知道的事实是
- * "配置填完了没有"，而填完 ≠ 真的能用（模型能不能加载、密钥有没有被吊销，都没验过）。
- * 所以只有确定的坏消息（缺东西）才转 warning 色，其余保持沉默——
- * 曾经在这里点过绿灯，等于替一件没测过的事作保。
- */
+/** Local and cloud voice engine readiness, without server connection state. */
 function ModeIndicator() {
   const t = useT()
-  const status = useConnectionStatus()
   const { mode, detail, ready, blockedReason } = useSyncExternalStore(subscribeModeStatus, getModeStatus)
 
   useEffect(() => { void refreshModeStatus() }, [])
-
-  if (mode === 'server') {
-    const { icon: StatusIcon, color, labelKey } = statusConfig[status]
-    return (
-      <Tooltip content={t('mode.tooltipDetail', { mode: t('mode.server'), detail: t(labelKey) })}>
-        <div className="flex items-center justify-center rounded-lg p-2">
-          <StatusIcon className={cn('h-4 w-4', color)} />
-        </div>
-      </Tooltip>
-    )
-  }
 
   const Icon = mode === 'local' ? Cpu : Cloud
   const title = mode === 'local' ? t('mode.local') : t('mode.cloudApi')

@@ -19,7 +19,7 @@ import {
 } from '../features/settings/asrProviderCatalog'
 import { subscribeLocale, t } from '@/i18n'
 
-export type ModeStatusMode = 'server' | 'cloud_api' | 'local'
+export type ModeStatusMode = 'cloud_api' | 'local'
 
 export interface ModeStatus {
   mode: ModeStatusMode
@@ -27,7 +27,6 @@ export interface ModeStatus {
   detail: string
   /**
    * 这个模式是不是**真的**能用了。
-   * 服务器模式为 null——它的可用性由 WebSocket 连接状态决定，交给 useConnectionStatus。
    *
    * 为什么加这个：状态徽标原来对本地/云 API 一律硬编码绿点 +「就绪」，模型没下载、
    * key 没填也照样绿灯。用户据此关掉窗口、按下热键、什么都没发生，且不知道去哪儿查。
@@ -39,7 +38,7 @@ export interface ModeStatus {
 
 type Listener = () => void
 
-let currentStatus: ModeStatus = { mode: 'server', detail: '', ready: null, blockedReason: '' }
+let currentStatus: ModeStatus = { mode: 'cloud_api', detail: '', ready: false, blockedReason: '' }
 const listeners = new Set<Listener>()
 
 function emitChange() {
@@ -79,9 +78,9 @@ function cloudProviderShort(provider: string): string {
 
 /** 重新从设置里读一遍模式/模型并广播。相关设置变更后调用。 */
 export async function refreshModeStatus(): Promise<void> {
-  const stored = await getSetting('workMode', 'server') as string
+  const stored = await getSetting('workMode', 'cloud_api') as string
   const mode: ModeStatusMode =
-    stored === 'local' || stored === 'cloud_api' ? stored : 'server'
+    stored === 'local' ? 'local' : 'cloud_api'
 
   let detail = ''
   let ready: boolean | null = null

@@ -21,8 +21,7 @@ import type { AiExecutionSource, AiExecutionStatus, WorkMode } from './types'
  * 继续调用（见 ServerProvider.handleCustomFinal）。把它记成跳过会直接把排查带错方向。
  */
 export type AiRoute
-  = | 'managed' // 服务器内置 AI
-  | 'custom' // 客户端调用用户自配的 AI 档案（可能是远程服务，不一定在本机）
+  = | 'custom' // 客户端调用用户自配的 AI 档案（可能是远程服务，不一定在本机）
   | 'integrated_asr' // 识别引擎自带整理（如 Qwen Omni），不另外调独立 AI
   | 'none' // 总开关关闭
 
@@ -36,15 +35,12 @@ export type AiReason
   | 'call_failed' // 调用发出去了，失败
   | 'call_timeout' // 调用超时
   | 'empty_output' // 调用成功但返回空文本
-  | 'no_evidence' // 旧响应缺少执行证据，无法确认跑没跑
 
 export interface AiConfigSnapshot {
   workMode: WorkMode
   aiEnabled: boolean
   /** 0 = 不设门槛。 */
   aiMinDurationSec: number
-  /** 仅服务器模式有意义；其它模式整理一律由客户端执行。 */
-  serverAiSource: 'managed' | 'custom'
 }
 
 export interface AiPolicyInput extends AiConfigSnapshot {
@@ -98,11 +94,7 @@ export function resolveAiPolicy(input: AiPolicyInput): AiPolicy {
 
   // 路由只看配置，与「这次跑不跑」无关。日志里保留它才能回答
   // 「AI 开着但没整理，本来该谁做」。
-  const route: AiRoute = input.integratedAsr
-    ? 'integrated_asr'
-    : input.workMode === 'server' && input.serverAiSource === 'managed'
-      ? 'managed'
-      : 'custom'
+  const route: AiRoute = input.integratedAsr ? 'integrated_asr' : 'custom'
 
   if (input.integratedAsr) {
     return { ...base, route, allowCall: false, reason: 'integrated_asr' }
@@ -119,14 +111,6 @@ export interface AiEvidence {
   asrTextEmpty?: boolean
   /** 自配 AI 档案是否完整。仅 route=custom 时有意义。 */
   configComplete?: boolean
-  /** 服务端回传的 llm_debug.error。有值即服务端调用失败。 */
-  serverError?: string
-  /**
-   * 服务端回传的 llm_debug.provider。有值即服务端**确实**调过 AI，
-   * 哪怕 llm_ms 是 0 —— 不能再拿耗时反推成功失败（服务端异常时返回原文 + 0ms，
-   * 按耗时判会把「失败」误归成「不可用」）。
-   */
-  serverProvider?: string
   /** 自配 AI 的失败种类。 */
   clientFailure?: 'timeout' | 'error'
   /** 自配 AI 调用成功但返回空文本。 */
@@ -164,39 +148,6 @@ export function resolveAiOutcome(policy: AiPolicy, evidence: AiEvidence = {}): A
 
   if (!policy.allowCall) {
     return { ...NOT_ATTEMPTED, source: 'none', status: 'skipped', reason: policy.reason }
-  }
-
-  if (policy.route === 'managed') {
-    if (evidence.serverError) {
-      return {
-        source: 'server',
-        status: 'failed',
-        reason: 'call_failed',
-        attempted: true,
-        llmMs: evidence.llmMs ?? 0,
-        provider: 'server',
-      }
-    }
-    if (evidence.serverProvider || (evidence.llmMs ?? 0) > 0) {
-      return {
-        source: 'server',
-        status: 'applied',
-        attempted: true,
-        llmMs: evidence.llmMs ?? 0,
-        provider: 'server',
-        model: evidence.model,
-      }
-    }
-    // 旧版服务器不带 llm_debug.provider，只有 llm_ms=0 这一个信号，而它既可能是
-    // 「服务端没跑」也可能是「跑了但极快/失败回退」。不猜，如实记成无法确认。
-    return {
-      source: 'server',
-      status: 'unavailable',
-      reason: 'no_evidence',
-      attempted: false,
-      llmMs: 0,
-      provider: 'server',
-    }
   }
 
   // route === 'custom'
@@ -261,7 +212,6 @@ export function policyFromSnapshot(
     workMode: snapshot?.workMode ?? fallbackWorkMode,
     aiEnabled: snapshot?.aiEnabled ?? true,
     aiMinDurationSec: snapshot?.aiMinDurationSec ?? 0,
-    serverAiSource: snapshot?.serverAiSource ?? 'managed',
     audioDurationSec,
     integratedAsr,
   })
@@ -338,33 +288,4 @@ export function resolveAndLogAiOutcome(
     })
   }
   return outcome
-}
-
-/**
- * 从服务端 final 帧的 llm_debug 里摘出结论性证据。
- *
- * 放在这里而不是各解析点各写一遍：实时 WebSocket 和历史重跑是两条独立的解析路径，
- * 分开写必然漂移（本仓库已经因此出过一次「重跑不带执行状态」）。
- * 只取 error 与 provider —— llm_debug 在服务器开了 debug_llm 时含完整 prompt 与
- * 原始输出，整体透传出去早晚会被某处日志打出来。
- */
-export function extractServerAiEvidence(
-  llmDebug: unknown,
-): { error?: string; provider?: string } | undefined {
-  if (!llmDebug || typeof llmDebug !== 'object') return undefined
-  const source = llmDebug as Record<string, unknown>
-  const error = typeof source.error === 'string' && source.error ? source.error : undefined
-  const provider = typeof source.provider === 'string' && source.provider ? source.provider : undefined
-  if (!error && !provider) return undefined
-  return { ...(error && { error }), ...(provider && { provider }) }
-}
-
-/**
- * 服务端只需要一个布尔：这次它要不要做整理。
- *
- * 客户端自配 AI 时也要发 true —— 服务端不做、客户端做，不是「整次跳过」。
- * 这是唯一允许把 policy 压成布尔的地方，压完的值不要再回头当原因用。
- */
-export function serverShouldPolish(policy: AiPolicy): boolean {
-  return policy.allowCall && policy.route === 'managed'
 }

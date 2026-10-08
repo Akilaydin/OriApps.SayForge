@@ -9,7 +9,7 @@ import { Feedback } from '@/components/ui/feedback'
 import { getSetting } from '@/services/store'
 import { getEngineDraftDirty, subscribeEngineDraft } from '@/stores/engineDraft'
 import { buildAsrExtra, isQwenOmniProvider, resolveAsrDisplayModel } from '@/lib/asrModels'
-import { describeProviderError, describeServerError } from '@/lib/errorMessages'
+import { describeProviderError } from '@/lib/errorMessages'
 import type { WorkMode } from '@/services/transcription'
 import { useT } from '@/i18n/useT'
 
@@ -143,48 +143,9 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           model: extra?.model || resolveAsrDisplayModel(asrProvider),
           audioDurationSec,
         })
-      } else {
-        // 服务器模式
-        const { getWSUrl } = await import('@/services/runtimeConfig')
-        const wsUrl = getWSUrl()
-
-        const r = await new Promise<{ text: string; asrMs: number }>((resolve, reject) => {
-          const timeout = setTimeout(() => { try { sock.close() } catch { } reject(new Error(t('asrTest.timeout'))) }, 30000)
-          const sock = new WebSocket(wsUrl)
-          sock.binaryType = 'arraybuffer'
-          sock.onopen = () => {
-            sock.send(JSON.stringify({ cmd: 'start', disable_ai: true }))
-            // 分块发送 PCM（每块 3200 字节 = 100ms @16kHz 16bit mono）
-            const chunkSize = 3200
-            for (let i = 0; i < pcmBytes.length; i += chunkSize) {
-              sock.send(pcmBytes.slice(i, i + chunkSize).buffer)
-            }
-            sock.send(JSON.stringify({ cmd: 'stop' }))
-          }
-          sock.onmessage = (e) => {
-            if (typeof e.data !== 'string') return
-            try {
-              const msg = JSON.parse(e.data)
-              if (msg.type === 'final') {
-                clearTimeout(timeout)
-                resolve({ text: msg.asr_text || '', asrMs: msg.asr_ms || 0 })
-                sock.close()
-              } else if (msg.type === 'error') {
-                clearTimeout(timeout)
-                reject(new Error(msg.message || t('asrTest.serverError')))
-                sock.close()
-              }
-            } catch { }
-          }
-          sock.onerror = () => { clearTimeout(timeout); reject(new Error(t('asrTest.wsFailed'))) }
-        })
-
-        setResult({ text: r.text, asrMs: r.asrMs, mode: 'server', model: '', audioDurationSec })
       }
     } catch (err) {
-      const friendly = workMode === 'server'
-        ? describeServerError(err, true)
-        : describeProviderError(err)
+      const friendly = describeProviderError(err)
       setError({ message: friendly.message, detail: friendly.detail })
     } finally {
       setTesting(false)
@@ -244,9 +205,9 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span className="rounded bg-primary/10 px-2 py-0.5 text-primary">
-                {t(result.mode === 'local' ? 'asrTest.modeLocal' : result.mode === 'cloud_api' ? 'asrTest.modeCloudApi' : 'asrTest.modeServer')}
+                {t(result.mode === 'local' ? 'asrTest.modeLocal' : 'asrTest.modeCloudApi')}
               </span>
-              <span className="rounded bg-muted px-2 py-0.5">{result.mode === 'server' ? t('asrTest.serverModel') : result.model}</span>
+              <span className="rounded bg-muted px-2 py-0.5">{result.model}</span>
               <span>{t('asrTest.audioLen', { sec: result.audioDurationSec.toFixed(1) })}</span>
               <span>{t('asrTest.elapsed', { ms: result.asrMs })}</span>
             </div>

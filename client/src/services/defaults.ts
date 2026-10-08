@@ -18,7 +18,7 @@ export const DEFAULTS: Record<string, unknown> = {
   'ui.language': 'auto', // 可选: 'auto'（跟随系统）| 'zh-CN' | 'en'
 
   // ── 工作模式 ──
-  workMode: 'server', // 可选: 'server' | 'cloud_api' | 'local'
+  workMode: 'cloud_api', // Supported modes: cloud_api | local
 
   // ── 快捷键 ──
   // 按住说话。旧单键保持 DOM code；组合键使用物理 code 格式，如 'ControlLeft+MetaLeft' 或 'ControlLeft+KeyK'。
@@ -120,8 +120,6 @@ export const DEFAULTS: Record<string, unknown> = {
   // （注释原来写的是 'Chinese' | 'English' | 'Cantonese'，那是服务端内部的取值，
   //   客户端从来没写过这几个字符串。）
   // 服务器模式下的 AI 来源。managed = 服务器内置；custom = 服务器只做 ASR，客户端调用当前 AI 档案。
-  'server.aiSource': 'managed', // 可选: 'managed' | 'custom'
-  'server.language': 'auto',
 
   // ── 悬浮窗 ──
   overlayWaveTheme: 'black-rainbow', // 可选: 'black-rainbow' | 'black-blue' | 'black-white'

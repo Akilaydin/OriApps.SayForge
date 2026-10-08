@@ -139,7 +139,7 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
     let disposed = false
 
     const load = async () => {
-      const mode = await getSetting('workMode', 'server') as string
+      const mode = await getSetting('workMode', 'cloud_api') as string
 
       // 本地引擎：一条都不传。models/ 下没有任何热词通道 —— local_transcribe 的参数
       // 里没有热词那一项（只有音频、模型、语种和计算设备那几个），GGML 迁移时按
@@ -341,7 +341,7 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
       const [matrix, provider, mode] = await Promise.all([
         bridge.asrHotwordCapabilityMatrix(),
         getSetting('cloudAsr.provider', '') as Promise<string>,
-        getSetting('workMode', 'server') as Promise<string>,
+        getSetting('workMode', 'cloud_api') as Promise<string>,
       ])
       if (disposed) return
       if (!matrix) {

@@ -1,6 +1,5 @@
 import * as bridge from './bridge'
 import { invoke } from '@tauri-apps/api/core'
-import { getHotwords } from './api'
 import {
   BUILTIN_SET_ACTIVE_KEY,
   BUILTIN_SET_WORDS_KEY,
@@ -166,7 +165,7 @@ async function buildHotwordsPayload() {
     builtinHotwordSets,
     hotwordLearning,
   ] = await Promise.all([
-    getHotwords().catch(() => [] as string[]),
+    getSetting<string[]>(LEGACY_MANUAL_WORDS_KEY, []).catch(() => [] as string[]),
     getSetting<Record<string, string[]>>(BUILTIN_SET_WORDS_KEY, {}),
     getSetting<Record<string, boolean>>(BUILTIN_SET_ACTIVE_KEY, {}),
     getSetting(CUSTOM_THEMES_KEY, [] as unknown[]),

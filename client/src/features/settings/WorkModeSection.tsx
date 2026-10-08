@@ -3,7 +3,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tooltip } from '@/components/ui/tooltip'
-import { useConnectionStatus } from '@/hooks/useConnectionStatus'
 import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/modeStatus'
 // 这三个图标是在给模式**起名**，不是报状态，所以选的是"这个模式是什么"的最短表达：
 // 本地在本机算 → Cpu，云 API 用你自己的云厂商 → Cloud，服务器模式连的是一台服务器 → Server。
@@ -12,7 +11,7 @@ import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/
 // 左下角的引擎指示里，服务器模式用的是信号图标而不是 Server——那里报的是"此刻通不通"，
 // 有一条真在跑的连接可报；这张卡不做这种断言（连接状态由卡组右上角那枚徽标负责）。
 // 两处对本地 / 云 API 用同一个图标，对服务器模式刻意不同，因为它们说的不是同一件事。
-import { Cpu, Cloud, Server, CheckCircle2, type LucideIcon } from 'lucide-react'
+import { Cpu, Cloud, CheckCircle2, type LucideIcon } from 'lucide-react'
 import type { WorkMode } from '@/services/transcription'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
@@ -31,20 +30,7 @@ const modes: Array<{ value: WorkMode; labelKey: TranslationKey; descKey: Transla
     privacyKey: 'workMode.cloudApi.privacy',
     icon: Cloud,
   },
-  {
-    value: 'server', labelKey: 'mode.server',
-    descKey: 'workMode.server.desc',
-    privacyKey: 'workMode.server.privacy',
-    icon: Server,
-  },
 ]
-
-const statusConfig = {
-  connected: { dot: 'bg-success', textKey: 'status.connected', bg: 'bg-success/10 text-success-strong' },
-  connecting: { dot: 'bg-warning animate-pulse', textKey: 'status.connecting', bg: 'bg-warning/10 text-warning-strong' },
-  disconnected: { dot: 'bg-muted-foreground', textKey: 'status.disconnected', bg: 'bg-muted text-muted-foreground' },
-  error: { dot: 'bg-destructive', textKey: 'status.error', bg: 'bg-destructive/10 text-destructive-strong' },
-} as const satisfies Record<string, { dot: string; textKey: TranslationKey; bg: string }>
 
 interface Props {
   value: WorkMode
@@ -53,7 +39,6 @@ interface Props {
 
 export default function WorkModeSection({ value, onChange }: Props) {
   const t = useT()
-  const wsStatus = useConnectionStatus()
   const { ready, blockedReason } = useSyncExternalStore(subscribeModeStatus, getModeStatus)
 
   // 徽标反映真实就绪状态，所以本组件也要在挂载时拉一次（页面可能是直接深链进来的）
@@ -67,9 +52,7 @@ export default function WorkModeSection({ value, onChange }: Props) {
    * 同屏自相矛盾。现在本地/云 API 的就绪判断来自 modeStatus（见该 store 的注释），
    * 未就绪时显示「待配置」并可点击滚到对应的配置卡。
    */
-  const badge = value === 'server'
-    ? { dot: statusConfig[wsStatus].dot, bg: statusConfig[wsStatus].bg, text: t(statusConfig[wsStatus].textKey), hint: '' }
-    : ready === false
+  const badge = ready === false
       ? {
         dot: 'bg-warning',
         text: t('workMode.badge.needsSetup'),

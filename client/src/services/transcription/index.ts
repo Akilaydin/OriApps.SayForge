@@ -1,9 +1,8 @@
 // Provider 管理器 — 根据 workMode 返回对应的 TranscriptionProvider
 
 import { invoke } from '@tauri-apps/api/core'
-import { getSetting } from '../store'
+import { getSetting, setSetting } from '../store'
 import { addRuntimeEvent } from '../debugLog'
-import { ServerProvider } from './ServerProvider'
 import { CloudAPIProvider } from './CloudAPIProvider'
 import { LocalProvider } from './LocalProvider'
 import type { TranscriptionProvider, WorkMode } from './types'
@@ -20,22 +19,24 @@ export type {
   AiExecutionSource,
   AiExecutionStatus,
 } from './types'
-export { MID_SESSION_DISCONNECT_ERROR } from './types'
 
 let currentProvider: TranscriptionProvider | null = null
-let currentMode: WorkMode = 'server'
+let currentMode: WorkMode = 'cloud_api'
+
+/** Treat the removed Server Mode and unknown legacy values as Cloud API. */
+export function normalizeWorkMode(stored: unknown): WorkMode {
+  return stored === 'local' ? 'local' : 'cloud_api'
+}
 
 function createProvider(mode: WorkMode): TranscriptionProvider {
   switch (mode) {
-    case 'server':
-      return new ServerProvider()
     case 'cloud_api':
       return new CloudAPIProvider()
     case 'local':
       return new LocalProvider()
     default:
-      addRuntimeEvent('warn', 'transcription', `Unknown processing mode "${mode}"; falling back to server mode`)
-      return new ServerProvider()
+      addRuntimeEvent('warn', 'transcription', `Unknown processing mode "${mode}"; falling back to cloud API mode`)
+      return new CloudAPIProvider()
   }
 }
 
@@ -74,7 +75,7 @@ export async function switchProvider(mode: WorkMode): Promise<TranscriptionProvi
   }
 
   // 离开本地模式时释放 sherpa-onnx recognizer 占用的内存（几百 MB ~ 数 GB），
-  // 否则切到云 API / 服务器模式后本地模型仍常驻到应用退出。
+  // Avoid leaving the local model loaded when switching to a cloud provider.
   if (currentMode === 'local' && mode !== 'local') {
     try {
       await invoke('unload_local_model')
@@ -90,9 +91,18 @@ export async function switchProvider(mode: WorkMode): Promise<TranscriptionProvi
 
 /** 从 store 读取保存的 workMode 并初始化 */
 export async function initProviderFromStore(): Promise<void> {
-  const stored = await getSetting('workMode', 'server')
-  const mode = (stored === 'server' || stored === 'cloud_api' || stored === 'local') ? stored : 'server'
-  currentMode = mode as WorkMode
+  const stored = await getSetting('workMode', 'cloud_api')
+  // Upgrade users of the removed Server Mode without connecting to a retired backend.
+  // Persist the migration so other views observe the same effective mode.
+  currentMode = normalizeWorkMode(stored)
+  if (stored !== currentMode) {
+    // Persist if possible, but do not block UI startup when storage is unavailable.
+    await setSetting('workMode', currentMode).catch((error) => {
+      addRuntimeEvent('warn', 'transcription', 'Could not persist legacy processing mode migration', {
+        from: stored, to: currentMode, error: String(error),
+      })
+    })
+  }
   currentProvider = createProvider(currentMode)
   addRuntimeEvent('info', 'transcription', 'Provider initialized', { mode: currentMode })
 }

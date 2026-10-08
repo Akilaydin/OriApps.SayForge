@@ -48,9 +48,10 @@ The application does **not** download or install original SayIt updates.
 2. Configure the recording shortcut.
 3. Press the shortcut, speak, release, and verify that the transcript reaches your text field.
 
-The default Server-mode address is **http://127.0.0.1:8000**; this is a
-localhost placeholder, **not** a publicly hosted ASR service. You can instead
-configure your own cloud provider or local recognition model.
+SayForge supports **two voice engines**: Cloud API (direct calls to a user-configured
+ASR provider) and Local (on-device recognition). The built-in Python backend
+and Server Mode have been removed. Existing `workMode=server` preferences
+are migrated to Cloud API on startup; saved cloud credentials are not discarded.
 
 ### Switching from SayIt
 
@@ -72,9 +73,8 @@ If you want to run both applications, assign nonconflicting global shortcuts.
 
 ## Development
 
-Client stack: **Rust + Tauri 2 + React + TypeScript**. A separate Python backend
-is included for self-hosted Server mode and retains legacy `SAYIT_*` environment
-variables for compatibility.
+Client stack: **Rust + Tauri 2 + React + TypeScript**. No separate SayForge
+backend is required.
 
 Requirements: Node.js 18+, Rust toolchain, Visual Studio C++ Build Tools,
 CMake and the Vulkan SDK for the local inference modules.
@@ -89,11 +89,10 @@ npm run tauri -- build --bundles nsis
 ```
 
 The checked-in icons are temporary placeholders. Replace the existing assets
-in `client/src-tauri/icons/`, `client/src/assets/`, `docs/images/readme/`
-and `server/web/` with your own finished design. Include matching PNG, ICO
+in `client/src-tauri/icons/`, `client/src/assets/` and `docs/images/readme/`
+with your own finished design. Include matching PNG, ICO
 and NSIS BMP variants; no icon generator script is required.
 
-The optional server has its own [setup documentation](server/README.md).
 
 ## Contributions
 

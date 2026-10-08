@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, Info, RefreshCw, Send } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, Info, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -7,11 +7,9 @@ import {
   getDiagnosticsPreview,
   MAX_DIAGNOSTIC_IMAGES,
   MAX_DIAGNOSTIC_IMAGE_SIZE,
-  submitDiagnostics,
   downloadDiagnostics,
   validateDiagnosticImages,
 } from '@/services/diagnostics'
-import { getWorkMode } from '@/services/transcription'
 import { save } from '@tauri-apps/plugin-dialog'
 import * as bridge from '@/services/bridge'
 import type { DiagnosticIssueType, DiagnosticOccurrence, DiagnosticsPreview } from '@/types/appApi'
@@ -43,15 +41,12 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   // 打包内容默认收起：那张表（版本、平台、扫了几个文件、时间范围…）是给我们看的。
   const [showContents, setShowContents] = useState(false)
   const [images, setImages] = useState<File[]>([])
-  const [submitting, setSubmitting] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'download_success' | 'error'>('idle')
-  const [ticketId, setTicketId] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [preview, setPreview] = useState<DiagnosticsPreview | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
 
-  const isServerMode = getWorkMode() === 'server'
   const imageValidation = useMemo(() => validateDiagnosticImages(images), [images, locale])
   const occurrenceOptions: Array<{ value: DiagnosticOccurrence; label: string }> = [
     { value: 'within_1h', label: t('diagnosticsReport.withinHour') },
@@ -121,40 +116,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
     }
   }
 
-  const handleSubmit = async () => {
-    const blocker = describeBlocker()
-    if (blocker) {
-      setErrorMessage(blocker)
-      return
-    }
-    if (!imageValidation.valid) {
-      setErrorMessage(imageValidation.errors[0] || t('diagnosticsReport.imageValidationFailed'))
-      return
-    }
-
-    setSubmitting(true)
-    setStatus('idle')
-    setErrorMessage('')
-    try {
-      const ticket = await submitDiagnostics({
-        description: description.trim(),
-        issueType: issueType as DiagnosticIssueType,
-        issueOccurrence,
-        images,
-      })
-      setTicketId(ticket)
-      setStatus('success')
-      setDescription('')
-      setIssueType(null)
-      setImages([])
-    } catch (error) {
-      setStatus('error')
-      setErrorMessage(String(error))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const handleDownload = async () => {
     const blocker = describeBlocker()
     if (blocker) {
@@ -178,7 +139,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
       })
 
       const dest = await save({
-        defaultPath: `sayit-diagnostics-${new Date().toISOString().slice(0, 10)}.zip`,
+        defaultPath: `sayforge-diagnostics-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: t('diagnosticsReport.archiveFilter'), extensions: ['zip'] }],
       })
 
@@ -202,7 +163,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   }
 
   const containerClassName = embedded ? '' : 'mx-auto max-w-4xl p-8'
-  const busy = submitting || downloading
+  const busy = downloading
 
   /**
    * 拦住提交的原因，没有就返回空串。选了类型即可提交 —— 只有「其他」还需要一句话，
@@ -224,13 +185,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
       {downloading ? t('diagnosticsReport.packing') : t('diagnosticsReport.download')}
     </Button>
   )
-  const sendBtn = isServerMode ? (
-    <Button size="sm" disabled={busy || Boolean(blocker)} onClick={handleSubmit}>
-      <Send className="mr-2 h-4 w-4" />
-      {submitting ? t('diagnosticsReport.sending') : t('diagnosticsReport.send')}
-    </Button>
-  ) : null
-
   return (
     <div className={containerClassName}>
       {!embedded && <h1 className="mb-6 text-2xl font-bold">{t('diagnostics.title')}</h1>}
@@ -425,16 +379,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
               </div>
             )}
 
-            {status === 'success' && (
-              <div className="flex items-start gap-2 rounded-md bg-success/10 p-3 text-sm">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                <div>
-                  <div className="font-medium text-success">{t('diagnosticsReport.sent')}</div>
-                  <div className="mt-1 text-xs text-success/80">{t('diagnosticsReport.ticket', { id: ticketId })}</div>
-                </div>
-              </div>
-            )}
-
             {status === 'download_success' && (
               <div className="flex items-start gap-2 rounded-md bg-success/10 p-3 text-sm">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
@@ -442,15 +386,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
                   <div className="font-medium text-success">{t('diagnosticsReport.saved')}</div>
                   <div className="mt-1 text-xs text-success/80">{t('diagnosticsReport.sendToSupport')}</div>
                 </div>
-              </div>
-            )}
-
-            {/* 非服务器模式没有「发送」按钮 —— 不解释的话用户只会以为按钮坏了。
-                选了问题类型才提示：一进页面就挂一条提示纯属噪音。 */}
-            {!isServerMode && issueType && (
-              <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{t('diagnosticsReport.sendNeedsServerMode')}</span>
               </div>
             )}
 
@@ -470,7 +405,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
                 {t('diagnosticsReport.clear')}
               </Button>
               {blocker ? <Tooltip content={blocker}>{downloadBtn}</Tooltip> : downloadBtn}
-              {sendBtn && (blocker ? <Tooltip content={blocker}>{sendBtn}</Tooltip> : sendBtn)}
             </div>
           </div>
         </CardContent>
