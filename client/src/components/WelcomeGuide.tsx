@@ -323,7 +323,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
       case 0:
         return (
           <div className="flex flex-col items-center text-center">
-            <img src={appIcon} alt="SayIt" className="mb-6 h-20 w-20 rounded-2xl" />
+            <img src={appIcon} alt="SayForge" className="mb-6 h-20 w-20 rounded-2xl" />
             <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800 }}>{t('welcome.title')}</h1>
             <p className="mt-3 text-base text-muted-foreground">{t('welcome.tagline')}</p>
             <p className="mt-1.5 text-sm text-muted-foreground/70">{t('welcome.subtitle')}</p>

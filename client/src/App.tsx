@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { listen } from '@tauri-apps/api/event'
 import Sidebar from './components/Sidebar'
@@ -17,10 +17,7 @@ import { initTheme } from './stores/theme'
 import { initAiEnabled } from './stores/aiEnabled'
 import { initActivePreset } from './stores/activePreset'
 import { getSetting, setSetting } from './services/store'
-import { startUpdateService } from './features/update/autoUpdate'
 import { startWebDavBackupService } from './features/backup/autoWebdavBackup'
-import UpdateDialog from './features/update/UpdateDialog'
-import UpdateNotificationHost from './features/update/UpdateNotificationHost'
 import * as bridge from './services/bridge'
 
 export default function App() {
@@ -38,7 +35,8 @@ export default function App() {
     void initAiEnabled()
     void initActivePreset()
     initRecorder()
-    void startUpdateService()
+    // SayForge releases are installed manually until we have our own signed updater.
+    // Never start the upstream SayIt manifest/downloader/installer.
     void startWebDavBackupService()
 
       // 检查是否需要显示欢迎向导（仅首次安装）
@@ -100,8 +98,6 @@ export default function App() {
         </main>
       </div>
       {showWelcome && <WelcomeGuide onComplete={handleWelcomeComplete} />}
-      <UpdateDialog />
-      <UpdateNotificationHost enabled={!showWelcome} />
     </div>
   )
 }

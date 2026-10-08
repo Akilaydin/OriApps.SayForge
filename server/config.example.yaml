@@ -1,5 +1,5 @@
 # =============================================================================
-# SayIt Configuration
+# SayForge Configuration (SAYIT_* environment variables remain for compatibility)
 # =============================================================================
 # Secrets (API keys, passwords) → .env
 # Everything else → this file
@@ -74,7 +74,7 @@ llm:
 
 # --- Landing Page ---
 public_site:
-  app_name: "SayIt"
+  app_name: "SayForge"
   headline: "随口说，出色写"
   subheadline: "用说话代替打字，AI 实时把口语变成可以直接用的书面表达。"
   download_label: "下载 Windows 客户端"

@@ -109,7 +109,7 @@ fn app_version() -> String {
 fn audio_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(crate::identity::APP_ID)
         .join("audio")
 }
 
@@ -119,9 +119,9 @@ fn backup_dir() -> PathBuf {
         .unwrap_or_else(|| {
             dirs::data_local_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("com.sayit.app")
+                .join(crate::identity::APP_ID)
         })
-        .join("SayIt Backups")
+        .join("SayForge Backups")
 }
 
 fn timestamped_backup_path(prefix: &str, extension: &str) -> PathBuf {
@@ -776,7 +776,7 @@ pub async fn export_config(
     selection: ConfigExportSelection,
     storage: State<'_, Storage>,
 ) -> Result<String, String> {
-    let out_path = timestamped_backup_path("sayit-config", "json");
+    let out_path = timestamped_backup_path("sayforge-config", "json");
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create backup directory: {}", e))?;
     }
@@ -944,7 +944,7 @@ pub async fn export_full(
     scope: BackupScope,
     storage: State<'_, Storage>,
 ) -> Result<String, String> {
-    let output = timestamped_backup_path("sayit-backup", "zip");
+    let output = timestamped_backup_path("sayforge-backup", "zip");
     let out_path = output.to_string_lossy().to_string();
 
     // 失败分支也要报出总量，所以在回调里留一份最近值：write_backup_archive 出错时

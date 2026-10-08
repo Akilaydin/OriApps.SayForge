@@ -1,4 +1,4 @@
-"""SayIt backend: FastAPI app with WebSocket audio streaming + HTTP API."""
+"""SayForge backend: FastAPI app with WebSocket audio streaming + HTTP API."""
 from __future__ import annotations
 
 import asyncio
@@ -117,7 +117,7 @@ async def _lifespan(app: FastAPI):
     logger.info(
         "\n"
         "  ┌──────────────────────────────────────────┐\n"
-        "  │           SayIt Backend Ready             │\n"
+        "  │          SayForge Backend Ready           │\n"
         "  ├──────────────────────────────────────────┤\n"
         "  │ ASR:   %-34s │\n"
         "  │ LLM:   %-34s │\n"
@@ -144,7 +144,7 @@ async def _lifespan(app: FastAPI):
         database.close()
 
 
-app = FastAPI(title="SayIt", lifespan=_lifespan)
+app = FastAPI(title="SayForge", lifespan=_lifespan)
 app.state.config = cfg
 app.include_router(diagnostics_router)
 app.include_router(asr_corrections_router)

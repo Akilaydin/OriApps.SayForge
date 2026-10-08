@@ -824,7 +824,7 @@ impl WindowState {
             "overlay",
             WebviewUrl::App("overlay.html".into()),
         )
-        .title("SayIt Overlay")
+        .title("SayForge Overlay")
         .inner_size(bounds.2, bounds.3)
         .position(bounds.0, bounds.1)
         .decorations(false)

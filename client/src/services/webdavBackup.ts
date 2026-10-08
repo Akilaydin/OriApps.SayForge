@@ -22,7 +22,7 @@ export const JIANGUOYUN_DAV_BASE = 'https://dav.jianguoyun.com/dav'
  * 一个一级目录再把地址指向它。目录不存在时我们自己 MKCOL 出来，所以用户不用先去
  * 网页上手动建。
  */
-export const DEFAULT_DAV_URL = `${JIANGUOYUN_DAV_BASE}/SayIt`
+export const DEFAULT_DAV_URL = `${JIANGUOYUN_DAV_BASE}/SayForge`
 
 export interface WebDavConfig {
   url: string

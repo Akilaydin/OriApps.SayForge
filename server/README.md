@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎙️ SayIt
+# 🎙️ SayForge Server
 
 **Just say it, and write well**
 
@@ -12,9 +12,10 @@ Self-hosted speech-to-text server with real-time ASR and AI cleanup.
 
 ---
 
-## What is SayIt?
+## What is the SayForge server?
 
-SayIt is a self-hosted speech-to-text service that combines real-time ASR (Qwen3-ASR) with AI cleanup. It provides:
+SayForge includes the self-hosted speech-to-text server originally developed for
+[SayIt](https://github.com/crosswk/SayIt), combining real-time ASR (Qwen3-ASR) with AI cleanup. It provides:
 
 - **Browser Demo** — Record and transcribe directly in the browser, no install needed
 - **Windows Desktop App** — Push-to-talk with automatic paste into any application
@@ -69,8 +70,8 @@ Everything runs on a single server with one GPU.
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/crosswk/SayIt.git
-cd SayIt
+git clone https://github.com/Akilaydin/OriApps.SayForge.git
+cd OriApps.SayForge/server
 cp .env.example .env
 cp config.example.yaml config.yaml
 ```
@@ -239,6 +240,7 @@ See [docs/api.md](./docs/api.md) for full API reference.
 
 This project is licensed under the [GNU Affero General Public License v3.0](./LICENSE).
 
-You are free to self-host and modify SayIt. If you distribute a modified version or run it as a network service, you must make your source code available under the same license.
-
-For commercial licensing inquiries, please contact the maintainers.
+You are free to self-host and modify SayForge. The server is derived from SayIt
+and remains under AGPL-3.0. If you distribute a modified version or run it as a
+network service, you must offer the corresponding source as required by AGPL.
+Existing `SAYIT_*` environment-variable names remain for backwards compatibility.

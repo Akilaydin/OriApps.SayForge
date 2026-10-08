@@ -31,8 +31,8 @@ export default function TitleBar() {
     <div className="flex h-10 items-center justify-between bg-titlebar border-b select-none"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
       <div className="flex items-center gap-2.5 pl-3">
-        <img src={appIcon} alt="SayIt" className="h-7 w-7" draggable={false} />
-        <span className="text-sm text-foreground" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayIt</span>
+        <img src={appIcon} alt="SayForge" className="h-7 w-7" draggable={false} />
+        <span className="text-sm text-foreground" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayForge</span>
       </div>
       <div className="flex items-center">
         <div className="flex items-center pr-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

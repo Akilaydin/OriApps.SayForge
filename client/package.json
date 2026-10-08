@@ -1,7 +1,7 @@
 {
-  "name": "sayit-tauri",
+  "name": "oriapps-sayforge",
   "version": "0.2.2",
-  "description": "SayIt - Voice to Text Desktop App (Tauri)",
+  "description": "SayForge - open-source voice typing for Windows (based on SayIt)",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^22.20.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.58.2",

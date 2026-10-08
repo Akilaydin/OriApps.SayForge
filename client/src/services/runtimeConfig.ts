@@ -1,12 +1,12 @@
 import * as bridge from './bridge'
 import { t } from '@/i18n'
 
-declare const __SAYIT_DEFAULT_SERVER_URL__: string
+declare const __SAYFORGE_DEFAULT_SERVER_URL__: string
 
 const BUILTIN_DEFAULT_SERVER_URL =
-  typeof __SAYIT_DEFAULT_SERVER_URL__ === 'string' && __SAYIT_DEFAULT_SERVER_URL__.trim()
-    ? __SAYIT_DEFAULT_SERVER_URL__.trim()
-    : 'https://sayitapp.site'
+  typeof __SAYFORGE_DEFAULT_SERVER_URL__ === 'string' && __SAYFORGE_DEFAULT_SERVER_URL__.trim()
+    ? __SAYFORGE_DEFAULT_SERVER_URL__.trim()
+    : 'http://127.0.0.1:8000'
 
 const BACKEND_BASE_URL_STORE_KEY = 'backendBaseUrl'
 

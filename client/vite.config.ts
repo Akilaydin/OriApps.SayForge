@@ -5,7 +5,7 @@ import path from 'path'
 import fs from 'fs'
 
 const host = process.env.TAURI_DEV_HOST
-const defaultServerUrl = process.env.SAYIT_DEFAULT_SERVER_URL || 'https://sayitapp.site'
+const defaultServerUrl = process.env.SAYFORGE_DEFAULT_SERVER_URL || 'http://127.0.0.1:8000'
 
 // 从 tauri.conf.json 读取版本号
 const tauriConf = JSON.parse(
@@ -17,15 +17,15 @@ const tauriConf = JSON.parse(
 // 不用先发一个假包上去。发版前必须测自更新（见 .kiro/steering/pitfalls.md #3），
 // 而更新器的改动没法用自己验证自己，这个口子是那道验证的入口。
 // 正式构建不会设这个变量；设了会打一行醒目的警告。
-const fakeVersion = process.env.SAYIT_FAKE_APP_VERSION
+const fakeVersion = process.env.SAYFORGE_FAKE_APP_VERSION
 if (fakeVersion) {
-  console.warn(`\n[vite] SAYIT_FAKE_APP_VERSION=${fakeVersion} — 应用会自报这个版本（真实版本 ${tauriConf.version}）。仅用于测更新，别拿来打包。\n`)
+  console.warn(`\n[vite] SAYFORGE_FAKE_APP_VERSION=${fakeVersion} — simulated version; do not use for production builds.\n`)
 }
 const appVersion = fakeVersion || tauriConf.version || '0.0.0'
 
 export default defineConfig({
   define: {
-    __SAYIT_DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
+    __SAYFORGE_DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [react()],

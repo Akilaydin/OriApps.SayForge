@@ -181,7 +181,7 @@ export default function AppPromptRulesSection({
         setDetectHint({ kind: 'missing' })
         return
       }
-      if (raw.toLowerCase() === 'sayit.exe') {
+      if (raw.toLowerCase() === 'sayforge.exe') {
         setDetectHint({ kind: 'sayit' })
         return
       }

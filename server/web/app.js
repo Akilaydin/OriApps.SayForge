@@ -1,4 +1,4 @@
-/* SayIt Web Demo */
+/* SayForge Web Demo */
 const PROMPTS = {
   en: {
     faithful: 'You are a speech-to-text post-processing assistant. Correct clear recognition errors while preserving the speaker\'s original wording.\n\nRules:\n1. Fix only obvious transcription errors, including names and technical terms.\n2. Add punctuation and sensible spacing.\n3. Keep filler words, repetition, hesitation, and sentence structure.\n4. Do not answer, explain, summarize, or continue the content.\n\nReturn only the corrected transcript.',
@@ -27,7 +27,7 @@ const MESSAGES = {
     'modes.cloud.title': 'Cloud API mode',
     'modes.cloud.desc': 'Use your own ASR and AI provider keys',
     'modes.server.title': 'Server mode',
-    'modes.server.desc': 'Connect to a public or self-hosted SayIt backend',
+    'modes.server.desc': 'Connect to your self-hosted SayForge backend',
     'features.anywhere': 'Press a shortcut, speak, and the text lands in any app',
     'features.cleanup': 'AI cleanup turns rough speech into clean writing',
     'features.fast': 'Get polished text without breaking your flow',
@@ -146,7 +146,7 @@ const MESSAGES = {
 }
 
 function detectLocale() {
-  const saved = localStorage.getItem('sayit.web.locale')
+  const saved = localStorage.getItem('sayforge.web.locale')
   if (saved === 'en' || saved === 'zh-CN') return saved
   const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
   return languages.some((tag) => String(tag).toLowerCase().startsWith('zh')) ? 'zh-CN' : 'en'
@@ -212,7 +212,7 @@ const tr = (key, vars = {}) => {
 }
 
 function applyBranding() {
-  const appName = state.config?.app_name || 'SayIt'
+  const appName = state.config?.app_name || 'SayForge'
   document.title = tr('meta.title', { app: appName })
   document.querySelector('meta[name="description"]')?.setAttribute('content', tr('meta.description'))
   document.querySelector('meta[property="og:title"]')?.setAttribute('content', document.title)
@@ -291,7 +291,9 @@ const setRecordUI = (rec) => {
   els.recordButton.setAttribute('aria-label', tr(rec ? 'demo.stopAria' : 'demo.startAria'))
 }
 const updateDownloadLinks = (url) => {
-  ;[els.navDlBtn, els.dlBtn].forEach(el => { if (el) el.href = url || '#download' })
+  ;[els.navDlBtn, els.dlBtn].forEach(el => {
+    if (el) el.href = url || 'https://github.com/Akilaydin/OriApps.SayForge/releases'
+  })
 }
 
 /* ── Gooey Blob Visualization ── */
@@ -744,7 +746,7 @@ async function boot() {
 
   els.languageToggle.addEventListener('click', () => {
     state.locale = state.locale === 'en' ? 'zh-CN' : 'en'
-    localStorage.setItem('sayit.web.locale', state.locale)
+    localStorage.setItem('sayforge.web.locale', state.locale)
     applyLocale()
   })
 
@@ -788,7 +790,7 @@ async function boot() {
     if (!state.wavBlob) return
     const a = document.createElement('a')
     a.href = URL.createObjectURL(state.wavBlob)
-    a.download = `sayit_${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.wav`
+    a.download = `sayforge_${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.wav`
     a.click()
     URL.revokeObjectURL(a.href)
   })

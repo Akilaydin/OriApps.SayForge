@@ -74,7 +74,7 @@ pub async fn sync_update_notification(
                 LABEL,
                 WebviewUrl::App("update-notification.html".into()),
             )
-            .title("SayIt Update")
+            .title("SayForge Update")
             .inner_size(244.0, 128.0)
             .decorations(false)
             .transparent(true)

@@ -23,12 +23,12 @@ const ROTATED_FILES_KEEP: usize = 3;
 fn log_dir() -> std::path::PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(crate::identity::APP_ID)
         .join("logs")
 }
 
 fn log_file_path() -> std::path::PathBuf {
-    log_dir().join("sayit.log")
+    log_dir().join(crate::identity::LOG_FILE)
 }
 
 fn open_log_file() -> Option<std::fs::File> {
@@ -59,11 +59,11 @@ fn rotate_if_needed(file: &mut Option<std::fs::File>) {
     // Rotate: sayit.log -> sayit.1.log, sayit.1.log -> sayit.2.log, etc.
     let dir = log_dir();
     for i in (1..ROTATED_FILES_KEEP).rev() {
-        let from = dir.join(format!("sayit.{}.log", i));
-        let to = dir.join(format!("sayit.{}.log", i + 1));
+        let from = dir.join(format!("sayforge.{}.log", i));
+        let to = dir.join(format!("sayforge.{}.log", i + 1));
         let _ = std::fs::rename(&from, &to);
     }
-    let rotated = dir.join("sayit.1.log");
+    let rotated = dir.join("sayforge.1.log");
     let _ = std::fs::rename(&path, &rotated);
     *file = open_log_file();
 }

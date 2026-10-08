@@ -43,10 +43,10 @@ const AUDIO_FORMAT: &str = "wav";
 
 /// 可选的排名归属头。OpenRouter 用它在自己站上做调用量榜单，纯自愿。
 ///
-/// 带上是为了让 SayIt 的调用量归到项目名下（对项目有点好处，对用户无成本）；
+/// 带上是为了让 SayForge 的调用量归到独立项目名下（对项目有点好处，对用户无成本）；
 /// 它们与鉴权、计费、路由都无关，去掉也一样能用。
-const REFERER: &str = "https://sayitapp.site";
-const TITLE: &str = "SayIt";
+const REFERER: &str = "https://github.com/Akilaydin/OriApps.SayForge";
+const TITLE: &str = "SayForge";
 
 /// 将 16kHz 单声道 16-bit PCM 封装为 WAV 容器。
 ///

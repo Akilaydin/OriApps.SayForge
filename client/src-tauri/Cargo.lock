@@ -4060,7 +4060,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sayit"
+name = "sayforge"
 version = "0.2.2"
 dependencies = [
  "base64 0.22.1",

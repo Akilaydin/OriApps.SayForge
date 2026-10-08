@@ -1426,7 +1426,7 @@ mod tests {
     /// 加一个**新架构**（不只是新量化档）之前必须先过这一关 —— 尤其 audio-LLM
     /// 类的族带 chat template，很可能把模板前缀吐进文本里（上一代 ONNX 的
     /// funasr-nano 就需要额外清洗）。权重放到
-    /// `%LOCALAPPDATA%\com.sayit.app\models\<dir>\` 下即可，不必先进 catalog。
+    /// `%LOCALAPPDATA%\com.oriapps.sayforge\models\<dir>\` 下即可，不必先进 catalog。
     #[test]
     #[ignore]
     fn new_family_probe() {

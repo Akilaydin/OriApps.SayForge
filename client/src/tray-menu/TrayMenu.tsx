@@ -51,7 +51,7 @@ export default function TrayMenu() {
   const quit = () => void invoke('quit_from_tray')
 
   return (
-    <div className="tray-menu-shell" role="menu" aria-label="SayIt">
+    <div className="tray-menu-shell" role="menu" aria-label="SayForge">
       <button ref={firstItemRef} className="tray-menu-item" role="menuitem" onClick={openMain}>
         <span className="tray-menu-leading" aria-hidden>
           <AppWindow size={14} strokeWidth={1.8} />

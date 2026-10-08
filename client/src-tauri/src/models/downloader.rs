@@ -214,7 +214,7 @@ static CUSTOM_MODELS_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
 pub fn default_models_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(crate::identity::APP_ID)
         .join("models")
 }
 

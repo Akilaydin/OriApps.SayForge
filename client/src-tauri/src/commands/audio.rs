@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 fn audio_dir() -> PathBuf {
     let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("com.sayit.app").join("audio")
+    base.join(crate::identity::APP_ID).join("audio")
 }
 
 #[tauri::command]

@@ -1,193 +1,123 @@
 <div align="center">
+  <img src="docs/images/readme/icon.png" alt="SayForge placeholder icon" width="96" height="96">
 
-<img src="docs/images/readme/icon.png" width="80" height="80" alt="SayIt">
+  # SayForge
 
-# SayIt
+  **Open-source voice typing for Windows.** Press a shortcut, speak, and insert text where your cursor is.
 
-**Just say it, and write well**
+  [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+  [![Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://github.com/Akilaydin/OriApps.SayForge)
 
-Open-source voice typing for Windows. Press a shortcut and speak—SayIt transcribes, cleans up, and inserts polished text wherever your cursor is.
-
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
-[![Windows](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows)](https://github.com/crosswk/SayIt/releases/latest)
-[![Latest release](https://img.shields.io/github/v/release/crosswk/SayIt?label=release)](https://github.com/crosswk/SayIt/releases/latest)
-
-**[Download for Windows](https://github.com/crosswk/SayIt/releases/latest)** · **[Try the web demo](https://sayitapp.site)** · **[简体中文](README.zh-CN.md)**
-
+  [Releases](https://github.com/Akilaydin/OriApps.SayForge/releases) · [Issues](https://github.com/Akilaydin/OriApps.SayForge/issues) · [中文](README.zh-CN.md)
 </div>
 
-<div align="center">
+## About
 
-<img src="docs/images/readme/demo-en.gif" width="820" alt="SayIt in action: pressing the shortcut, speaking, and the cleaned-up text appearing at the cursor">
+SayForge is an independently maintained Windows dictation application by **OriApps**.
+Record speech using a configurable hotkey, transcribe it with a local model or your
+own cloud API, optionally polish the text, and paste it into another application.
 
-*Trigger the shortcut, speak, and the cleaned-up text is typed in at your cursor — no window switching.*
+**Project origin:** SayForge is **based on** [SayIt](https://github.com/crosswk/SayIt)
+by **Liu Qianglong (crosswk)** and contributors, not merely inspired by it.
+It preserves SayIt's Git history, copyright attribution and
+[GNU AGPL-3.0 license](LICENSE). SayForge is not affiliated with or endorsed
+by the original maintainer; changes and support belong to this project.
 
-</div>
+### Features
 
-## Why SayIt?
+- Global press-to-talk and hands-free shortcuts, with insertion into the active Windows app.
+- Audio and text history, hotwords, optional AI cleanup and app-specific prompts.
+- Cloud providers including custom OpenAI-compatible chat/audio endpoints.
+- **Standard OpenAI input_audio** with **WAV or optional MP3** (64 kbps mono), and
+  separate **System Instruction** and **User Prompt** for transcription.
+- Local ASR backends (native components built with Rust/CMake/Vulkan).
 
-Typing is often the slowest part of working with AI. SayIt turns speech into text you can use immediately, while keeping the important choices in your hands:
+## Install
 
-- **Voice typing anywhere** — dictate into editors, chat apps, browsers, and other Windows software.
-- **Editable AI cleanup** — remove filler words, repair recognition errors, format ideas, or keep a faithful transcript. Every prompt is yours to change.
-- **Context-aware writing** (off by default) — reads the text around your cursor so new dictation matches its tone and terminology. Select text first and your speech becomes an editing instruction—translate, tighten, rewrite, or ask a question—replacing the selection directly. Password fields are skipped.
-- **Flexible speech recognition** — use a cloud ASR provider, run a local GGUF model on your own GPU, connect to the public trial server, or host your own backend.
-- **English and Chinese interface** — the UI follows your system language and can be switched at any time.
-- **Hotwords and per-app rules** — improve names and technical terms, then change cleanup behavior automatically for different apps.
-- **Overlay feedback** — a small waveform overlay shows recording state and elapsed time, with optional live captions while you speak.
-- **Transparent data flow** — the app shows which mode is active and where audio and text are processed.
-- **Local history and diagnostics** — review recordings, re-transcribe them, and collect useful troubleshooting details without guesswork.
+See [SayForge Releases](https://github.com/Akilaydin/OriApps.SayForge/releases)
+for builds **when they become available**. The current app and icons are undergoing
+an independent-brand transition; a reviewed, signed release has not yet been published.
 
-## Choose how it runs
+Until a verified SayForge update channel exists, **updates are manual only**.
+The application does **not** download or install original SayIt updates.
 
-| Mode | Best for | Data flow |
+### First run
+
+1. Select a voice engine. For cloud dictation, choose **OpenAI-compatible service**,
+   provide your own endpoint, model and API key, and select the standard chat audio protocol.
+2. Configure the recording shortcut.
+3. Press the shortcut, speak, release, and verify that the transcript reaches your text field.
+
+The default Server-mode address is **http://127.0.0.1:8000**; this is a
+localhost placeholder, **not** a publicly hosted ASR service. You can instead
+configure your own cloud provider or local recognition model.
+
+### Switching from SayIt
+
+SayForge uses a different Windows app identity and data directory:
+
+| | Original SayIt | SayForge |
 | --- | --- | --- |
-| **Local mode** | Privacy and offline use | Speech recognition stays on your PC. With AI cleanup off, nothing leaves the device. |
-| **Cloud API mode** | The best balance for personal use | Your PC talks directly to the ASR and AI providers you configure. No SayIt server is involved. |
-| **Server mode** | Teams and managed deployments | Audio is processed by a SayIt backend you control—or by the public trial server for a quick start. |
+| App ID | `com.sayit.app` | `com.oriapps.sayforge` |
+| User data | `%LOCALAPPDATA%\com.sayit.app` | `%LOCALAPPDATA%\com.oriapps.sayforge` |
+| SQLite | `sayit.db` | `sayforge.db` |
 
-Local recognition ships seven GGUF models, with GPU acceleration when available: Parakeet Unified EN (fastest and most accurate for English), SenseVoice Small, Fun-ASR Nano, Nemotron 3.5 ASR (32 languages), and three Qwen3-ASR sizes. Cloud recognition supports Doubao, Qwen, OpenAI, Gemini, OpenRouter, Xiaomi MiMo, and Groq Whisper, plus any OpenAI-compatible service at an address you supply; AI cleanup works with DeepSeek, Qwen, Doubao, Zhipu GLM, MiMo, Groq, Ollama, and any OpenAI-compatible endpoint.
+Original data is **not deleted, overwritten or silently imported**.
+For an intentional transfer, export settings in SayIt and import them in SayForge
+through the built-in configuration export/import feature. Review your imported
+endpoint, model and keys before testing. The settings-only export does not
+include recorded audio and history; these stay in your SayIt installation.
 
-## A closer look
-
-<div align="center">
-
-<img src="docs/images/readme/home-en.png" width="760" alt="SayIt home screen showing dictation stats and a feedback box">
-
-*Home — dictation stats, the active shortcut, and a feedback box that carries your last transcript.*
-
-<br>
-
-<img src="docs/images/readme/voice-engine-en.png" width="760" alt="Voice engine settings with Local, Cloud API, and Server mode cards above the model list">
-
-*Voice engine — choose Local, Cloud API, or Server mode, then download and switch recognition models. Detected GPUs are used automatically.*
-
-<br>
-
-<img src="docs/images/readme/ai-cleanup-en.png" width="760" alt="AI cleanup settings showing built-in presets and per-app prompt rules">
-
-*AI cleanup — every built-in preset is editable, and per-app rules can switch presets based on the app you are typing into.*
-
-<br>
-
-<img src="docs/images/readme/ai-providers-en.png" width="760" alt="AI providers grid with measured response times on each model card">
-
-*AI providers — bring your own keys, add any OpenAI-compatible endpoint, and test round-trip latency on every card.*
-
-<br>
-
-<img src="docs/images/readme/history-en.png" width="760" alt="History list with search, raw ASR text, timings, and playback controls">
-
-*History — searchable local records. Expand one to see the raw ASR text, timings, audio playback, and re-transcribe.*
-
-<br>
-
-<img src="docs/images/readme/appearance-en.png" width="760" alt="Appearance settings with app themes, waveform themes, overlay width, and a live overlay preview">
-
-*Appearance — three app themes, waveform styles, overlay width, and live captions with a preview of the overlay.*
-
-</div>
-
-## Get started
-
-1. Download the latest [Windows installer](https://github.com/crosswk/SayIt/releases/latest).
-2. Open SayIt and choose a voice engine. The default public server is enough for a quick trial.
-3. Press the configured shortcut in any app and speak. By default you press once to start and again to finish; hold-to-talk is available too, under a separate shortcut.
-
-For regular use, choose Local mode or add your own cloud provider keys from the in-app settings. The provider console links are available beside each key field.
-
-## Self-hosting
-
-The backend combines FastAPI, WebSocket streaming, Qwen3-ASR, and an optional OpenAI-compatible cleanup model. Docker Compose is the recommended deployment path.
-
-```bash
-git clone https://github.com/crosswk/SayIt.git
-cd SayIt/server
-cp config.example.yaml config.yaml
-cp .env.example .env
-# Add your provider and deployment settings to .env/config.yaml
-docker compose up -d --build
-```
-
-GPU speech recognition requires an NVIDIA GPU; 16 GB or more of VRAM is recommended for the default server model. See the [server guide](server/README.md) for configuration, deployment, security, and API details.
-
-## Performance reference
-
-Qwen3-ASR-1.7B with vLLM on an AWS EC2 `g5.xlarge` (NVIDIA A10G 24 GB):
-
-| Audio length | ASR latency | RTF |
-| --- | --- | --- |
-| 30 seconds | ~0.8 s | 0.025 |
-| 1 minute | ~1.6 s | 0.026 |
-| 2 minutes | ~2.1 s | 0.017 |
-| 3 minutes | ~2.5 s | 0.014 |
-| 5 minutes | ~3.0 s | 0.010 |
+If you want to run both applications, assign nonconflicting global shortcuts.
 
 ## Development
 
-### Desktop client
+Client stack: **Rust + Tauri 2 + React + TypeScript**. A separate Python backend
+is included for self-hosted Server mode and retains legacy `SAYIT_*` environment
+variables for compatibility.
 
-```bash
-cd client
-npm install
-npm run tauri dev
+Requirements: Node.js 18+, Rust toolchain, Visual Studio C++ Build Tools,
+CMake and the Vulkan SDK for the local inference modules.
+
+```powershell
+git clone https://github.com/Akilaydin/OriApps.SayForge.git
+cd OriApps.SayForge/client
+npm ci
+npm run test -- --run
+npm run build
+npm run tauri -- build --bundles nsis
 ```
 
-Requirements: Node.js 18+, Rust 1.75+, CMake 3.20+, and the Vulkan SDK. The first native build compiles the C++ speech engine and may take around 20 minutes; later builds use the cache.
+Placeholder icons are generated deterministically from source:
 
-On non-English Windows installations, set `CL=/utf-8` before building so MSVC reads UTF-8 source files correctly.
-
-### Server
-
-```bash
-cd server
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-cd backend
-uvicorn app.main:app --port 8000
+```powershell
+python scripts/generate-placeholder-icons.py
 ```
 
-Requirements: Python 3.10+ and, for GPU inference, an NVIDIA GPU with CUDA.
+Run that command **from the repository root**. The generated icons will be
+replaced with a final original brand design later.
 
-## Project layout
+The optional server has its own [setup documentation](server/README.md).
 
-```text
-SayIt/
-├── client/       # Tauri + React desktop client
-├── server/       # FastAPI backend, gateway, web demo, and deployment files
-├── docs/         # User guides and images
-└── dev-docs/     # Internal development notes
-```
+## Contributions
 
-## Community
+Issues and pull requests **are welcome** in
+[this repository](https://github.com/Akilaydin/OriApps.SayForge).
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. Contributions to SayForge
+are not automatically submitted to the original SayIt repository.
 
-Follow the WeChat official account for release announcements, or scan the group code to talk things over with other users. Both are Chinese-language channels — for English, open a [GitHub issue](https://github.com/crosswk/SayIt/issues).
+## License and third-party notices
 
-<div align="center">
+The application and its modifications are distributed under
+**GNU Affero General Public License v3.0 (AGPL-3.0)**. Keep notices and provide
+corresponding source when distributing binaries.
 
-<table>
-<tr>
-<td align="center"><img src="docs/images/readme/wechat-official-account.jpg" width="220" alt="SayIt WeChat official account QR code"><br>Official account</td>
-<td align="center"><img src="docs/images/readme/wechat-group.jpg" width="220" alt="QR code for the SayIt user feedback group on WeChat"><br>User group</td>
-</tr>
-</table>
+The MP3 encoder uses `mp3lame-encoder`, `mp3lame-sys` and LAME, which carry
+**LGPL-3.0** obligations. On Windows LAME is currently **statically linked**.
+Public binary distribution therefore requires an additional LGPL compliance
+review (including notices and any required relinking materials); an AGPL notice
+alone is not sufficient. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-</div>
-
-## Contributing
-
-Bug reports, focused pull requests, and feature discussions are welcome. Please open a [GitHub issue](https://github.com/crosswk/SayIt/issues) or read the [contribution guide](CONTRIBUTING.md) before submitting a larger change.
-
-## Contributors
-
-<!-- ALL-CONTRIBUTORS-LIST:START -->
-| [<img src="https://github.com/crosswk.png" width="60"><br><sub>crosswk</sub>](https://github.com/crosswk) | [<img src="https://avatars.githubusercontent.com/u/76263028" width="60"><br><sub>Claude (Anthropic)</sub>](https://claude.ai) |
-|:---:|:---:|
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-## License
-
-[GNU Affero General Public License v3.0](./LICENSE)
-
-You may use, modify, and self-host SayIt. If you distribute a modified version or run it as a network service, the corresponding source must remain available under the same license.
+Original project: [crosswk/SayIt](https://github.com/crosswk/SayIt).
+SayIt copyright © 2026 Liu Qianglong and its contributors.
+Independent changes © 2026 OriApps and contributors.

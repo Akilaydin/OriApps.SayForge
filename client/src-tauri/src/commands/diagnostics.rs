@@ -30,7 +30,7 @@ pub fn collect_settings(storage: State<Storage>) -> Result<Value, String> {
 fn log_dir() -> std::path::PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(crate::identity::APP_ID)
         .join("logs")
 }
 
@@ -202,7 +202,7 @@ fn read_and_parse_logs() -> (Vec<TimelineEntry>, usize) {
     let mut files_scanned = 0usize;
 
     // 读取 sayit.log 和 rotated logs
-    let filenames = ["sayit.log", "sayit.1.log", "sayit.2.log", "sayit.3.log"];
+    let filenames = ["sayforge.log", "sayforge.1.log", "sayforge.2.log", "sayforge.3.log"];
     for filename in &filenames {
         let path = dir.join(filename);
         if !path.exists() {
@@ -317,7 +317,7 @@ pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
 
     let diag_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(crate::identity::APP_ID)
         .join("diagnostics");
     std::fs::create_dir_all(&diag_dir).map_err(|e| e.to_string())?;
 
@@ -350,7 +350,7 @@ pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
 
     // 3. 日志文件
     let log_d = log_dir();
-    for filename in &["sayit.log", "sayit.1.log", "sayit.2.log", "sayit.3.log"] {
+    for filename in &["sayforge.log", "sayforge.1.log", "sayforge.2.log", "sayforge.3.log"] {
         let path = log_d.join(filename);
         if path.exists() {
             if let Ok(content) = std::fs::read(&path) {
@@ -421,12 +421,12 @@ pub fn read_log_file(log_type: String) -> Result<Option<String>, String> {
     let log_d = log_dir();
 
     let filename = match log_type.as_str() {
-        "current" | "" | "frontend" => "sayit.log",
-        "ptt" => "sayit.log", // PTT 事件也写在同一个日志里
-        "1" => "sayit.1.log",
-        "2" => "sayit.2.log",
-        "3" => "sayit.3.log",
-        _ => "sayit.log",
+        "current" | "" | "frontend" => "sayforge.log",
+        "ptt" => "sayforge.log", // PTT 事件也写在同一个日志里
+        "1" => "sayforge.1.log",
+        "2" => "sayforge.2.log",
+        "3" => "sayforge.3.log",
+        _ => "sayforge.log",
     };
 
     let path = log_d.join(filename);

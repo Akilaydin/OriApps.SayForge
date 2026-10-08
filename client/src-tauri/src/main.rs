@@ -11,6 +11,7 @@ mod context;
 mod inject;
 mod providers;
 mod models;
+mod identity;
 
 use storage::Storage;
 use window::WindowState;
@@ -21,7 +22,7 @@ use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}
 use std::thread;
 
 /// Environment-level WebView2 flags must be identical for every webview that shares
-/// com.sayit.app/EBWebView. Keep them global; never copy them into a single window's
+/// com.oriapps.sayforge/EBWebView. Keep them global; never copy them into a single window's
 /// `additionalBrowserArgs` in tauri.conf.json (WebView2 rejects the second environment
 /// with ERROR_INVALID_STATE when the option sets differ).
 // 注意：不要再加回 --auto-accept-camera-and-microphone-capture。
@@ -58,7 +59,7 @@ fn cleanup_expired_audio(storage: &Storage) {
     let cutoff_ms = chrono::Utc::now().timestamp_millis() - retention_days * 24 * 60 * 60 * 1000;
     let audio_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(identity::APP_ID)
         .join("audio");
 
     if !audio_dir.exists() {
@@ -106,7 +107,7 @@ fn cleanup_expired_logs(storage: &Storage) {
 
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(identity::APP_ID)
         .join("logs");
 
     if !log_dir.exists() {
@@ -121,7 +122,7 @@ fn cleanup_expired_logs(storage: &Storage) {
                 continue;
             }
             // 不删除当前日志文件
-            if path.file_name().map(|n| n == "sayit.log").unwrap_or(false) {
+            if path.file_name().map(|n| n == identity::LOG_FILE).unwrap_or(false) {
                 continue;
             }
             if let Ok(meta) = std::fs::metadata(&path) {
@@ -195,16 +196,17 @@ fn main() {
     }
 
     log::info!(
-        "SayIt starting version={} profile={} pid={}",
+        "{} starting version={} profile={} pid={}",
+        identity::APP_NAME,
         env!("CARGO_PKG_VERSION"),
         if cfg!(debug_assertions) { "debug" } else { "release" },
         std::process::id(),
     );
     log::info!("Log file: {:?}", dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
+        .join(identity::APP_ID)
         .join("logs")
-        .join("sayit.log"));
+        .join(identity::LOG_FILE));
 
     // Allow self-signed certificates and auto-grant microphone for backend connection (WebView2)
     // This must be set before any WebView2 instance is created.
@@ -224,7 +226,7 @@ fn main() {
         "WebView2 environment userDataDir={:?} argsSource={} argsLen={} argsFingerprint={}",
         dirs::data_local_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("com.sayit.app")
+            .join(identity::APP_ID)
             .join("EBWebView"),
         browser_args_source,
         browser_args.len(),
@@ -233,15 +235,14 @@ fn main() {
 
     let db_path = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.sayit.app")
-        .join("sayit.db");
+        .join(identity::APP_ID)
+        .join(identity::DATABASE_FILE);
 
     let storage = Storage::new(db_path).expect("failed to initialize SQLite storage");
 
-    // One-time migration from Electron app's SQLite database
-    if let Err(e) = storage.migrate_from_electron() {
-        eprintln!("Warning: Electron data migration failed: {}", e);
-    }
+    // Deliberately do not automatically import the original SayIt databases.
+    // Users may migrate settings through Settings → Export/Import; the upstream
+    // app and its audio/history files must remain untouched.
 
     // Clean up expired audio files on startup
     cleanup_expired_audio(&storage);
@@ -491,7 +492,7 @@ fn main() {
 
                 let _tray = TrayIconBuilder::new()
                     .icon(icon)
-                    .tooltip("SayIt")
+                    .tooltip(identity::APP_NAME)
                     .on_tray_icon_event(|tray, event| {
                         if let TrayIconEvent::Click { button, button_state: MouseButtonState::Up, position, .. } = event {
                             match button {
@@ -740,11 +741,9 @@ fn main() {
         // 下次打开即是新版 —— 否则更新完全依赖用户主动点击，不点的人永远留在旧版。
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                commands::system::install_pending_update_on_exit(app_handle);
-            }
-        });
+        // Independent distribution: no upstream auto-installer on app exit.
+        // Updates are published as manually installed releases on our GitHub.
+        .run(|_, _| {});
 }
 
 #[cfg(test)]

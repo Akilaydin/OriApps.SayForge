@@ -35,7 +35,7 @@ const KEY_KEEP_COUNT: &str = "webdav.keepCount";
 const KEY_LAST_RESULT: &str = "webdav.lastResult";
 
 /// 备份文件名前缀，与本地导出一致，便于用户对着看。
-const BACKUP_PREFIX: &str = "sayit-backup-";
+const BACKUP_PREFIX: &str = "sayforge-backup-";
 const DEFAULT_KEEP_COUNT: u64 = 5;
 const PROGRESS_EVENT: &str = "webdav-backup-progress";
 
@@ -856,8 +856,8 @@ mod tests {
             password: "p".into(),
         };
         assert_eq!(
-            target.child("sayit-backup-x.zip"),
-            "https://dav.jianguoyun.com/dav/SayIt/sayit-backup-x.zip"
+            target.child("sayforge-backup-x.zip"),
+            "https://dav.jianguoyun.com/dav/SayIt/sayforge-backup-x.zip"
         );
     }
 
@@ -882,18 +882,18 @@ mod tests {
     <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>
   </d:response>
   <d:response>
-    <d:href>/dav/SayIt/sayit-backup-2026-08-26_10-00-00-000.zip</d:href>
+    <d:href>/dav/SayIt/sayforge-backup-2026-08-26_10-00-00-000.zip</d:href>
     <d:propstat><d:prop><d:getcontentlength>4096</d:getcontentlength></d:prop></d:propstat>
   </d:response>
   <d:response>
-    <d:href>/dav/SayIt/sayit-backup-2026-08-25_10-00-00-000.zip</d:href>
+    <d:href>/dav/SayIt/sayforge-backup-2026-08-25_10-00-00-000.zip</d:href>
     <d:propstat><d:prop><d:getcontentlength>2048</d:getcontentlength></d:prop></d:propstat>
   </d:response>
 </d:multistatus>"#;
         let entries = parse_backup_entries(xml);
         assert_eq!(entries.len(), 2);
         // 倒序 = 从新到旧，保留策略直接 skip(keep) 就是删旧的。
-        assert_eq!(entries[0].name, "sayit-backup-2026-08-26_10-00-00-000.zip");
+        assert_eq!(entries[0].name, "sayforge-backup-2026-08-26_10-00-00-000.zip");
         assert_eq!(entries[0].size, 4096);
         assert_eq!(entries[1].size, 2048);
     }
@@ -903,7 +903,7 @@ mod tests {
     #[test]
     fn parses_listing_regardless_of_prefix_case_or_absence() {
         let xml = r#"<D:multistatus xmlns:D="DAV:">
-  <D:response><D:href>/dav/SayIt/sayit-backup-a.zip</D:href>
+  <D:response><D:href>/dav/SayIt/sayforge-backup-a.zip</D:href>
     <D:propstat><D:prop><lp1:getcontentlength>11</lp1:getcontentlength></D:prop></D:propstat>
   </D:response>
 </D:multistatus>"#;
@@ -912,13 +912,13 @@ mod tests {
         assert_eq!(entries[0].size, 11);
 
         let no_prefix = r#"<multistatus xmlns="DAV:">
-  <response><href>/dav/SayIt/sayit-backup-b.zip</href>
+  <response><href>/dav/SayIt/sayforge-backup-b.zip</href>
     <propstat><prop><getcontentlength>22</getcontentlength></prop></propstat>
   </response>
 </multistatus>"#;
         let entries = parse_backup_entries(no_prefix);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "sayit-backup-b.zip");
+        assert_eq!(entries[0].name, "sayforge-backup-b.zip");
         assert_eq!(entries[0].size, 22);
     }
 
@@ -928,7 +928,7 @@ mod tests {
   <d:response><d:href>/dav/SayIt/</d:href></d:response>
   <d:response><d:href>/dav/SayIt/notes.txt</d:href></d:response>
   <d:response><d:href>/dav/SayIt/sayit-config-2026.json</d:href></d:response>
-  <d:response><d:href>/dav/SayIt/sayit-backup-x.zip.part</d:href></d:response>
+  <d:response><d:href>/dav/SayIt/sayforge-backup-x.zip.part</d:href></d:response>
 </d:multistatus>"#;
         assert!(parse_backup_entries(xml).is_empty());
     }
@@ -982,10 +982,10 @@ mod tests {
     fn restore_rejects_names_with_separators() {
         for bad in [
             "../../etc/passwd",
-            "sayit-backup-../x.zip",
-            "sayit-backup-a.zip/..",
+            "sayforge-backup-../x.zip",
+            "sayforge-backup-a.zip/..",
             "other.zip",
-            "sayit-backup-a.txt",
+            "sayforge-backup-a.txt",
         ] {
             let ok = bad.starts_with(BACKUP_PREFIX)
                 && bad.ends_with(".zip")
@@ -993,6 +993,6 @@ mod tests {
                 && !bad.contains('\\');
             assert!(!ok, "should have been rejected: {}", bad);
         }
-        assert!("sayit-backup-2026-08-26_10-00-00-000.zip".starts_with(BACKUP_PREFIX));
+        assert!("sayforge-backup-2026-08-26_10-00-00-000.zip".starts_with(BACKUP_PREFIX));
     }
 }
