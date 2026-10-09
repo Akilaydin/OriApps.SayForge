@@ -33,6 +33,10 @@ for packaged Windows builds.
 Until a verified SayForge update channel exists, **updates are manual only**.
 The application does not automatically download or install updates.
 
+Releases are built and published automatically when a new version reaches the
+`release` branch. See [Releasing SayForge](docs/releasing.md). Initial CI installers
+are unsigned; Windows SmartScreen may warn about an unrecognized publisher.
+
 ### First run
 
 Windows autostart is off for new installs. Enable **Start with Windows** in Settings

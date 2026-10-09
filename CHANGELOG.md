@@ -14,3 +14,8 @@ source history remains available in Git.
   that are no longer supported.
 - Preserved AGPL-3.0 attribution and third-party license information in the
   README's licensing section.
+
+## 0.2.3
+
+- Added automatic public Windows NSIS/MSI releases from the `release` branch,
+  with tests, version/tag guards, checksums, licenses and corresponding source links.
