@@ -126,6 +126,13 @@ updates it without a preceding destructive `disable()`. Flags are written after 
 read/write failures leave migration pending. Both historical string and boolean migration
 flags are accepted. Settings uses OS readback, showing failure/retry when state is unknown.
 
+## Home and themes
+
+Home and light/dark/Claude themes are retained: root remains the Settings-close destination
+and shortcut refresher; themes share one variable renderer. Unknown/legacy theme IDs resolve
+to light without rewriting their stored value; prototype-property names are rejected as
+theme IDs. New default is explicitly light, matching the previous unknown-ID fallback.
+
 ## Open questions
 
 - Verified minimum Windows version.

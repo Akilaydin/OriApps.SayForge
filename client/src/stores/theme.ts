@@ -2,7 +2,7 @@ import { applyTheme, getCurrentThemeId } from '@/themes'
 import { getSetting, setSetting } from '@/services/store'
 
 const THEME_SETTING_KEY = 'theme'
-const DEFAULT_THEME = 'teal-dark'
+const DEFAULT_THEME = 'light'
 
 export async function initTheme(): Promise<string> {
   const saved = await getSetting(THEME_SETTING_KEY, DEFAULT_THEME)

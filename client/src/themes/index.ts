@@ -12,7 +12,7 @@ const themes: Record<string, ThemeDefinition> = {
 export const themeList: ThemeDefinition[] = Object.values(themes)
 
 export function getTheme(id: string): ThemeDefinition {
-  return themes[id] || themes.light
+  return Object.prototype.hasOwnProperty.call(themes, id) ? themes[id] : themes.light
 }
 
 let currentThemeId: string = 'light'

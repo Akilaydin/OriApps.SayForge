@@ -184,6 +184,27 @@ Validation: 393 frontend tests (including exact bytes for five minutes), 117 Rus
 TypeScript and `git diff --check` passed; Windows benchmark passed separately. Existing
 cancel/late-response/AI/fallback tests pass. No binary production command was introduced.
 
+## 11. Home and themes evaluation
+
+Keep Home and all three themes. Home is the root route and Settings-close destination,
+refreshes the configured hands-free shortcut, and follows App's onboarding gate. Tray opening
+shows the existing main window without replacing its current route; About has its own event
+route. Deleting Home would change these navigation expectations for little reduction.
+Claude is a data-only theme using the same renderer/selector as light/dark; keeping it
+preserves saved preferences. No alternate renderer/dependency can be removed with it.
+
+Measured source footprint and isolated esbuild minification + gzip (not a release bundle):
+Home 61 lines / 1993 source bytes / 1336 minified / 628 gzip; Claude 69 lines / 2082 source
+bytes / 1595 minified / 580 gzip. Combined isolated compressed cost is about 1.2 kB;
+shared-bundle compression/tree shaking can change this estimate. No full build was run.
+
+Small compatibility fix: registry lookup now excludes inherited object keys; `constructor`,
+`toString`, `__proto__`, unknown and retired teal IDs reliably fall back to light. Initialization
+does not rewrite old settings. Fresh default is explicitly light, matching existing fallback.
+Validation: 404 frontend/theme tests, TypeScript/i18n and `git diff --check` passed; route/onboarding/tray
+call chains reviewed without behavior changes. Live first-run/navigation/theming remains
+unverified. Physical tray/prewarm behavior is untouched.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.
