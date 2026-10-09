@@ -80,7 +80,7 @@ npm run tauri -- build --bundles nsis
 ```
 
 Source artwork is maintained in `assets/branding/`. Platform-specific PNG,
-ICO and NSIS BMP assets are checked into `client/src-tauri/icons/`,
+ICO assets are checked into `client/src-tauri/icons/`,
 `client/src/assets/` and `docs/images/readme/`.
 
 

@@ -147,13 +147,8 @@ fn main() {
         .join("logs")
         .join(identity::LOG_FILE));
 
-    // Allow self-signed certificates and auto-grant microphone for backend connection (WebView2)
-    // This must be set before any WebView2 instance is created.
-    // Also disable Chromium's background tab/window throttling: SayForge keeps a long-lived
-    // WebSocket connection alive via a 30s JS heartbeat even when the window is minimized
-    // or not focused. Without these flags, WebView2 throttles setInterval timers in the
-    // background, delaying the heartbeat well past the server's idle timeout and causing
-    // spurious "idle timeout" disconnects while the app is just sitting idle in the tray.
+    // Set shared WebView2 flags before creating any window.
+    // Background capture and overlay timers retain the existing throttling policy.
     let (browser_args_source, browser_args) = match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
         Ok(value) => ("inherited", value),
         Err(_) => {
