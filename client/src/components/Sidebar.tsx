@@ -4,8 +4,6 @@ import { Home, Clock, BookOpen, Settings, Info, Cpu, Cloud, AudioLines, Sparkles
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/modeStatus'
-import { hasPendingUpdate } from '@/features/update/autoUpdate'
-import { useUpdateState } from '@/features/update/useUpdateState'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
@@ -88,24 +86,12 @@ function IconOnlyNavItem({
 
 function FooterIcons() {
   const t = useT()
-  const update = useUpdateState()
-  const updateReady = hasPendingUpdate(update)
-  const nextVersion = update.pending?.version || ''
 
   return (
     <div className="flex items-center gap-1">
-      {footerNavItems.map(({ to, icon, labelKey }) => {
-        const highlight = updateReady && to === '/about'
-        return (
-          <IconOnlyNavItem
-            key={to}
-            to={to}
-            icon={icon}
-            label={highlight ? t('update.aboutTooltip', { version: nextVersion }) : t(labelKey)}
-            iconClassName={highlight ? 'text-success animate-pulse' : undefined}
-          />
-        )
-      })}
+      {footerNavItems.map(({ to, icon, labelKey }) => (
+        <IconOnlyNavItem key={to} to={to} icon={icon} label={t(labelKey)} />
+      ))}
       <ModeIndicator />
     </div>
   )

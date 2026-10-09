@@ -60,8 +60,6 @@ export const DEFAULTS: Record<string, unknown> = {
 
   readySoundEnabled: true,
 
-  autoCheckUpdate: true,
-  pendingUpdate: null,
   historyEnabled: true,
   audioRetentionEnabled: true,
   audioRetentionDays: -1,

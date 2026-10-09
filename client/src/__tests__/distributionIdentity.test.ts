@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -35,8 +35,20 @@ describe('independent SayForge distribution', () => {
     expect(app).not.toContain('<UpdateDialog')
     expect(main).not.toMatch(/\binstall_pending_update_on_exit\s*\(/)
     expect(text('src/pages/About.tsx')).toContain('https://github.com/Akilaydin/OriApps.SayForge')
-    expect(text('src/services/runtimeConfig.ts')).toContain('127.0.0.1:8000')
-    expect(text('.env.development')).toContain('127.0.0.1:8000')
+    for (const retired of ['src/services/runtimeConfig.ts', '.env.development', 'update-notification.html', 'src-tauri/src/commands/update_notification.rs']) {
+      expect(existsSync(resolve(process.cwd(), retired))).toBe(false)
+    }
+    expect(text('vite.config.ts')).not.toMatch(/SAYFORGE_DEFAULT_SERVER_URL|updateNotification|FAKE_APP_VERSION/)
+    expect(main).not.toMatch(/commands::(?:update_notification|system::(?:download_update|verify_update_package|install_downloaded_update))/)
+    expect(text('src-tauri/Cargo.toml')).not.toMatch(/tauri-plugin-(?:updater|process)/)
+    const dependencies = JSON.parse(text('package.json')).dependencies
+    expect(dependencies).not.toHaveProperty('@tauri-apps/plugin-updater')
+    expect(dependencies).not.toHaveProperty('@tauri-apps/plugin-process')
+    const capabilities = JSON.parse(text('src-tauri/capabilities/default.json'))
+    expect(capabilities.windows).not.toContain('update-notification')
+    const about = text('src/pages/About.tsx')
+    expect(about).toContain('v{__APP_VERSION__}')
+    expect(about).toContain('shellOpen(RELEASES_URL)')
     expect(text('src-tauri/src/providers/asr_openrouter.rs')).toContain('https://github.com/Akilaydin/OriApps.SayForge')
   })
 

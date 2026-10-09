@@ -10,7 +10,7 @@ Technical reference for the current SayForge implementation. Product behavior be
 - Speech modes: `cloud_api` (user-configured remote ASR) and `local` (downloaded on-device GGUF model).
 - Optional AI refinement is independent of the speech engine.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
-- Updates are manual; the Tauri updater is disabled pending a signed release channel.
+- Updates are manual through GitHub Releases; no updater service, installer commands or notification window are bundled.
 
 ## Dictation flow
 

@@ -1290,7 +1290,6 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
 
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) {
-    crate::commands::system::suppress_exit_install();
     app.restart();
 }
 

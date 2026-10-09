@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for SayForge",
-  "windows": ["main", "overlay", "tray-menu", "update-notification"],
+  "windows": ["main", "overlay", "tray-menu"],
   "permissions": [
     "core:default",
     "core:window:default",

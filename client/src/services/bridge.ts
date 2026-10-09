@@ -5,22 +5,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import type { AsrHotwordCapability } from '../lib/asrModels'
 import type { DiagnosticOccurrence, DiagnosticsPreview } from '../types/appApi'
-import type { UpdateNotificationSnapshot } from '@/features/update/notificationTypes'
 
 // Re-export for convenience
 export { invoke, listen, emit }
-
-export function syncUpdateNotification(snapshot: UpdateNotificationSnapshot) {
-  return invoke<void>('sync_update_notification', { snapshot })
-}
-
-export function getUpdateNotification() {
-  return invoke<UpdateNotificationSnapshot>('get_update_notification')
-}
-
-export function fitUpdateNotification(revision: number, width: number, height: number, devicePixelRatio: number) {
-  return invoke<void>('fit_update_notification', { revision, width, height, devicePixelRatio })
-}
 
 // ─── Window Controls ───
 
@@ -290,18 +277,6 @@ export function getAutoLaunch() {
 
 export function setAutoLaunch(enable: boolean) {
   return invoke('set_auto_launch', { enable })
-}
-
-export function installDownloadedUpdate(filePath: string, relaunch: boolean) {
-  return invoke('install_downloaded_update', { filePath, relaunch })
-}
-
-export function downloadUpdate(url: string, sha512?: string | null) {
-  return invoke<string>('download_update', { url, sha512: sha512 ?? null })
-}
-
-export function verifyUpdatePackage(filePath: string, sha512?: string | null) {
-  return invoke<boolean>('verify_update_package', { filePath, sha512: sha512 ?? null })
 }
 
 // ─── Tray ───

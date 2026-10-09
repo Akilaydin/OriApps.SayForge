@@ -5,20 +5,14 @@ import path from 'path'
 import fs from 'fs'
 
 const host = process.env.TAURI_DEV_HOST
-const defaultServerUrl = process.env.SAYFORGE_DEFAULT_SERVER_URL || 'http://127.0.0.1:8000'
 
 const tauriConf = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, 'src-tauri/tauri.conf.json'), 'utf-8')
 )
-const fakeVersion = process.env.SAYFORGE_FAKE_APP_VERSION
-if (fakeVersion) {
-  console.warn(`\n[vite] SAYFORGE_FAKE_APP_VERSION=${fakeVersion} — simulated version; do not use for production builds.\n`)
-}
-const appVersion = fakeVersion || tauriConf.version || '0.0.0'
+const appVersion = tauriConf.version || '0.0.0'
 
 export default defineConfig({
   define: {
-    __SAYFORGE_DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [react()],
@@ -50,7 +44,6 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
         trayMenu: path.resolve(__dirname, 'tray-menu.html'),
-        updateNotification: path.resolve(__dirname, 'update-notification.html'),
       },
     },
   },

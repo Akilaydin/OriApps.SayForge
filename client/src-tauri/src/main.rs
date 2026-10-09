@@ -305,7 +305,6 @@ fn main() {
         .manage(window_state)
         .manage(keyboard_hook)
         .manage(context_detector)
-        .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
             // SayForge's main window and lazy overlay share one WebView2 user-data directory.
             // Per-window browser arguments violate WebView2's environment compatibility
@@ -545,12 +544,6 @@ fn main() {
             commands::system::get_system_ui_language,
             commands::system::get_auto_launch,
             commands::system::set_auto_launch,
-            commands::system::install_downloaded_update,
-            commands::system::download_update,
-            commands::system::verify_update_package,
-            commands::update_notification::sync_update_notification,
-            commands::update_notification::get_update_notification,
-            commands::update_notification::fit_update_notification,
             commands::system::append_debug_log,
             commands::system::save_audio_to_downloads,
             commands::system::reveal_file_in_folder,

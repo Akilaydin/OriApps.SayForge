@@ -43,7 +43,7 @@ Cancellation must not insert late results. Empty/silent recordings can produce n
 - Windows desktop only; English UI. Recognition-language support depends on the chosen engine.
 - No hosted SayForge account, subscription or managed cloud storage.
 - Meeting recording, system-audio capture and speaker diarization are outside the current scope.
-- Application installation and updates are manual until a verified signed release channel is available.
+- Application installation and updates are manual through GitHub Releases. About shows the current version and release link; no update checks, downloads or automatic installer run in the app.
 
 ## Open questions
 
