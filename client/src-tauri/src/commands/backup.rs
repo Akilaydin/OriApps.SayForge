@@ -14,6 +14,10 @@ const FORMAT_VERSION: i64 = 1;
 const SELECTED_CONFIG_FORMAT_VERSION: i64 = 2;
 const MAX_HOTWORDS: usize = 1000;
 const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "zh2en", "casual"];
+const MAX_LEGACY_JSON_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_LEGACY_AUDIO_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_LEGACY_TOTAL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const MAX_LEGACY_ENTRIES: usize = 100_000;
 const CONFIG_EXCLUDE: &[&str] = &["stats"];
 
 #[derive(Clone, Deserialize)]
@@ -911,59 +915,163 @@ pub async fn import_full(in_path: String, storage: State<'_, Storage>) -> Result
     apply_full_backup(storage.inner(), &in_path)
 }
 
-///
 pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String> {
+    apply_full_backup_into(storage, in_path, &audio_dir())
+}
+
+fn validate_audio_basename(base: &str) -> Result<(), String> {
+    let stem = base.split('.').next().unwrap_or("").to_ascii_uppercase();
+    if base.is_empty() || base == "." || base == ".." || base.ends_with(['.', ' '])
+        || base.chars().any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
+        || ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&stem.as_str())
+        || ["COM", "LPT"].iter().any(|prefix| stem.strip_prefix(prefix)
+            .is_some_and(|suffix| ["1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³"].contains(&suffix)))
+    {
+        return Err("The backup contains an unsafe audio filename".to_string());
+    }
+    Ok(())
+}
+
+fn apply_full_backup_into(storage: &Storage, in_path: &str, adir: &Path) -> Result<(), String> {
     let file = fs::File::open(in_path).map_err(|e| format!("Failed to open file: {}", e))?;
+    if file.metadata().map_err(|e| e.to_string())?.len() > MAX_LEGACY_TOTAL_BYTES {
+        return Err("The backup archive exceeds the 8 GiB limit".to_string());
+    }
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
+    if archive.len() > MAX_LEGACY_ENTRIES {
+        return Err("The backup contains too many entries".to_string());
+    }
+
+    let mut audio = Vec::new();
+    let mut names = HashSet::new();
+    let mut total_size = 0u64;
+    let mut manifests = 0;
+    for i in 0..archive.len() {
+        let entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = entry.name().replace('\\', "/");
+        if entry.enclosed_name().is_none() || name.split('/').any(|part| part == "..")
+            || entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
+            return Err("The backup contains an unsafe archive path or symbolic link".to_string());
+        }
+        if name == "backup.json" {
+            manifests += 1;
+            if entry.size() > MAX_LEGACY_JSON_BYTES {
+                return Err("backup.json exceeds the 64 MiB limit".to_string());
+            }
+        }
+        if let Some(rest) = name.strip_prefix("audio/") {
+            if rest.is_empty() || entry.is_dir() {
+                continue;
+            }
+            let base = basename(rest);
+            validate_audio_basename(&base)?;
+            if !names.insert(base.to_lowercase()) {
+                return Err("The backup contains colliding audio filenames".to_string());
+            }
+            if entry.size() > MAX_LEGACY_AUDIO_BYTES {
+                return Err("An audio file exceeds the 512 MiB limit".to_string());
+            }
+            total_size = total_size.checked_add(entry.size())
+                .filter(|size| *size <= MAX_LEGACY_TOTAL_BYTES)
+                .ok_or_else(|| "Backup audio exceeds the 8 GiB limit".to_string())?;
+            audio.push((i, base, entry.size()));
+        }
+    }
+    if manifests != 1 {
+        return Err("The archive must contain exactly one backup.json".to_string());
+    }
 
     let mut json_str = String::new();
     {
         let mut entry = archive
             .by_name("backup.json")
             .map_err(|_| "The archive is missing backup.json and may not be a SayForge full backup".to_string())?;
-        entry.read_to_string(&mut json_str).map_err(|e| e.to_string())?;
+        (&mut entry).take(MAX_LEGACY_JSON_BYTES + 1).read_to_string(&mut json_str)
+            .map_err(|e| e.to_string())?;
+        if json_str.len() as u64 > MAX_LEGACY_JSON_BYTES {
+            return Err("backup.json exceeds the 64 MiB limit".to_string());
+        }
     }
-    let data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
+    let mut data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
     check_kind_and_version(&data, "full", FORMAT_VERSION)?;
-
-    let adir = audio_dir();
-    fs::create_dir_all(&adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().to_string();
-        if let Some(rest) = name.strip_prefix("audio/") {
-            if rest.is_empty() || entry.is_dir() {
-                continue;
+    if data.get("appSettings").is_some_and(|value| !value.is_object()) {
+        return Err("appSettings has an invalid format".to_string());
+    }
+    let collection_keys = ["promptPresets", "appPromptRules", "history", "manualCorrections", "feedbackQueue"];
+    for key in collection_keys {
+        if data.get(key).is_some_and(|value| !value.is_array()) {
+            return Err(format!("{} has an invalid format", key));
+        }
+    }
+    if let Some(history) = data.get_mut("history").and_then(Value::as_array_mut) {
+        for record in history {
+            if let Some(path) = record.get("audioFilePath").and_then(Value::as_str) {
+                if !path.is_empty() {
+                    validate_audio_basename(&basename(path))?;
+                }
             }
-            let base = basename(rest);
-            if base.is_empty() {
-                continue;
+            *record = rewrite_audio_path(record, adir);
+        }
+    }
+
+    fs::create_dir_all(adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;
+    let staging = adir.join(format!(".restore-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&staging).map_err(|e| e.to_string())?;
+    let files = staging.join("files");
+    let previous = staging.join("previous");
+    let mut installed = Vec::new();
+    let result = (|| {
+        fs::create_dir(&files).map_err(|e| e.to_string())?;
+        fs::create_dir(&previous).map_err(|e| e.to_string())?;
+        for (index, base, declared_size) in &audio {
+            let mut entry = archive.by_index(*index).map_err(|e| e.to_string())?;
+            let mut output = fs::File::create_new(files.join(base)).map_err(|e| e.to_string())?;
+            let actual_size = std::io::copy(&mut (&mut entry).take(declared_size + 1), &mut output)
+                .map_err(|e| format!("Failed to unpack backup audio: {}", e))?;
+            if actual_size != *declared_size {
+                return Err("Backup audio size does not match its declaration".to_string());
             }
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-            fs::write(adir.join(&base), &buf).map_err(|e| format!("Failed to write audio file {}: {}", base, e))?;
+        }
+        for (_, base, _) in &audio {
+            let destination = adir.join(base);
+            let existed = match fs::symlink_metadata(&destination) {
+                Ok(metadata) if metadata.file_type().is_file() => true,
+                Ok(_) => return Err("An audio destination is not a regular file".to_string()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => return Err(error.to_string()),
+            };
+            if existed {
+                fs::rename(&destination, previous.join(base)).map_err(|e| e.to_string())?;
+            }
+            installed.push((base, existed));
+            fs::rename(files.join(base), &destination).map_err(|e| e.to_string())?;
+        }
+        let empty_settings = Map::new();
+        let settings = data.get("appSettings").and_then(Value::as_object).unwrap_or(&empty_settings);
+        let collections: Vec<_> = collection_keys.iter().map(|key|
+            (*key, data.get(key).and_then(Value::as_array).map(Vec::as_slice))).collect();
+        storage.apply_backup_transaction(settings, &[], &collections)
+            .map_err(|e| format!("Failed to restore backup data: {}", e))
+    })();
+    if result.is_err() {
+        let mut rollback_failed = false;
+        for (base, existed) in installed.iter().rev() {
+            let destination = adir.join(base);
+            let removed = match fs::remove_file(&destination) {
+                Ok(()) => true,
+                Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+            };
+            if !removed || (*existed && fs::rename(previous.join(base), destination).is_err()) {
+                rollback_failed = true;
+            }
+        }
+        if rollback_failed {
+            return Err(format!("Restore failed and audio rollback is incomplete; recovery files: {}", staging.display()));
         }
     }
-
-    apply_config_part(storage, &data, &[])?;
-
-    if let Some(history) = data.get("history").and_then(|v| v.as_array()) {
-        let rewritten: Vec<Value> = history.iter().map(|rec| rewrite_audio_path(rec, &adir)).collect();
-        storage
-            .set("history", &Value::Array(rewritten))
-            .map_err(|e| format!("Failed to write history: {}", e))?;
-    }
-    if let Some(arr) = data.get("manualCorrections") {
-        if arr.is_array() {
-            storage.set("manualCorrections", arr).map_err(|e| format!("Failed to write manual corrections: {}", e))?;
-        }
-    }
-    if let Some(arr) = data.get("feedbackQueue") {
-        if arr.is_array() {
-            storage.set("feedbackQueue", arr).map_err(|e| format!("Failed to write feedback queue: {}", e))?;
-        }
-    }
-    Ok(())
+    let _ = fs::remove_dir_all(staging);
+    result
 }
 
 #[tauri::command]
@@ -998,6 +1106,225 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let storage = Storage::new(dir.join("test.db")).unwrap();
         (storage, dir)
+    }
+
+    fn legacy_data() -> Value {
+        json!({
+            "kind": "full", "formatVersion": 1,
+            "appSettings": { "audioRetentionDays": 30, "stats": { "totalChars": 42 } },
+            "promptPresets": [{ "id": "legacy", "name": "Legacy", "systemPrompt": "Synthetic prompt" }],
+            "appPromptRules": [{ "id": "rule", "appId": "synthetic-editor", "enabled": false }],
+            "history": [{ "id": "archived", "timestamp": 1, "favorite": true,
+                "audioFilePath": "C:\\old\\audio\\shared.wav", "asrText": "Synthetic text",
+                "legacyMetadata": { "preserved": true } }],
+            "manualCorrections": [{ "id": "correction", "historyId": "archived", "createdAt": 2 }],
+            "feedbackQueue": [{ "id": "feedback", "historyId": "archived", "status": "pending" }],
+        })
+    }
+
+    fn write_legacy_archive(path: &Path, data: &Value, entries: &[(&str, &[u8])]) {
+        use std::io::Write;
+        let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
+        let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        writer.start_file("backup.json", options).unwrap();
+        writer.write_all(data.to_string().as_bytes()).unwrap();
+        for (name, bytes) in entries {
+            writer.start_file(*name, options).unwrap();
+            writer.write_all(bytes).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    fn patch_zip_metadata(path: &Path, name: &str, offset: usize, value: u32) {
+        let mut bytes = fs::read(path).unwrap();
+        let start = bytes.windows(46 + name.len()).position(|window|
+            window[..4] == [0x50, 0x4b, 0x01, 0x02]
+                && window[46..46 + name.len()] == *name.as_bytes()).unwrap();
+        bytes[start + offset..start + offset + 4].copy_from_slice(&value.to_le_bytes());
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_restores_all_collections_and_audio_without_deleting_unrelated_files() {
+        let (storage, dir) = temp_storage("full-success");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        fs::write(adir.join("shared.wav"), b"old synthetic audio").unwrap();
+        fs::write(adir.join("unrelated.wav"), b"keep synthetic audio").unwrap();
+        storage.set("unrelatedSetting", &json!(true)).unwrap();
+        let archive = dir.join("legacy.zip");
+        let data = legacy_data();
+        write_legacy_archive(&archive, &data, &[
+            ("audio/nested/shared.wav", b"restored synthetic audio"),
+            ("models/legacy.bin", b"ignored synthetic model bytes"),
+        ]);
+        apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).unwrap();
+        for key in ["promptPresets", "appPromptRules", "manualCorrections", "feedbackQueue"] {
+            assert_eq!(storage.get(key, None), data[key]);
+        }
+        assert_eq!(storage.get("history", None), json!([rewrite_audio_path(&data["history"][0], &adir)]));
+        assert_eq!(storage.get("audioRetentionDays", None), json!(30));
+        assert_eq!(storage.get("stats", None), json!({ "totalChars": 42 }));
+        assert_eq!(storage.get("unrelatedSetting", None), json!(true));
+        assert_eq!(fs::read(adir.join("shared.wav")).unwrap(), b"restored synthetic audio");
+        assert_eq!(fs::read(adir.join("unrelated.wav")).unwrap(), b"keep synthetic audio");
+        assert_eq!(fs::read_dir(&adir).unwrap().count(), 2);
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_sql_failure_rolls_back_every_collection_and_audio_overwrite() {
+        let (storage, dir) = temp_storage("full-sql-failure");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        fs::write(adir.join("shared.wav"), b"old synthetic audio").unwrap();
+        storage.set("audioRetentionDays", &json!(7)).unwrap();
+        let keys = ["promptPresets", "appPromptRules", "history", "manualCorrections", "feedbackQueue"];
+        for key in keys {
+            storage.set(key, &json!([{ "id": "old", "name": "Old synthetic" }])).unwrap();
+        }
+        let archive = dir.join("legacy.zip");
+        let mut data = legacy_data();
+        data["feedbackQueue"] = json!([{ "id": "duplicate" }, { "id": "duplicate" }]);
+        write_legacy_archive(&archive, &data, &[
+            ("audio/shared.wav", b"replacement"), ("audio/new.wav", b"new synthetic audio"),
+        ]);
+        assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).unwrap_err()
+            .contains("Failed to restore backup data"));
+        for key in keys {
+            assert_eq!(storage.get(key, None), json!([{ "id": "old", "name": "Old synthetic" }]));
+        }
+        assert_eq!(storage.get("audioRetentionDays", None), json!(7));
+        assert_eq!(storage.get("stats", None), json!({ "totalDurationSec": 0, "totalChars": 0 }));
+        assert_eq!(fs::read(adir.join("shared.wav")).unwrap(), b"old synthetic audio");
+        assert_eq!(fs::read_dir(&adir).unwrap().count(), 1);
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_file_install_failure_restores_previously_overwritten_audio() {
+        let (storage, dir) = temp_storage("full-file-failure");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        fs::write(adir.join("shared.wav"), b"old synthetic audio").unwrap();
+        fs::create_dir(adir.join("blocked.wav")).unwrap();
+        fs::write(adir.join("blocked.wav/keep.txt"), b"keep synthetic file").unwrap();
+        let archive = dir.join("legacy.zip");
+        write_legacy_archive(&archive, &legacy_data(), &[
+            ("audio/shared.wav", b"replacement"), ("audio/blocked.wav", b"blocked replacement"),
+        ]);
+        assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).unwrap_err()
+            .contains("not a regular file"));
+        assert_eq!(fs::read(adir.join("shared.wav")).unwrap(), b"old synthetic audio");
+        assert_eq!(fs::read(adir.join("blocked.wav/keep.txt")).unwrap(), b"keep synthetic file");
+        assert_eq!(storage.get("history", None), json!([]));
+        assert_eq!(fs::read_dir(&adir).unwrap().count(), 2);
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_rejects_traversal_windows_special_names_and_unsafe_history_paths() {
+        let (storage, dir) = temp_storage("full-unsafe-paths");
+        let adir = dir.join("audio");
+        let archive = dir.join("legacy.zip");
+        for name in ["audio/../../escape.wav", "audio/..\\escape.wav", "/audio/escape.wav",
+            "audio/file.wav:stream", "audio/NUL.wav", "audio/COM1.wav", "audio/dot.wav.", "audio/space.wav "]
+        {
+            write_legacy_archive(&archive, &legacy_data(), &[(name, b"synthetic bytes")]);
+            assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).is_err(), "{}", name);
+            assert!(!adir.exists());
+        }
+        let mut data = legacy_data();
+        data["history"][0]["audioFilePath"] = json!("..");
+        write_legacy_archive(&archive, &data, &[]);
+        assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).is_err());
+        assert!(!adir.exists());
+        assert_eq!(storage.get("history", None), json!([]));
+        assert!(!dir.join("escape.wav").exists());
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_rejects_flattened_case_collisions_and_duplicate_manifests() {
+        let (storage, dir) = temp_storage("full-collisions");
+        let archive = dir.join("legacy.zip");
+        let adir = dir.join("audio");
+        for name in ["audio/nested/shared.wav", "audio/SHARED.wav", "backup.json"] {
+            write_legacy_archive(&archive, &legacy_data(), &[
+                ("audio/shared.wav", b"synthetic one"), (name, b"synthetic two"),
+            ]);
+            assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).is_err());
+            assert!(!adir.exists());
+        }
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_rejects_declared_size_limits_before_unpacking() {
+        let (storage, dir) = temp_storage("full-size-limits");
+        let archive = dir.join("legacy.zip");
+        let adir = dir.join("audio");
+        for (name, limit) in [("backup.json", MAX_LEGACY_JSON_BYTES), ("audio/shared.wav", MAX_LEGACY_AUDIO_BYTES)] {
+            write_legacy_archive(&archive, &legacy_data(), &[("audio/shared.wav", b"synthetic bytes")]);
+            patch_zip_metadata(&archive, name, 24, (limit + 1) as u32);
+            assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).unwrap_err().contains("limit"));
+            assert!(!adir.exists());
+        }
+        let names: Vec<_> = (0..17).map(|i| format!("audio/{}.wav", i)).collect();
+        let entries: Vec<_> = names.iter().map(|name| (name.as_str(), b"tiny".as_slice())).collect();
+        write_legacy_archive(&archive, &legacy_data(), &entries);
+        for name in names {
+            patch_zip_metadata(&archive, &name, 24, MAX_LEGACY_AUDIO_BYTES as u32);
+        }
+        assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).unwrap_err().contains("8 GiB"));
+        assert!(!adir.exists());
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_rejects_symbolic_links_and_bad_audio_crc_before_overwrite() {
+        let (storage, dir) = temp_storage("full-integrity");
+        let adir = dir.join("audio");
+        fs::create_dir(&adir).unwrap();
+        fs::write(adir.join("shared.wav"), b"old synthetic audio").unwrap();
+        let archive = dir.join("legacy.zip");
+        write_legacy_archive(&archive, &legacy_data(), &[("audio/shared.wav", b"replacement")]);
+        patch_zip_metadata(&archive, "audio/shared.wav", 38, 0o120777 << 16);
+        assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).unwrap_err()
+            .contains("symbolic link"));
+        for (offset, value) in [(16, 0), (24, 3)] {
+            write_legacy_archive(&archive, &legacy_data(), &[("audio/shared.wav", b"replacement")]);
+            patch_zip_metadata(&archive, "audio/shared.wav", offset, value);
+            assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).is_err());
+        }
+        assert_eq!(fs::read(adir.join("shared.wav")).unwrap(), b"old synthetic audio");
+        assert_eq!(fs::read_dir(&adir).unwrap().count(), 1);
+        assert_eq!(storage.get("history", None), json!([]));
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_zip_rejects_invalid_version_and_collection_before_audio_changes() {
+        let (storage, dir) = temp_storage("full-invalid-data");
+        let archive = dir.join("legacy.zip");
+        let adir = dir.join("audio");
+        for invalid in [json!({"kind": "full", "formatVersion": 2}),
+            json!({"kind": "config", "formatVersion": 1}),
+            json!({"kind": "full", "formatVersion": 1, "history": "invalid"})]
+        {
+            write_legacy_archive(&archive, &invalid, &[("audio/shared.wav", b"synthetic bytes")]);
+            assert!(apply_full_backup_into(&storage, archive.to_str().unwrap(), &adir).is_err());
+            assert!(!adir.exists());
+        }
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

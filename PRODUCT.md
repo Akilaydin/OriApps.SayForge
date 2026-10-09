@@ -46,6 +46,7 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 - If refinement is disabled or fails, preserve useful source text. Do not overwrite a selection unless the requested edit was actually applied.
 - Settings and transcription history are stored locally. New recordings are not archived; older audio files and history remain untouched.
 - Text history can be disabled. Settings exports exclude history and audio; older ZIP backups can still be restored after confirmation. Backups are local and initiated by the user.
+- Legacy restore replaces archived settings/collections and matching audio files, preserving unrelated audio. Limits: 64 MiB JSON, 512 MiB per audio file, 8 GiB each for the ZIP file and extracted audio total, and 100,000 ZIP entries. Invalid archives are rejected; ordinary restore failures roll back database and audio changes. Process termination or power loss during restore is not covered by that rollback.
 - The app uses `%LOCALAPPDATA%\com.oriapps.sayforge`. Protect user transcripts, credentials and editor context.
 
 ## Scope and limitations

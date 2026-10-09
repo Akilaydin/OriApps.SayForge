@@ -595,6 +595,18 @@ impl Storage {
         prompt_presets: Option<&[Value]>,
         app_prompt_rules: Option<&[Value]>,
     ) -> SqlResult<()> {
+        self.apply_backup_transaction(app_settings, exclude, &[
+            ("promptPresets", prompt_presets),
+            ("appPromptRules", app_prompt_rules),
+        ])
+    }
+
+    pub(crate) fn apply_backup_transaction(
+        &self,
+        app_settings: &serde_json::Map<String, Value>,
+        exclude: &[&str],
+        collections: &[(&str, Option<&[Value]>)],
+    ) -> SqlResult<()> {
         let mut db = self.db.lock().unwrap();
         let tx = db.transaction()?;
         let now = chrono::Utc::now().timestamp_millis();
@@ -611,11 +623,10 @@ impl Storage {
             )?;
         }
 
-        if let Some(items) = prompt_presets {
-            Self::replace_collection_on(&tx, "promptPresets", items)?;
-        }
-        if let Some(items) = app_prompt_rules {
-            Self::replace_collection_on(&tx, "appPromptRules", items)?;
+        for (key, items) in collections {
+            if let Some(items) = items {
+                Self::replace_collection_on(&tx, key, items)?;
+            }
         }
 
         tx.commit()

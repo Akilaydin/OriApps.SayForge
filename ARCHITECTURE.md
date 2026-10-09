@@ -133,6 +133,26 @@ and shortcut refresher; themes share one variable renderer. Unknown/legacy theme
 to light without rewriting their stored value; prototype-property names are rejected as
 theme IDs. New default is explicitly light, matching the previous unknown-ID fallback.
 
+## Legacy ZIP restore
+
+Keep format-version-1 `kind: full` archives with `backup.json` and optional `audio/`
+entries. Restore settings, presets, app rules, history, corrections and feedback; rewrite
+historical audio paths to the current audio directory. Missing collections and unrelated
+audio remain untouched; retired model entries are ignored. Settings-only JSON import
+continues to preserve existing history/audio. No full-ZIP export is reintroduced.
+
+Preflight rejects unsafe archive paths/symlinks, Windows special filenames, duplicate
+manifests and colliding flattened audio names. Bound JSON to 64 MiB, audio files to
+512 MiB, ZIP file and total extracted audio each to 8 GiB, and entry count to 100,000. Stream
+audio into unique staging directories and validate sizes/CRC before replacing files.
+Reuse existing collection SQL in one transaction; keep displaced audio for rollback
+on ordinary filesystem/SQLite errors. An incomplete rollback retains recovery files
+and reports their directory. SQLite and filesystem changes are not jointly crash-safe;
+there is no automatic recovery after forced process termination/power loss.
+
+The existing `zip` 0.6.6 dependency remains required by diagnostics creation/reading.
+Removal needs a separately agreed migration path for old archives.
+
 ## Open questions
 
 - Verified minimum Windows version.

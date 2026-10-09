@@ -205,6 +205,63 @@ Validation: 404 frontend/theme tests, TypeScript/i18n and `git diff --check` pas
 call chains reviewed without behavior changes. Live first-run/navigation/theming remains
 unverified. Physical tray/prewarm behavior is untouched.
 
+## 12. Legacy ZIP restore evaluation
+
+Keep the confirmed legacy ZIP import. Accepted format: `kind: full`, version 1,
+`backup.json`, optional audio entries. It restores archived settings, prompt presets,
+app rules, history (including legacy metadata), corrections, feedback and matching audio;
+rewrites audio basenames into the current directory. Omitted collections and unrelated
+audio remain. Retired model entries are ignored. Settings-only imports still exclude
+history/audio; their preservation test passes. No full-ZIP export was restored.
+
+Before this task, the native entry point/implementation occupied 60 lines / 2518 bytes,
+with a shared 14-line path-rewrite helper. UI uses one legacy-restore action in the existing
+file-picker/confirmation/import flow. Removing it would save this small source surface,
+but cannot remove a dependency: diagnostics still creates and reads ZIPs using `zip` 0.6.6
+with deflate (`byteorder`, `crc32fast`, `crossbeam-utils`, `flate2`). Exact binary reduction
+was not measured because no full application build was run; dependency reduction is zero.
+
+Options reviewed: retain the in-app path (smallest migration/support burden); move it into
+a one-time tool (requires a separate distribution/versioning/testing path while diagnostics
+still retains ZIP); remove it (strands historical history/audio because settings-only JSON
+cannot replace full restore). Keep it until a separately agreed supported migration path
+exists. There is no installed-user telemetry or real archive sample, so usage prevalence
+is unknown. Removal must explicitly cover history/audio and communicate the transition.
+
+Safety fixes within retained restore: reject traversal, symlinks, Windows special names,
+duplicate manifests and flattened/case-colliding audio names; validate JSON shapes before
+writes. Limits are 64 MiB JSON, 512 MiB per audio file, 8 GiB each for ZIP file/extracted
+audio total and 100,000 entries. Audio streams to staging with declared/actual-size and CRC checks; its entire
+contents are no longer buffered into a Vec. These caps intentionally reject oversized
+archives without modifying user data; originals remain available for an agreed migration.
+Settings and all five collections reuse existing SQL within one transaction. Displaced
+audio is retained until database success and restored on ordinary installation/SQL errors.
+If rollback itself fails, recovery files are retained and their directory is reported.
+
+Validation: 125 Rust tests passed, two benchmarks intentionally ignored in the normal
+suite. Eight new synthetic ZIP tests cover all legacy collections/metadata, nested audio,
+unrelated-file preservation, SQL uniqueness failure after prior collection writes,
+filesystem failure after a prior overwrite, unsafe names/history paths, symlinks, case/path
+collisions, duplicate manifests, oversized metadata, bad CRC/actual-size mismatch, invalid
+versions and malformed collections. Tests use isolated temporary SQLite/audio directories.
+Existing settings-only history-preservation tests pass. `git diff --check` passed.
+No real backup was imported and no user database/audio/model was modified.
+Rollback is not atomic across process crashes/power loss; forced termination and recovery
+failure remain unverified. New limits do not claim compatibility with arbitrarily large ZIPs.
+
+## Completion and validation
+
+All 12 tasks processed sequentially on their own `codex/` branches, with self-review,
+relevant checks and merge/push to main before marking Obsidian tasks done. Tasks 10–12
+retain Base64 IPC, Home/Claude and legacy ZIP support where removal was not
+justified; their measurements and decisions are recorded above.
+
+Latest applicable checks: 404 frontend tests in 40 files, 125 Rust tests with two ignored
+benchmarks, TypeScript, strict i18n and `git diff --check` passed. Rust audio-encoding and
+isolated Windows IPC benchmarks were also run explicitly during their respective tasks.
+Frontend was last checked after task 11; task 12 changes only native restore and docs.
+No full app/release build, new provider, streaming transport or installer change was made.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.
