@@ -1,147 +1,73 @@
 # Architecture
 
-`ARCHITECTURE.md` describes the current technical system. User-facing behavior and product scope belong in `PRODUCT.md`.
+Technical reference for the current SayForge implementation. Product behavior belongs in `PRODUCT.md`.
 
-## Fixed decisions
+## System
 
-### Runtime and deployment
+- One Windows desktop application: **Tauri 2 + Rust + React + TypeScript + Vite**.
+- React manages the UI, microphone capture, recording lifecycle and text processing.
+- Rust handles Win32 integration, persistence, local inference and cloud HTTP/WebSocket calls.
+- Speech modes: `cloud_api` (user-configured remote ASR) and `local` (downloaded on-device GGUF model).
+- Optional AI refinement is independent of the speech engine.
+- SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
+- Updates are manual; the Tauri updater is disabled pending a signed release channel.
 
-- Windows desktop application based on **Tauri 2**, **Rust**, **React 18**, **TypeScript** and **Vite**.
-- The React application and native functionality ship together as one desktop application. No separately deployed ASR or application server is required.
-- Rust/Tauri owns OS-level integration, commands, persistence, HTTP/WebSocket provider adapters and local inference.
-- React/TypeScript owns the UI, microphone capture pipeline, transcription orchestration, text processing and application settings flows.
-- The app uses a single-instance Tauri plugin, a main window, a recording overlay and tray integration.
-
-### Processing modes
-
-- `cloud_api`: audio is sent directly from the desktop application to a user-configured ASR service.
-- `local`: speech recognition runs on the user's machine with a downloaded GGUF model.
-- Both modes can use optional, separately configured AI text refinement.
-- Legacy `workMode=server` and unknown saved values normalize to `cloud_api`. There is no runtime Server Mode.
-
-### Storage and identity
-
-- SQLite via `rusqlite` is the persistent store, with migrations and WAL enabled.
-- App ID: `com.oriapps.sayforge`; database: `%LOCALAPPDATA%\com.oriapps.sayforge\sayforge.db`.
-- Recorded audio and application logs are stored in app-specific filesystem directories.
-- Data from other application identities is never automatically imported or deleted.
-
-### Release channel
-
-- The Tauri updater plugin is disabled. Automatic check/download/install orchestration is not started by the app.
-- Installation and updates remain manual until SayForge has a verified signed release and update channel.
-
-## Runtime flow
+## Dictation flow
 
 ```text
-Windows hotkey / tray / UI
-        |
-        v
-Rust keyboard hook + active-window context probe
-        | Tauri events / commands
-        v
-RecorderOrchestrator (recording lifecycle and run ID)
-        |
-        v
-Web Audio microphone capture -> 16 kHz mono PCM
-        |
-        +--> CloudAPIProvider -> Rust cloud ASR adapters -> remote API
-        |
-        +--> LocalProvider -> Rust local_transcribe -> GGUF inference
-        |
-        v
-Optional AI refinement -> text transforms / replacements
-        |
-        +--> SQLite history + optional WAV audio archive
-        |
-        v
-Captured Windows edit target -> native paste / insertion
-        |
-        +--> failure or unconfirmed insertion: copyable overlay card
+Global hotkey / UI
+    -> Rust keyboard and active-window context hooks
+    -> RecorderOrchestrator
+    -> microphone capture (16 kHz mono PCM)
+       -> CloudAPIProvider -> Rust ASR adapter -> configured API
+       OR LocalProvider -> Rust GGUF inference
+    -> optional AI refinement and text transforms
+    -> history / optional audio archive
+    -> captured Windows text target
+       -> native insertion, or copyable fallback card
 ```
 
-### Recording lifecycle
+## Component ownership
 
-- `client/src/services/recorder/RecorderOrchestrator.ts` owns state transitions, PTT and hands-free events, capture, timeouts, result handling, history and insertion decisions.
-- `client/src/services/audio.ts` uses `getUserMedia`, Web Audio and an AudioWorklet, with a ScriptProcessor fallback. It resamples audio to 16 kHz mono PCM for ASR.
-- `client/src/services/recorder/OverlayService.ts` manages recording, processing, warnings and recovery cards.
-- Each recording has a run ID. Canceled or superseded runs must not publish late transcripts or write text into the editor.
-- An empty or failed recognition result must not be treated as a successful insertion. Failure and recovery paths are first-class behavior.
+Paths below are relative to `client/`.
 
-### ASR provider abstraction
+### React / TypeScript (`src/`)
 
-- `client/src/services/transcription/types.ts` defines the `TranscriptionProvider` interface and two `WorkMode` values.
-- `client/src/services/transcription/index.ts` selects providers and migrates retired stored mode values.
-- `CloudAPIProvider.ts` buffers PCM for file-style requests or forwards chunks for supported realtime sessions; streaming partials reach the UI through Tauri events.
-- `LocalProvider.ts` extends `BufferedProvider.ts`, verifies that the selected model was downloaded, and invokes Rust local inference.
-- `client/src-tauri/src/providers/registry.rs` dispatches cloud transcription and text refinement to Rust provider modules. The supported cloud catalog includes OpenAI, Groq, Gemini, OpenRouter and custom OpenAI-compatible endpoints.
-- Custom OpenAI-compatible ASR supports transcriptions and chat-audio protocol variants; the standard `input_audio` path supports WAV and optional MP3 encoding. Not every provider supports streaming or the same hotword semantics.
-- Connection tests, runtime dispatch and advertised provider capabilities must remain consistent when adding or changing a protocol.
+- `services/recorder/RecorderOrchestrator.ts` — state, PTT/hands-free events, session IDs, cancellation, timeouts and final results.
+- `services/audio.ts` — `getUserMedia`, AudioWorklet with fallback, resampling and PCM frames.
+- `services/transcription/` — provider interface, mode selection, buffered/realtime cloud delivery, local provider and AI execution policy.
+- `services/personalization/` and `services/contextAware.ts` — presets, application-aware prompts and bounded editor context.
+- `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
+- `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
+- `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
 
-### Local models
+### Rust (`src-tauri/src/`)
 
-- `client/src-tauri/src/models/catalog.rs` lists NVIDIA Parakeet Unified EN and Nemotron 3.5 ASR GGUF models.
-- `models/registry.rs` and `models/downloader.rs` manage model availability, downloads, integrity checks and model directories.
-- `models/local_asr.rs` and `models/gguf_asr.rs` provide local recognition through `transcribe-cpp` with a Vulkan-enabled build.
-- Model download/install is separate from the app binary. A configured local provider is not ready until the required model is present.
+- `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
+- `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
+- `providers/` — cloud ASR, realtime transport, optional AI cleanup and capability reporting.
+- `models/` — local GGUF model catalog, downloads, integrity checks and inference via `transcribe-cpp`/Vulkan.
+- `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
+- `commands/backup.rs` and `commands/webdav.rs` — local exports/imports and optional WebDAV backup/restore.
 
-### Text refinement and application context
+## Storage
 
-- `client/src/services/transcription/aiPolicy.ts` determines whether AI refinement is eligible for a run; `clientAiPolish.ts` invokes Rust `cloud_polish` and falls back when configuration is missing or the call fails.
-- `client/src/services/personalization/promptRouter.ts` selects presets and per-application prompt rules using detected application context.
-- `client/src/services/contextAware.ts` bounds editor context, treats captured text as untrusted data and protects selections when the edit was not explicitly applied.
-- `client/src/services/textPostProcess.ts`, `textReplacement.ts` and related services apply configured output transformations.
-- Local speech recognition plus enabled cloud AI refinement is **not** an entirely offline workflow.
+- SQLite: `%LOCALAPPDATA%\com.oriapps.sayforge\sayforge.db`, using WAL and versioned migrations.
+- `app_settings` holds JSON settings; `history_records` stores transcription records. Prompt presets, app rules, corrections and feedback use dedicated tables.
+- Audio files and logs reside in app-specific directories; cleanup follows retention settings.
+- A settings-only export excludes history and audio. Full backups and optional WebDAV backups are separate operations.
 
-### Windows context and insertion
+## Invariants
 
-- `client/src-tauri/src/keyboard/` handles native keyboard hooks; `commands/shortcuts.rs` handles shortcut registration and related controls.
-- `client/src-tauri/src/context/` monitors the foreground Windows application. `commands/paste.rs` probes the target and performs native text insertion.
-- `client/src/services/recorder/PasteService.ts` passes the captured target details to Rust so focus changes after key release do not silently redirect text.
-- An uneditable target, failed paste or unconfirmed insertion uses a copyable fallback card rather than discarding the transcript or blindly retrying into another field.
-- The main and overlay windows share a WebView2 user-data directory. Browser flags must be configured globally, not separately per window.
+- Run IDs and cancellation must prevent late results from updating another recording or editor field.
+- Probe and preserve the original edit target; provide fallback text when native insertion fails or is unconfirmed.
+- Treat editor context as bounded, untrusted data. Do not replace selected text unless an AI edit was applied.
+- Keep ASR UI capabilities, protocol selection and Rust provider dispatch consistent.
+- Local ASR can work on-device, but enabled cloud AI refinement may transmit text/context.
+- Preserve settings, SQLite schema migrations and the application data path.
+- Main and overlay WebView2 windows must use consistent environment-level browser flags.
 
-### Persistence, exports and backups
+## Open questions
 
-- `client/src-tauri/src/storage/mod.rs` applies SQL migrations and exposes settings, history and collection operations through `commands/storage.rs`.
-- `app_settings` stores JSON settings. `history_records` stores searchable metadata and JSON records; `manual_corrections`, `feedback_queue`, `prompt_presets` and `app_prompt_rules` have separate tables.
-- Audio files are stored separately and referenced from history records by path. Audio/log retention cleanup runs on startup according to saved retention settings.
-- `client/src/services/store.ts` and `services/bridge.ts` form the frontend's persistence/command boundary.
-- `commands/backup.rs` handles local settings/full export and import. `commands/webdav.rs` supports user-configured WebDAV backup/restore; `features/backup/autoWebdavBackup.ts` schedules that opt-in behavior.
-- Config-only export does not include audio/history. Local full export/import and restoration require explicit user action; scheduled WebDAV backups require the user's opt-in.
-
-## Repository layout
-
-```text
-.
-├── client/
-│   ├── src/                    # React UI, state, audio, recording and ASR orchestration
-│   │   ├── features/           # Settings, backup, updates, debug UI
-│   │   ├── services/           # Audio, transcription, insertion, history and prompts
-│   │   ├── overlay/            # Floating recording UI
-│   │   └── i18n/locales/en.json
-│   ├── src-tauri/
-│   │   ├── src/                # Rust commands, Win32, inference, provider clients, SQLite
-│   │   ├── icons/              # Installer and app icons
-│   │   └── tauri.conf.json
-│   └── package.json
-├── docs/                       # README images and other project assets
-├── ARCHITECTURE.md
-├── PRODUCT.md
-└── AGENTS.md
-```
-
-## Architecture invariants
-
-- Keep the desktop runtime independent of any separately operated backend.
-- Preserve compatibility with existing persisted settings, ASR profiles, prompt rules and history.
-- Keep network requests explicitly tied to selected ASR/AI providers, model downloads or user-enabled backup actions.
-- Never silently inject stale, empty or unconfirmed text into an unrelated Windows target.
-- Preserve app-specific data isolation and the existing SQLite migration path.
-- Do not activate unsigned automatic updates or silently migrate user data from another app.
-
-## Open questions and known constraints
-
-- Exact minimum supported Windows version and the verified hardware/driver matrix for Vulkan local inference are not documented.
-- The production release-signing and SayForge update-channel design are pending.
-- Some legacy compatibility helpers remain in the code; their removal must preserve stored-data and workflow compatibility.
+- Verified minimum Windows version and hardware/driver requirements for local inference.
+- Release signing and update-channel design.
