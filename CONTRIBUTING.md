@@ -23,3 +23,9 @@ identify your own changes. Do not add new third-party dependencies without
 checking their licenses and binary-distribution requirements.
 
 The maintainers review contributions and manage issues in this repository.
+
+## Releases
+
+Merge development into `main`, then promote a reviewed version to `release`.
+GitHub Actions tests, builds and publishes the public Windows release automatically.
+Version, branch, signing and recovery instructions: [Releasing SayForge](docs/releasing.md).
