@@ -55,3 +55,10 @@ cargo test --manifest-path client/src-tauri/Cargo.toml
 ```
 
 Run the checks relevant to the change, plus `git diff --check`. Manually verify Windows-specific shortcut, audio, insertion, model and installer behavior when affected. Documentation-only edits do not require a build.
+
+## Contribution workflow
+
+- Follow CONTRIBUTING.md for every change. Open a PR from a separate branch; never push directly to the default branch.
+- After opening the PR, wait for feedback from configured automated AI reviewers (currently Codex).
+- Critically assess each finding. Fix valid issues, and explain rejected findings explicitly in the PR discussion.
+- Check new reviews triggered by updates. Do not merge with unaddressed substantive findings.
