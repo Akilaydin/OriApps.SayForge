@@ -15,28 +15,28 @@ const downOff = { type: 'mousedown', onBackdrop: false } as const
 const clickOn = { type: 'click', onBackdrop: true } as const
 const clickOff = { type: 'click', onBackdrop: false } as const
 
-describe('点背板关闭弹窗的判据', () => {
-  it('在背板空白处点一下 → 关闭', () => {
+describe('backdrop dismissal', () => {
+  it('closes on a backdrop click', () => {
     expect(play([downOn, clickOn])).toEqual([false, true])
   })
 
-  it('面板内按下、拖到面板外松开 → 不关（草稿不能就这么丢了）', () => {
+  it('preserves drafts when a drag starts in the panel', () => {
     expect(play([downOff, clickOn])).toEqual([false, false])
   })
 
-  it('整个交互都在面板内 → 不关', () => {
+  it('does not close for panel interactions', () => {
     expect(play([downOff, clickOff])).toEqual([false, false])
   })
 
-  it('背板按下但没等到 click，之后面板内的 click 不能关', () => {
+  it('does not reuse a backdrop press for a panel click', () => {
     expect(play([downOn, clickOff, clickOff])).toEqual([false, false, false])
   })
 
-  it('关过一次之后要重新按下才能再关', () => {
+  it('requires another press after dismissal', () => {
     expect(play([downOn, clickOn, clickOn])).toEqual([false, true, false])
   })
 
-  it('mousedown 自己永远不关闭 —— 要等松开，否则拖选背景文字也会关', () => {
+  it('waits for click instead of dismissing on mousedown', () => {
     expect(play([downOn, downOn])).toEqual([false, false])
   })
 })

@@ -14,8 +14,8 @@ import {
   pttShortcutToAccelerator,
 } from '../shortcutKeys'
 
-describe('PTT 物理组合键', () => {
-  it('保留左右位置并按固定顺序规范化', () => {
+describe('physical PTT shortcuts', () => {
+  it('preserves left/right keys and canonical order', () => {
     const value = canonicalizePTTShortcut('ShiftRight+KeyK+MetaLeft+ControlLeft')
     expect(value).toBe('ControlLeft+MetaLeft+ShiftRight+KeyK')
     expect(parsePTTShortcut(value)).toEqual([
@@ -27,7 +27,7 @@ describe('PTT 物理组合键', () => {
     expect(displayPTTShortcut('ControlLeft+MetaLeft')).toEqual(['Left Ctrl', 'Left Win'])
   })
 
-  it('兼容旧单键，并接受普通组合与纯修饰组合', () => {
+  it('accepts legacy single keys and modifier combinations', () => {
     expect(isValidPTTShortcut('AltRight')).toBe(true)
     expect(isValidPTTShortcut('CapsLock')).toBe(true)
     expect(isValidPTTShortcut('MButton')).toBe(true)
@@ -39,11 +39,11 @@ describe('PTT 物理组合键', () => {
   })
 
   //
-  it('F1–F24 全部可用，vk 连续且可单独作为按住说话键', () => {
+  it('supports F1 through F24 with consecutive virtual keys', () => {
     for (let n = 1; n <= 24; n += 1) {
       const code = `F${n}`
-      expect(PTT_CODE_TO_VK[code], `${code} 应当在按键表里`).toBe(0x70 + n - 1)
-      expect(isValidPTTShortcut(code), `${code} 应当可以单独当按住说话键`).toBe(true)
+      expect(PTT_CODE_TO_VK[code], `${code} must exist in the key table`).toBe(0x70 + n - 1)
+      expect(isValidPTTShortcut(code), `${code} must be usable as a single PTT key`).toBe(true)
     }
     expect(displayPTTShortcut('F13')).toEqual(['F13'])
     expect(displayPTTShortcut('F24')).toEqual(['F24'])
@@ -52,7 +52,7 @@ describe('PTT 物理组合键', () => {
     expect(getPTTShortcutValidationError('AltLeft+F4')).not.toBeNull()
   })
 
-  it('拒绝单独 Win、裸字母、多主键和危险系统组合', () => {
+  it('rejects bare Win, letters and dangerous combinations', () => {
     expect(getPTTShortcutValidationError('MetaLeft')).not.toBeNull()
     expect(getPTTShortcutValidationError('KeyK')).not.toBeNull()
     expect(getPTTShortcutValidationError('ControlLeft+KeyK+KeyL')).not.toBeNull()
@@ -64,7 +64,7 @@ describe('PTT 物理组合键', () => {
     expect(isValidPTTShortcut('ControlLeft+MetaLeft')).toBe(true)
   })
 
-  it('按住说话一律拒绝 Shift，单键和组合成员都算', () => {
+  it('rejects Shift in every PTT shortcut', () => {
     expect(isValidPTTShortcut('ShiftRight')).toBe(false)
     expect(isValidPTTShortcut('ShiftLeft')).toBe(false)
     expect(isValidPTTShortcut('ControlLeft+ShiftRight')).toBe(false)
@@ -74,17 +74,17 @@ describe('PTT 物理组合键', () => {
     expect(isValidPTTShortcut('ControlLeft+KeyK')).toBe(true)
   })
 
-  it('已保存的 Shift 旧配置给出改绑提示', () => {
+  it('suggests rebinding legacy Shift shortcuts', () => {
     expect(getPTTShortcutWarning('ShiftRight')).toContain('Shift')
     expect(getPTTShortcutWarning('ControlLeft+ShiftLeft')).toContain('Shift')
     expect(getPTTShortcutWarning('AltRight')).toBeNull()
   })
 
-  it('按一下的快捷键不受 Shift 限制', () => {
+  it('allows Shift for toggle shortcuts', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+Shift+K')).toBeNull()
   })
 
-  it('通用组合键同样拒绝 Windows 保留快捷键', () => {
+  it('rejects reserved Windows combinations', () => {
     expect(getAcceleratorShortcutValidationError('Control+Alt+Delete')).not.toBeNull()
     expect(getAcceleratorShortcutValidationError('Alt+Tab')).not.toBeNull()
     expect(getAcceleratorShortcutValidationError('Alt+Space')).not.toBeNull()
@@ -93,7 +93,7 @@ describe('PTT 物理组合键', () => {
     expect(getAcceleratorShortcutValidationError('CommandOrControl+K')).toBeNull()
   })
 
-  it('可与免提 accelerator 做语义冲突比较', () => {
+  it('detects conflicts with hands-free accelerators', () => {
     expect(pttShortcutToAccelerator('ControlLeft+KeyK')).toBe('CommandOrControl+K')
     expect(
       pttShortcutConflictsWithAccelerator('ControlLeft+KeyK', 'CommandOrControl+K'),
@@ -107,7 +107,7 @@ describe('PTT 物理组合键', () => {
     ).toBe(false)
   })
 })
-describe('按键事件 → 候选快捷键', () => {
+describe('keyboard events to shortcut candidates', () => {
   function keyEvent(init: {
     code: string
     key: string
@@ -126,21 +126,21 @@ describe('按键事件 → 候选快捷键', () => {
     } as KeyboardEvent
   }
 
-  it('Ctrl+D 录成组合键，中途单按 Ctrl 只是尚未成型', () => {
+  it('captures Ctrl+D after the intermediate Ctrl press', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'ControlLeft', key: 'Control', ctrl: true })))
       .toBe('ControlLeft')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyD', key: 'd', ctrl: true })))
       .toBe('CommandOrControl+D')
   })
 
-  it('修饰键单键仍然可用（免提默认就是右 Alt）', () => {
+  it('supports modifier-only shortcuts', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'AltRight', key: 'Alt', alt: true })))
       .toBe('AltRight')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'ControlRight', key: 'Control', ctrl: true })))
       .toBe('ControlRight')
   })
 
-  it('同时属于单键白名单的键，带修饰时优先当组合键', () => {
+  it('prefers combinations when modifiers accompany a single-key candidate', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Space', key: ' ' }))).toBe('Space')
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'Space', key: ' ', ctrl: true })))
       .toBe('CommandOrControl+Space')
@@ -149,7 +149,7 @@ describe('按键事件 → 候选快捷键', () => {
       .toBe('CommandOrControl+F1')
   })
 
-  it('裸字母不成型；comboOnly 下单键一律不成型', () => {
+  it('rejects bare letters and single keys in comboOnly mode', () => {
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'KeyD', key: 'd' }))).toBeNull()
     expect(keyEventToShortcutCandidate(keyEvent({ code: 'AltRight', key: 'Alt', alt: true }), { comboOnly: true }))
       .toBeNull()

@@ -11,24 +11,24 @@ import { ASR_PROVIDERS, asrModelsOf } from '@/features/settings/asrProviderCatal
 
 
 describe('foldHotwordDelivery', () => {
-  it('三种会进请求的传递方式都折成「已发送」', () => {
+  it('folds all supported delivery forms into sent', () => {
     for (const delivery of ['vocabulary', 'context', 'instruction'] as HotwordDelivery[]) {
       expect(foldHotwordDelivery(delivery)).toBe('sent')
     }
   })
 
-  it('协议没位置和我们没接，对用户都是「不发送」', () => {
+  it('folds unavailable delivery into not sent', () => {
     expect(foldHotwordDelivery('protocol_has_no_slot')).toBe('not_sent')
     expect(foldHotwordDelivery('not_wired_up')).toBe('not_sent')
   })
 
-  it('声明缺失绝不能显示成「确定不发送」', () => {
+  it('missing declarations remain undecided', () => {
     expect(foldHotwordDelivery('unknown_provider')).toBe('undecided')
     expect(foldHotwordDelivery('unknown_provider')).not.toBe('not_sent')
     expect(foldHotwordDelivery('unknown_provider')).not.toBe('sent')
   })
 
-  it('auto 协议在探测出来之前也是「未确定」，不能猜', () => {
+  it('automatic protocol remains undecided before detection', () => {
     expect(foldHotwordDelivery('undecided_protocol')).toBe('undecided')
   })
 })
@@ -37,13 +37,13 @@ function parseAllAsrProviders(rustSource: string): string[] {
   const block = /ALL_ASR_PROVIDERS:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/.exec(rustSource)
   if (!block) {
     throw new Error(
-      '在 capabilities.rs 里找不到 ALL_ASR_PROVIDERS 的定义 —— 常量被改名或换了写法，'
-      + '这条跨语言断言已经失效，必须同步改这里的解析',
+      'ALL_ASR_PROVIDERS is missing from capabilities.rs; its declaration may have changed. '
+      + 'Update the cross-language source parser before relying on this assertion.',
     )
   }
   const keys = [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
   if (keys.length === 0) {
-    throw new Error('ALL_ASR_PROVIDERS 解析出 0 个 key，解析逻辑已失效')
+    throw new Error('ALL_ASR_PROVIDERS parsed zero keys; the source parser is stale')
   }
   return keys
 }
@@ -60,30 +60,30 @@ pub const ALL_ASR_PROVIDERS: &[&str] = &[
 ];
 `
 
-describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词行为', () => {
+describe('catalog runtime providers have native capability declarations', () => {
   const DECLARED_IN_RUST = declaredProvidersInRust()
 
-  it('读到的声明清单是真实的、非空的', () => {
+  it('reads a real nonempty declaration list', () => {
     expect(DECLARED_IN_RUST.size).toBe(4)
     expect(DECLARED_IN_RUST.has('openai_chat_audio')).toBe(true)
   })
 
-  it('解析器认得 Rust 的清单写法', () => {
+  it('parses the Rust declaration syntax', () => {
     expect(parseAllAsrProviders(FAKE_DECLARATION)).toEqual(['alpha', 'beta', 'gamma'])
   })
 
-  it('Rust 清单少一个 key，这边就少一个', () => {
+  it('detects a removed declaration', () => {
     const shrunk = FAKE_DECLARATION.replace('    "beta",\n', '')
     expect(shrunk).not.toBe(FAKE_DECLARATION)
     expect(parseAllAsrProviders(shrunk)).toEqual(['alpha', 'gamma'])
   })
 
-  it('解析不到时抛错而不是返回空集', () => {
+  it('throws for missing or empty declarations', () => {
     expect(() => parseAllAsrProviders('pub const SOMETHING_ELSE: &[&str] = &["x"];')).toThrow()
     expect(() => parseAllAsrProviders('pub const ALL_ASR_PROVIDERS: &[&str] = &[];')).toThrow()
   })
 
-  it('遍历的是模型上的 provider，不是卡片 id', () => {
+  it('checks model providers rather than card IDs', () => {
     const cardIds = new Set(ASR_PROVIDERS.map((entry) => entry.id))
     const modelProviders = new Set(
       ASR_PROVIDERS.flatMap((entry) => asrModelsOf(entry).map((model) => model.provider)),
@@ -93,12 +93,12 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
     expect(cardIds.has('openai_transcribe')).toBe(false)
   })
 
-  it('每个模型的 provider 都有声明', () => {
+  it('every model provider is declared', () => {
     for (const entry of ASR_PROVIDERS) {
       for (const model of asrModelsOf(entry)) {
         expect(
           DECLARED_IN_RUST.has(model.provider),
-          `${entry.id} / ${model.id} 的 provider "${model.provider}" 在 Rust 的热词声明清单里找不到`,
+          `${entry.id} / ${model.id} provider "${model.provider}" has no Rust hotword declaration`,
         ).toBe(true)
       }
     }
@@ -106,16 +106,16 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
 })
 
 describe('hotwordUndecidedReason', () => {
-  it('auto 协议未探测是唯一能靠"再用一次"解决的那种', () => {
+  it('only protocol detection can resolve uncertainty by retrying', () => {
     expect(hotwordUndecidedReason('undecided_protocol')).toBe('protocol')
   })
 
-  it('声明缺失要单独指认，不能说成"等下次识别"', () => {
+  it('distinguishes missing declarations from pending detection', () => {
     expect(hotwordUndecidedReason('unknown_provider')).toBe('declaration_missing')
     expect(hotwordUndecidedReason('unknown_provider')).not.toBe('protocol')
   })
 
-  it('确定的那些档位没有未确定原因', () => {
+  it('known capabilities have no undecided reason', () => {
     for (const delivery of [
       'vocabulary', 'context', 'instruction', 'not_wired_up', 'protocol_has_no_slot',
     ] as HotwordDelivery[]) {
@@ -123,7 +123,7 @@ describe('hotwordUndecidedReason', () => {
     }
   })
 
-  it('凡是折成「未确定」的档位都能给出原因', () => {
+  it('all undecided capabilities have a reason', () => {
     const all: HotwordDelivery[] = [
       'vocabulary', 'context', 'instruction',
       'protocol_has_no_slot', 'not_wired_up',

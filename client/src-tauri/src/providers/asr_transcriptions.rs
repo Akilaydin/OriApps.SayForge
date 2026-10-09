@@ -249,7 +249,7 @@ pub async fn transcribe(
                 "retry_without_prompt",
                 &format!(
                     "The endpoint rejected the prompt field; retrying without it \
-                     (Chinese punctuation may be missing). {}",
+                     (punctuation quality may vary). {}",
                     "prompt field unsupported"
                 ),
             );

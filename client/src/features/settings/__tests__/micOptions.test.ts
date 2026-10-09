@@ -18,8 +18,8 @@ const snapshot: MicEndpoint[] = [
   { deviceId: 'real-headset', groupId: 'plt-group', label: RAW },
 ]
 
-describe('麦克风下拉的选项', () => {
-  it('保留括号里的型号，只剥掉结尾的 USB 标识', () => {
+describe('microphone options', () => {
+  it('preserves the model and removes only the USB suffix', () => {
     const options = buildMicOptions(snapshot, '', labels)
 
     expect(options.map((option) => option.value)).toEqual(['', 'real-headset'])
@@ -27,7 +27,7 @@ describe('麦克风下拉的选项', () => {
     expect(options[1].label).not.toContain('047f')
   })
 
-  it('「系统默认」写明它当前指向哪个设备', () => {
+  it('labels the endpoint behind system default', () => {
     const options = buildMicOptions(snapshot, '', labels)
     expect(options[0]).toEqual({
       value: '',
@@ -36,13 +36,13 @@ describe('麦克风下拉的选项', () => {
     })
   })
 
-  it('伪设备不单独成项', () => {
+  it('hides pseudo devices as separate options', () => {
     const options = buildMicOptions(snapshot, '', labels)
     expect(options.some((option) => option.value === 'default')).toBe(false)
     expect(options.some((option) => option.value === 'communications')).toBe(false)
   })
 
-  it('伪设备的 groupId 为空时靠后缀匹配解析出系统默认指向谁', () => {
+  it('matches default by label suffix when groupId is empty', () => {
     const noGroup: MicEndpoint[] = [
       { deviceId: 'default', groupId: '', label: `默认值 - ${RAW}` },
       { deviceId: 'real-headset', groupId: 'plt-group', label: RAW },
@@ -50,7 +50,7 @@ describe('麦克风下拉的选项', () => {
     expect(buildMicOptions(noGroup, '', labels)[0].label).toBe(`系统默认（${SHOWN}）`)
   })
 
-  it('解析不出系统默认指向谁时，退回朴素的「系统默认」而不是显示空括号', () => {
+  it('uses a plain default label for an unresolved endpoint', () => {
     const orphan: MicEndpoint[] = [
       { deviceId: 'default', groupId: 'gone', label: '默认值 - 某个已消失的设备' },
     ]
@@ -58,12 +58,12 @@ describe('麦克风下拉的选项', () => {
     expect(buildMicOptions([], '', labels)[0].label).toBe('系统默认')
   })
 
-  it('每一项都带完整名字的 title，截断之后还能悬停看到', () => {
+  it('retains full labels in option titles', () => {
     const options = buildMicOptions(snapshot, '', labels)
     expect(options.every((option) => option.title === option.label)).toBe(true)
   })
 
-  it('读不到名字时给一个带 id 前缀的兜底标签，不渲染空白项', () => {
+  it('uses an ID prefix when device labels are missing', () => {
     const unnamed: MicEndpoint[] = [
       { deviceId: 'abcdef1234567890', groupId: 'g', label: '' },
     ]
@@ -76,19 +76,19 @@ describe('麦克风下拉的选项', () => {
     })
   })
 
-  it('选中的设备不在列表里时补一条占位项', () => {
+  it('adds a placeholder for an unavailable selection', () => {
     const options = buildMicOptions(snapshot, 'gone-device', labels)
 
     expect(options.map((option) => option.value)).toEqual(['', 'real-headset', 'gone-device'])
     expect(options[2].label).toBe('上次选的麦克风当前不可用')
   })
 
-  it('选中系统默认或列表里的设备时都不补占位项', () => {
+  it('does not add a placeholder for valid selections', () => {
     expect(buildMicOptions(snapshot, '', labels)).toHaveLength(2)
     expect(buildMicOptions(snapshot, 'real-headset', labels)).toHaveLength(2)
   })
 
-  it('设备列表还没加载出来时，系统默认仍然是可选中的', () => {
+  it('keeps system default selectable before devices load', () => {
     expect(buildMicOptions([], '', labels)).toEqual([
       { value: '', label: '系统默认', title: '系统默认' },
     ])

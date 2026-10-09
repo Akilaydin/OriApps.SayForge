@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { isSensitiveKey, maskValue, sanitizeObject } from '../sanitize'
 
 describe('isSensitiveKey', () => {
-  it('识别常见敏感 key', () => {
+  it('recognizes sensitive keys', () => {
     expect(isSensitiveKey('apiKey')).toBe(true)
     expect(isSensitiveKey('api_key')).toBe(true)
     expect(isSensitiveKey('cloudAsr.apiKey')).toBe(true)
@@ -14,7 +14,7 @@ describe('isSensitiveKey', () => {
     expect(isSensitiveKey('appId')).toBe(true)
   })
 
-  it('不误判普通 key', () => {
+  it('does not redact ordinary keys', () => {
     expect(isSensitiveKey('theme')).toBe(false)
     expect(isSensitiveKey('language')).toBe(false)
     expect(isSensitiveKey('selectedMic')).toBe(false)
@@ -24,16 +24,16 @@ describe('isSensitiveKey', () => {
 })
 
 describe('maskValue', () => {
-  it('长字符串保留首尾', () => {
+  it('retains ends of long secrets', () => {
     expect(maskValue('sk-1234567890abcdef')).toBe('sk-***ef')
   })
 
-  it('短字符串完全遮盖', () => {
+  it('fully masks short secrets', () => {
     expect(maskValue('abc')).toBe('***')
     expect(maskValue('12345678')).toBe('***')
   })
 
-  it('空值返回 ***', () => {
+  it('masks empty values', () => {
     expect(maskValue('')).toBe('***')
     expect(maskValue(null)).toBe('***')
     expect(maskValue(undefined)).toBe('***')
@@ -41,7 +41,7 @@ describe('maskValue', () => {
 })
 
 describe('sanitizeObject', () => {
-  it('脱敏嵌套对象中的敏感字段', () => {
+  it('redacts nested sensitive fields', () => {
     const input = {
       theme: 'dark',
       cloudAsr: {
@@ -65,26 +65,26 @@ describe('sanitizeObject', () => {
     expect(result.cloudAi.apiKey).toBe('key***mn')
   })
 
-  it('不修改原对象', () => {
+  it('preserves the original object', () => {
     const input = { apiKey: 'sk-1234567890' }
     const result = sanitizeObject(input)
     expect(input.apiKey).toBe('sk-1234567890')
     expect(result.apiKey).toBe('sk-***90')
   })
 
-  it('处理数组', () => {
+  it('handles arrays', () => {
     const input = [{ apiKey: 'sk-1234567890' }, { name: 'test' }]
     const result = sanitizeObject(input)
     expect(result[0].apiKey).toBe('sk-***90')
     expect(result[1].name).toBe('test')
   })
 
-  it('处理 null/undefined', () => {
+  it('handles null and undefined', () => {
     expect(sanitizeObject(null)).toBeNull()
     expect(sanitizeObject(undefined)).toBeUndefined()
   })
 
-  it('空字符串敏感字段不脱敏', () => {
+  it('preserves empty sensitive string fields', () => {
     const input = { apiKey: '' }
     const result = sanitizeObject(input)
     expect(result.apiKey).toBe('')

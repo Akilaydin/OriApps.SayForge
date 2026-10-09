@@ -107,6 +107,28 @@ and `/hotwords` routing are unchanged. No user-data migration was introduced.
 Validation: 388 frontend tests, TypeScript/i18n and `git diff --check` passed; native ASR capability
 branches were already covered in tasks 1/3. Interactive Dictionary smoke remains unverified.
 
+## 8. English locale and diagnostics cleanup
+
+Locale reduced from 1074 to 603 keys: 471 reviewed unused entries removed, covering
+retired server/local/realtime, feedback, model/update/audio screens, personalization,
+provider comparisons and obsolete backup/config-transfer presentation. Stored settings,
+profiles, history and legacy restore behavior are untouched.
+
+`node client/scripts/audit-i18n.mjs` inventories all TypeScript string literals, templates
+and dotted-prefix concatenations, plus native Rust references. It lists opaque dynamic
+calls and candidates without deleting anything. Reviewed all 26 dynamic calls: sidebar,
+settings/format/microphone option maps, history display-name maps, shortcut maps,
+protocol templates, Dictionary message factories and conditional overlay/tray labels.
+Their keys are literal entries or template-covered families. Post-cleanup: 603 referenced,
+zero candidates and zero missing literal calls; TypeScript verifies typed maps as well.
+
+Translated 209 test/suite titles and native/TS assertions, source-parser errors and stale
+provider commentary. Remaining CJK is deliberate: localized Windows audio route matching,
+microphone fixtures, Unicode settings/error-envelope round trips, privacy probes and
+multilingual overlay text. None supplies an English UI diagnostic or comment.
+Validation: 388 frontend / 116 Rust tests, TypeScript, strict i18n, AST inventory and
+`git diff --check` passed. Runtime visual checks remain unverified.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

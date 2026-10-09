@@ -29,7 +29,7 @@ function payloadsFrom(): Payload[] {
   return mocks.updateOverlay.mock.calls.map((call) => call[0] as Payload)
 }
 
-describe('listening 更新必须始终携带布局判据', () => {
+describe('listening updates retain layout fields', () => {
   const emitters: Array<[string, (service: InstanceType<typeof OverlayService>) => void]> = [
     ['showLowVolumeWarning', (s) => s.showLowVolumeWarning()],
     ['showNoSignalWarning', (s) => s.showNoSignalWarning()],
@@ -44,7 +44,7 @@ describe('listening 更新必须始终携带布局判据', () => {
     mocks.presentOverlay.mockClear()
   })
 
-  it.each(emitters)('%s 在未开启流式时不硬塞 streaming 字段', (_name, emit) => {
+  it.each(emitters)('%s never inserts the retired streaming field', (_name, emit) => {
     const service = new OverlayService(() => 7)
 
     emit(service)
@@ -57,7 +57,7 @@ describe('listening 更新必须始终携带布局判据', () => {
     }
   })
 
-  it('所有 listening 出口都经由 listeningPayload，而非各自复制一份', () => {
+  it('all listening paths use listeningPayload', () => {
     const service = new OverlayService(() => 7)
     const spy = vi.spyOn(
       service as unknown as { listeningPayload: (overrides?: Record<string, unknown>) => unknown },
@@ -67,7 +67,7 @@ describe('listening 更新必须始终携带布局判据', () => {
     for (const [name, emit] of emitters) {
       spy.mockClear()
       emit(service)
-      expect(spy, `${name} 绕过了 listeningPayload`).toHaveBeenCalled()
+      expect(spy, `${name} bypassed listeningPayload`).toHaveBeenCalled()
     }
   })
 })

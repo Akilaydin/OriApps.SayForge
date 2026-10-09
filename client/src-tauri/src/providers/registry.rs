@@ -86,7 +86,7 @@ pub fn dispatch_keys_for_test() -> Vec<&'static str> {
     let keys = match_arm_keys(fn_body(include_str!("registry.rs"), CLOUD_TRANSCRIBE_SIGNATURE));
     assert!(
         !keys.is_empty(),
-        "从 cloud_transcribe 源码里只抓到 {} 个分发 key，扫描逻辑多半已经失效：{:?}",
+        "Found only {} dispatch keys in cloud_transcribe; source parser may be stale: {:?}",
         keys.len(),
         keys,
     );
@@ -101,7 +101,7 @@ const CLOUD_TRANSCRIBE_SIGNATURE: &str = concat!("pub async fn ", "cloud_transcr
 fn fn_body<'a>(source: &'a str, signature: &str) -> &'a str {
     let start = source
         .find(signature)
-        .unwrap_or_else(|| panic!("在源码里找不到 `{signature}`，签名被改过？"));
+        .unwrap_or_else(|| panic!("Missing `{signature}` in source; check for a changed signature"));
     let rest = &source[start..];
     let end = rest.find("\n}").map(|at| at + 1).unwrap_or(rest.len());
     &rest[..end]
@@ -179,7 +179,7 @@ mod tests {
             const FAKE_DISPATCH: &str = r#"pub async fn fake_dispatch(x: &str) -> Result<(), String> {
     match x {
         "alpha" => Ok(()),
-        // 注释里提到 "ghost" 是常事，不能被当成分发 key
+        // The word "ghost" in a comment must not count as a dispatch key
         "beta" | "gamma" => Ok(()),
         "delta"
         | "epsilon" => Ok(()),
@@ -219,7 +219,7 @@ mod tests {
             #[test]
     fn removing_a_dispatch_branch_shrinks_the_reference_set() {
         let without = FAKE_DISPATCH.replace("        \"beta\" | \"gamma\" => Ok(()),\n", "");
-        assert_ne!(without, FAKE_DISPATCH, "替换没生效，测试自己失效了");
+        assert_ne!(without, FAKE_DISPATCH, "Replacement did not apply; the test fixture is invalid");
 
         let keys = fake_keys(&without);
         assert!(!keys.contains(&"beta"));
@@ -234,7 +234,7 @@ mod tests {
             "        \"alpha\" => Ok(()),\n",
             "        \"alpha\" => Ok(()),\n        \"zeta\" => Ok(()),\n",
         );
-        assert_ne!(with, FAKE_DISPATCH, "替换没生效，测试自己失效了");
+        assert_ne!(with, FAKE_DISPATCH, "Replacement did not apply; the test fixture is invalid");
         assert!(fake_keys(&with).contains(&"zeta"));
     }
 
@@ -244,7 +244,7 @@ mod tests {
         let keys = dispatch_keys_for_test();
         assert!(
             keys.contains(&"openai_compat_transcribe"),
-            "跨行写的臂头没抓全：{keys:?}",
+            "Incomplete multiline match-arm parsing: {keys:?}",
         );
         assert!(keys.contains(&"openai_compat"), "{keys:?}");
         assert!(!keys.contains(&"connect_failed"), "{keys:?}");
@@ -252,6 +252,6 @@ mod tests {
         sorted.sort_unstable();
         let before = sorted.len();
         sorted.dedup();
-        assert_eq!(before, sorted.len(), "抓到了重复的分发 key：{keys:?}");
+        assert_eq!(before, sorted.len(), "Duplicate dispatch keys: {keys:?}");
     }
 }

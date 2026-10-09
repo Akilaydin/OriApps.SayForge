@@ -48,7 +48,7 @@ function lastPayload(fn: { mock: { calls: unknown[][] } }): Record<string, unkno
   return calls[calls.length - 1][0] as Record<string, unknown>
 }
 
-describe('悬浮窗卡片的生命周期', () => {
+describe('overlay card lifecycle', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mocks.presentOverlay.mockClear()
@@ -62,7 +62,7 @@ describe('悬浮窗卡片的生命周期', () => {
     vi.useRealTimers()
   })
 
-  it('结果卡永不自动消失', () => {
+  it('result cards never expire automatically', () => {
     const service = newService()
     service.showFallback('今天天气怎么样', 'not_editable', 7)
 
@@ -70,7 +70,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(mocks.hideOverlay).not.toHaveBeenCalled()
   })
 
-  it('失败卡 5 秒后自动收起', () => {
+  it('failure cards expire after five seconds', () => {
     const service = newService()
     service.showFailure({ title: 'recorder.emptyAfterProcessingTitle', recovery: 'none', token: 8 })
 
@@ -80,7 +80,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(mocks.hideOverlay).toHaveBeenCalled()
   })
 
-  it('识别没出文字时只弹 toast，不建卡片、不接管按键', () => {
+  it('empty recognition uses a toast without key takeover', () => {
     for (const reason of ['silent', 'no_text'] as const) {
       mocks.presentOverlay.mockClear()
       mocks.setEscapeActionMode.mockClear()
@@ -97,7 +97,7 @@ describe('悬浮窗卡片的生命周期', () => {
     }
   })
 
-  it('卡片可见期间会持续续期，续期间隔小于原生 TTL', () => {
+  it('renews visible cards before native TTL expires', () => {
     const service = newService()
     service.showFallback('今天天气怎么样', 'not_editable', 7)
 
@@ -116,7 +116,7 @@ describe('悬浮窗卡片的生命周期', () => {
     }
   })
 
-  it('结果卡注册 Ctrl+C 与 Esc；失败卡只要 Esc', () => {
+  it('result cards register Ctrl+C and Esc while failures only use Esc', () => {
     const service = newService()
     service.showFallback('今天天气怎么样', 'not_editable', 7)
     expect(hotkeyCalls()[0]).toEqual([['copy'], 7])
@@ -129,13 +129,13 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(escapeModes()).toContain('dismiss_fallback')
   })
 
-  it('没有文本的结果卡不注册 Ctrl+C', () => {
+  it('empty result cards do not register Ctrl+C', () => {
     const service = newService()
     service.showFallback('', 'not_editable', 7)
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
   })
 
-  it('token=0 的预览卡片不接管任何按键', () => {
+  it('preview token zero never takes over shortcuts', () => {
     const service = newService()
     service.showFallback('预览文本', 'not_editable', 0)
 
@@ -147,7 +147,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(mocks.setCardHotkeys).not.toHaveBeenCalled()
   })
 
-  it('开始新一轮显示会解除上一张卡片的按键接管', () => {
+  it('new cards release previous shortcuts', () => {
     const service = newService()
     service.showFallback('今天天气怎么样', 'not_editable', 7)
 
@@ -166,7 +166,7 @@ describe('悬浮窗卡片的生命周期', () => {
     service.stopListeningTicker()
   })
 
-  it('hide 会解除按键接管', () => {
+  it('hide releases shortcuts', () => {
     const service = newService()
     service.showFallback('今天天气怎么样', 'not_editable', 7)
 
@@ -177,7 +177,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(escapeModes()).toContain('off')
   })
 
-  it('悬浮窗收起卡片后不再续期', () => {
+  it('collapsed cards stop renewing', () => {
     const service = newService()
     service.showFallback('今天天气怎么样', 'not_editable', 7)
 
@@ -190,7 +190,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(escapeModes().every((mode) => mode === 'off')).toBe(true)
   })
 
-  it('关闭回报只认当前卡片', () => {
+  it('accepts close reports only for the current card', () => {
     const service = newService()
     service.showFallback('第一段', 'not_editable', 7)
     service.showFallback('第二段', 'not_editable', 9)
@@ -203,7 +203,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(hotkeyCalls()).toContainEqual([['copy'], 9])
   })
 
-  it('恢复结论是随后补发的，且只认当前卡片的 token', () => {
+  it('late recovery updates require the current token', () => {
     const service = newService()
     service.showFailure({ title: 'recorder.protocolIncompleteTitle', recovery: 'unknown', token: 8 })
     expect(lastPayload(mocks.presentOverlay)).toMatchObject({
@@ -222,7 +222,7 @@ describe('悬浮窗卡片的生命周期', () => {
     expect(mocks.updateOverlay).not.toHaveBeenCalled()
   })
 
-  it('补发恢复结论时重新带上标题与原因，不留下残缺的最近状态', () => {
+  it('recovery updates retain title and reason', () => {
     const service = newService()
     service.showFailure({
       title: 'recorder.recognitionFailedTitle',
@@ -240,7 +240,7 @@ describe('悬浮窗卡片的生命周期', () => {
     })
   })
 
-  it('卡片收起后不再把上一张的标题带进新的下发', () => {
+  it('new cards do not inherit a collapsed card title', () => {
     const service = newService()
     service.showFailure({ title: 'recorder.recognitionFailedTitle', detail: '余额不足', recovery: 'none', token: 8 })
     service.hide()
@@ -253,7 +253,7 @@ describe('悬浮窗卡片的生命周期', () => {
     })
   })
 
-  it('宽限期等待用独立的 Esc 语义', () => {
+  it('grace-period waiting uses independent Esc semantics', () => {
     const service = newService()
     service.showAwaitingLateResult(15, 11)
 

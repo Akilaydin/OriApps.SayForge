@@ -24,8 +24,9 @@ server/mytestwav.txt
 # ── Client dev artifacts ──
 client/scripts/*
 !client/scripts/check-i18n.mjs
+!client/scripts/audit-i18n.mjs
 client/dist/
-# build.rs 从 transcribe-cpp 的构建产物拷进来的 DLL，纯生成物
+# Generated native transcription DLLs.
 client/src-tauri/transcribe-libs/
 
 # ── Kiro IDE ──
@@ -40,8 +41,7 @@ node_modules/
 
 # ── Rust build output ──
 target/
-# 应用在跑时它锁着 target/debug 里的 ggml DLL，cargo 会报 os error 32；
-# 换个 target 目录编译是绕过它的标准做法（pitfalls #4），别让产物进仓库。
+# Alternative Cargo output directory for builds with locked DLLs.
 target-check/
 
 # ── Python ──

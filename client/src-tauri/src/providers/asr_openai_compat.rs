@@ -1,6 +1,6 @@
 //
 //
-// `dev-scripts/probe_bailian_openai_audio.py`）：
+// Auto selection uses only structured route/payload incompatibility errors.
 //
 //
 //

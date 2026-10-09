@@ -2205,7 +2205,7 @@ mod tests {
                 listed_as_mouse,
                 is_mouse_vk(*vk),
                 "{code} (vk={vk:#04x}): is_mouse_button_setting={listed_as_mouse} \
-                 但 is_mouse_vk={}，两处判定必须一致",
+                 but is_mouse_vk={}; both classifications must agree",
                 is_mouse_vk(*vk),
             );
         }
@@ -2221,20 +2221,20 @@ mod tests {
             assert_eq!(
                 single_key_requires_bare_press(*vk),
                 expected,
-                "{code} (vk={vk:#04x})：modifier={is_modifier} mouse={is_mouse}，\
-                 应当 requires_bare_press={expected}",
+                "{code} (vk={vk:#04x}): modifier={is_modifier} mouse={is_mouse}; \
+                 expected requires_bare_press={expected}",
             );
         }
     }
 
         #[test]
     fn bare_press_rule_named_cases() {
-        assert!(single_key_requires_bare_press(0x73), "F4 是主键，必须要求裸按");
-        assert!(single_key_requires_bare_press(0x20), "Space 是主键");
-        assert!(single_key_requires_bare_press(0xA6), "BrowserBack 走键盘钩子，算主键");
-        assert!(!single_key_requires_bare_press(0xA3), "右 Ctrl 是「按住说话」默认键，不能套");
-        assert!(!single_key_requires_bare_press(0xA5), "右 Alt 是免提默认键，也是 AltGr 的一半");
-        assert!(!single_key_requires_bare_press(0x05), "鼠标侧键走鼠标钩子，不套这条");
+        assert!(single_key_requires_bare_press(0x73), "F4 is a main key and requires a bare press");
+        assert!(single_key_requires_bare_press(0x20), "Space is a main key");
+        assert!(single_key_requires_bare_press(0xA6), "BrowserBack uses the keyboard hook and is a main key");
+        assert!(!single_key_requires_bare_press(0xA3), "Right Ctrl is the default PTT modifier and is exempt");
+        assert!(!single_key_requires_bare_press(0xA5), "Right Alt is the hands-free default and part of AltGr");
+        assert!(!single_key_requires_bare_press(0x05), "Mouse side buttons use the mouse hook and are exempt");
     }
 
             #[test]
@@ -2243,13 +2243,13 @@ mod tests {
             let config = ptt_key_config(combo);
             assert_ne!(
                 config.setting, combo,
-                "{combo} 不该被接受为有效组合（鼠标键只允许单键）",
+                "{combo} must reject this combination; mouse buttons are single-key only",
             );
         }
         for single in ["XButton1", "XButton2", "MButton"] {
             let config = ptt_key_config(single);
-            assert_eq!(config.setting, single, "{single} 应当是有效的单键设置");
-            assert_eq!(config.vk_codes.len(), 1, "{single} 应当只有一个成员");
+            assert_eq!(config.setting, single, "{single} must be a valid single-key setting");
+            assert_eq!(config.vk_codes.len(), 1, "{single} must contain exactly one key");
         }
     }
 
@@ -2263,16 +2263,16 @@ mod tests {
                 .iter()
                 .find(|(setting, _)| *setting == code.as_str());
             let Some((_, vk)) = found else {
-                panic!("{code} 不在 SINGLE_KEY_TABLE 里（前端 SINGLE_KEYS 有 F1–F24，两边必须一致）");
+                panic!("{code} is missing from SINGLE_KEY_TABLE; frontend F1-F24 keys must agree");
             };
             assert_eq!(
                 *vk, expected_vk,
-                "{code} 的 vk 应当是 {expected_vk:#04x}（VK_F1..VK_F24 是连续的）",
+                "{code} must have vk {expected_vk:#04x}; VK_F1 through VK_F24 are consecutive",
             );
 
             let config = ptt_key_config(&code);
-            assert_eq!(config.setting, code, "{code} 应当被接受为有效单键，而不是回落");
-            assert_eq!(config.vk_codes, vec![expected_vk], "{code} 应当解析出对应 vk");
+            assert_eq!(config.setting, code, "{code} must be accepted as a single key without fallback");
+            assert_eq!(config.vk_codes, vec![expected_vk], "{code} must resolve to the matching vk");
         }
     }
 
@@ -2280,14 +2280,14 @@ mod tests {
             #[test]
     fn injection_exempt_vks_cover_f13_to_f24_and_side_button_remaps() {
         for vk in 0x7C..=0x87_u32 {
-            assert!(is_injection_exempt_vk(vk), "{vk:#04x}（F13–F24 段）必须开例外");
+            assert!(is_injection_exempt_vk(vk), "{vk:#04x} in F13-F24 must be injection-exempt");
         }
-        assert!(is_injection_exempt_vk(0xA6), "BrowserBack 必须开例外");
-        assert!(is_injection_exempt_vk(0xA7), "BrowserForward 必须开例外");
+        assert!(is_injection_exempt_vk(0xA6), "BrowserBack must be injection-exempt");
+        assert!(is_injection_exempt_vk(0xA7), "BrowserForward must be injection-exempt");
 
-        assert!(!is_injection_exempt_vk(0x7B), "F12 不该开例外");
-        assert!(!is_injection_exempt_vk(0x88), "0x88 已越过 F24，不该开例外");
-        assert!(!is_injection_exempt_vk(0xA4), "左 Alt 绝不能开例外");
-        assert!(!is_injection_exempt_vk(0xA5), "右 Alt 绝不能开例外");
+        assert!(!is_injection_exempt_vk(0x7B), "F12 must not be injection-exempt");
+        assert!(!is_injection_exempt_vk(0x88), "0x88 exceeds F24 and must not be injection-exempt");
+        assert!(!is_injection_exempt_vk(0xA4), "Left Alt must never be injection-exempt");
+        assert!(!is_injection_exempt_vk(0xA5), "Right Alt must never be injection-exempt");
     }
 }

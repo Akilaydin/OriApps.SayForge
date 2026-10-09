@@ -7,41 +7,41 @@ import {
 } from '../types'
 
 describe('formatRecordingTimer', () => {
-  it('上限之前显示已录秒数', () => {
+  it('shows elapsed time before the limit', () => {
     expect(formatRecordingTimer(0)).toMatchObject({ text: '0s', countdown: false })
     expect(formatRecordingTimer(12.7)).toMatchObject({ text: '12s', countdown: false })
     expect(formatRecordingTimer(239)).toMatchObject({ text: '239s', countdown: false })
   })
 
-  it('最后一分钟改为显示剩余时间', () => {
+  it('counts down during the last minute', () => {
     expect(formatRecordingTimer(240)).toMatchObject({ text: '60s left', countdown: true, remainingSec: 60 })
     expect(formatRecordingTimer(253)).toMatchObject({ text: '47s left', countdown: true, remainingSec: 47 })
     expect(formatRecordingTimer(299)).toMatchObject({ text: '1s left', countdown: true, remainingSec: 1 })
   })
 
-  it('到点及越界都停在 0，不出现负数', () => {
+  it('clamps the limit and overtime to zero', () => {
     expect(formatRecordingTimer(300)).toMatchObject({ text: '0s left', remainingSec: 0 })
     expect(formatRecordingTimer(999)).toMatchObject({ text: '0s left', remainingSec: 0 })
   })
 
-  it('异常输入不炸', () => {
+  it('handles invalid inputs', () => {
     expect(formatRecordingTimer(-5)).toMatchObject({ text: '0s', countdown: false })
     expect(formatRecordingTimer(Number.NaN)).toMatchObject({ text: '0s', countdown: false })
   })
 
-  it('倒计时窗口必须小于上限（否则一开录就在倒计时）', () => {
+  it('countdown window is shorter than the recording limit', () => {
     expect(RECORDING_COUNTDOWN_SEC).toBeGreaterThan(0)
     expect(RECORDING_COUNTDOWN_SEC).toBeLessThan(MAX_RECORDING_SEC)
   })
 
-  it('上限必须与 Rust 侧的硬释放时间一致（改一处忘另一处会让提示与实际不符）', () => {
+  it('recording limit matches native release timing', () => {
     // keyboard/mod.rs: const HARD_RELEASE_AFTER_SECS: u64 = 5 * 60
     expect(MAX_RECORDING_SEC).toBe(5 * 60)
   })
 })
 
 describe('formatRecordingLimit', () => {
-  it('文案随上限自动变化（避免改了上限忘了改文案）', () => {
+  it('limit messages derive from the configured limit', () => {
     expect(formatRecordingLimit()).toBe(
       MAX_RECORDING_SEC < 60
         ? `${MAX_RECORDING_SEC}s`

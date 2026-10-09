@@ -12,25 +12,25 @@ const CARD_TITLE_KEYS = [
   'recorder.recognitionFailedTitle',
 ]
 
-describe('识别没出文字不弹卡片', () => {
-  it('源码读到了，不是空字符串（否则下面几条会假绿）', () => {
+describe('empty recognition never creates a card', () => {
+  it('loads real source before source assertions', () => {
     expect(SOURCE.length).toBeGreaterThan(1000)
     expect(SOURCE).toContain('showNoSpeech')
   })
 
-  it('卡片入口一个都没少认', () => {
+  it('recognizes every card entry point', () => {
     for (const entry of CARD_ENTRY_POINTS) {
-      expect(SOURCE, `卡片入口 ${entry} 在源码里找不到了，先确认它是不是改名了`)
+      expect(SOURCE, `Card entry ${entry} is missing; check for a rename`)
         .toContain(entry)
     }
   })
 
-  it('没有任何一处取用已删除的「没有取得识别结果」文案', () => {
+  it('does not reference the removed empty-result message', () => {
     expect(SOURCE).not.toContain("t('recorder.noResultTitle')")
     expect(SOURCE).not.toContain("t('recorder.noResultDetail')")
   })
 
-  it('每一处卡片的标题都在白名单里', () => {
+  it('restricts card titles to the allowlist', () => {
     const titles: string[] = []
     for (const entry of CARD_ENTRY_POINTS) {
       let from = 0
@@ -46,11 +46,11 @@ describe('识别没出文字不弹卡片', () => {
 
     expect(titles.length).toBeGreaterThan(0)
     for (const title of titles) {
-      expect(CARD_TITLE_KEYS, `卡片标题 ${title} 不在白名单里`).toContain(title)
+      expect(CARD_TITLE_KEYS, `Card title ${title} is not allowlisted`).toContain(title)
     }
   })
 
-  it('两条空结果路径都调了 showNoSpeech，且都带 no_text 分支', () => {
+  it('both empty paths show no_text notifications', () => {
     const noSpeechCalls = SOURCE.match(/showNoSpeech\(/g) ?? []
     expect(noSpeechCalls.length).toBeGreaterThanOrEqual(3)
     const noTextBranches = SOURCE.match(/silenceProven \? 'silent' : 'no_text'/g) ?? []
