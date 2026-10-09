@@ -1,9 +1,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $releaseScript = Join-Path $PSScriptRoot 'release.ps1'
+$updaterFixtures = Join-Path $PSScriptRoot '../tools/updater-verifier/fixtures'
 $fixture = Join-Path ([System.IO.Path]::GetTempPath()) "sayforge-release-test-$([guid]::NewGuid())"
 $previousEnvironment = @{}
-foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_STEP_SUMMARY', 'TAURI_ARTIFACT_PATHS', 'TAURI_APP_VERSION')) {
+foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_STEP_SUMMARY', 'TAURI_ARTIFACT_PATHS', 'TAURI_APP_VERSION', 'SAYFORGE_UPDATER_VERIFIER')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 $mock = [pscustomobject] @{
@@ -66,8 +67,16 @@ function Run-Stage([string] $Stage) {
 }
 
 try {
+    if (-not $env:SAYFORGE_UPDATER_VERIFIER) {
+        $env:SAYFORGE_UPDATER_VERIFIER = Join-Path $PSScriptRoot '../tools/updater-verifier/target/x86_64-pc-windows-msvc/release/sayforge-updater-verifier.exe'
+    }
+    if (-not (Test-Path -LiteralPath $env:SAYFORGE_UPDATER_VERIFIER -PathType Leaf)) {
+        throw 'Build the updater signature verifier before running release guard tests.'
+    }
     New-Item -ItemType Directory -Path "$fixture/client/src-tauri" -Force | Out-Null
-    '{"version":"0.2.3","productName":"SayForge"}' | Set-Content "$fixture/client/src-tauri/tauri.conf.json"
+    $testPublicKey = (Get-Content -LiteralPath (Join-Path $updaterFixtures 'trusted.pub') -Raw).Trim()
+    @{ version = '0.2.3'; productName = 'SayForge'; plugins = @{ updater = @{ pubkey = $testPublicKey } } } |
+        ConvertTo-Json -Depth 5 | Set-Content "$fixture/client/src-tauri/tauri.conf.json"
     '{"version":"0.2.3"}' | Set-Content "$fixture/client/package.json"
     '{"version":"0.2.3","packages":{"":{"version":"0.2.3"}}}' | Set-Content "$fixture/client/package-lock.json"
     "[package]`nname = `"sayforge`"`nversion = `"0.2.3`"`n[dependencies]" | Set-Content "$fixture/client/src-tauri/Cargo.toml"
@@ -102,8 +111,10 @@ try {
 
     $exe = "$fixture/SayForge_0.2.3_x64-setup.exe"
     $msi = "$fixture/SayForge_0.2.3_x64_en-US.msi"
-    'Synthetic EXE' | Set-Content $exe
+    $signedFixture = Join-Path $updaterFixtures 'installer.bin'
+    Copy-Item -LiteralPath $signedFixture -Destination $exe
     'Synthetic MSI' | Set-Content $msi
+    $sig = "$exe.sig"
     $env:TAURI_ARTIFACT_PATHS = '[]'
     Assert-Fails { Run-Stage Prepare } 'Exactly one'
     $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($msi)
@@ -115,7 +126,7 @@ try {
     [System.IO.File]::WriteAllBytes($exe, [byte[]] @())
     $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe)
     Assert-Fails { Run-Stage Prepare } 'Empty installer'
-    'Synthetic EXE' | Set-Content $exe
+    Copy-Item -LiteralPath $signedFixture -Destination $exe -Force
     $wrongVersion = "$fixture/SayForge_0.2.2_x64-setup.exe"
     'Synthetic EXE' | Set-Content $wrongVersion
     $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($wrongVersion)
@@ -124,12 +135,60 @@ try {
     $env:TAURI_APP_VERSION = '0.2.2'
     Assert-Fails { Run-Stage Prepare } 'Tauri build version'
     $env:TAURI_APP_VERSION = '0.2.3'
+    Assert-Fails { Run-Stage Prepare } 'Updater signature missing'
+    Copy-Item -LiteralPath (Join-Path $updaterFixtures 'other-key.sig') -Destination $sig
+    Assert-Fails { Run-Stage Prepare } 'Updater cryptographic signature verification failed'
+    if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Wrong signing key reached publication.' }
+    Copy-Item -LiteralPath (Join-Path $updaterFixtures 'trusted.sig') -Destination $sig -Force
     Run-Stage Prepare
-    if (@(Get-ChildItem "$fixture/release-assets" -File).Count -ne 4) { throw 'Missing prepared assets.' }
+    if (@(Get-ChildItem "$fixture/release-assets" -File).Count -ne 6) { throw 'Missing prepared assets.' }
+    $manifestPath = "$fixture/release-assets/latest.json"
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.version -cne '0.2.3' -or $manifest.platforms.'windows-x86_64'.signature -cne (Get-Content $sig -Raw).Trim() -or
+        $manifest.platforms.'windows-x86_64'.url -cne 'https://github.com/synthetic/sayforge/releases/download/v0.2.3/SayForge_0.2.3_x64-setup.exe') {
+        throw 'Prepared updater manifest is incorrect.'
+    }
+    $originalManifest = Get-Content $manifestPath -Raw
+    $originalSig = Get-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig" -Raw
+    $manifest.platforms.'windows-x86_64'.url = 'https://example.invalid/wrong-installer.exe'
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content $manifestPath
+    Assert-Fails { Run-Stage Publish } 'Updater manifest does not match'
+    Set-Content $manifestPath -Value $originalManifest -NoNewline
+    'corrupted signature' | Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig"
+    Assert-Fails { Run-Stage Publish } 'Updater signature is incomplete'
+    Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig" -Value $originalSig -NoNewline
+    # Simulate a valid signature generated by the wrong Actions secret: metadata
+    # and .sig agree, yet clients with the embedded public key must reject it.
+    $otherSignature = (Get-Content -LiteralPath (Join-Path $updaterFixtures 'other-key.sig') -Raw).Trim()
+    Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig" -Value $otherSignature -NoNewline
+    $wrongKeyManifest = $originalManifest | ConvertFrom-Json
+    $wrongKeyManifest.platforms.'windows-x86_64'.signature = $otherSignature
+    $wrongKeyManifest | ConvertTo-Json -Depth 5 | Set-Content $manifestPath
+    Assert-Fails { Run-Stage Publish } 'Updater cryptographic signature verification failed'
+    if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Wrong signing key was accepted before tag creation.' }
+    Set-Content $manifestPath -Value $originalManifest -NoNewline
+    Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig" -Value $originalSig -NoNewline
+    $workingVerifier = $env:SAYFORGE_UPDATER_VERIFIER
+    try {
+        $env:SAYFORGE_UPDATER_VERIFIER = Join-Path $fixture 'missing-verifier.exe'
+        Assert-Fails { Run-Stage Publish } 'Updater signature verifier executable is missing'
+    } finally {
+        $env:SAYFORGE_UPDATER_VERIFIER = $workingVerifier
+    }
+    Rename-Item -LiteralPath $manifestPath -NewName 'latest-missing.json'
+    Assert-Fails { Run-Stage Publish } 'signed NSIS installer'
+    Rename-Item -LiteralPath "$fixture/release-assets/latest-missing.json" -NewName 'latest.json'
     'Tampered synthetic EXE' | Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe"
+    Assert-Fails { Run-Stage Publish } 'Updater cryptographic signature verification failed'
+    Copy-Item -LiteralPath $signedFixture -Destination "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe" -Force
+    $checksumPath = "$fixture/release-assets/SHA256SUMS.txt"
+    $originalChecksums = Get-Content -LiteralPath $checksumPath -Raw
+    $checksumLines = @(Get-Content -LiteralPath $checksumPath)
+    $checksumLines[0] = ('0' * 64) + $checksumLines[0].Substring(64)
+    $checksumLines | Set-Content -LiteralPath $checksumPath
     Assert-Fails { Run-Stage Publish } 'checksum verification failed'
+    Set-Content -LiteralPath $checksumPath -Value $originalChecksums -NoNewline
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Guard tests wrote to GitHub.' }
-    'Synthetic EXE' | Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe"
     $mock.denyPublication = $true
     Assert-Fails { Run-Stage Publish } 'GitHub command failed'
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*/releases *' }).Count -ne 0) { throw 'Permission denial created a release.' }
@@ -142,7 +201,8 @@ try {
     Assert-Fails { Run-Stage Publish } 'metadata is incorrect'
     $mock.invalidMetadata = $false
     Run-Stage Publish
-    Write-Host 'Release tests passed: version/tag guards, API/permission denial, missing/empty/wrong installers, checksum tampering, upload cleanup, metadata and public publication at the tested SHA.'
+    if (@($mock.apiCalls | Where-Object { $_ -like '*release upload*latest.json*' }).Count -lt 1) { throw 'Updater manifest was not published.' }
+    Write-Host 'Release tests passed: version/tag guards, cryptographic verification, wrong signing key, tampered installer, checksums, manifest, publication order, upload cleanup and public publication at the tested SHA.'
 } finally {
     foreach ($name in $previousEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name]) }
     $resolvedFixture = [System.IO.Path]::GetFullPath($fixture)

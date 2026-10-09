@@ -63,7 +63,7 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 - Windows desktop only; English UI. Recognition-language support depends on the chosen engine.
 - No hosted SayForge account, subscription or managed cloud storage.
 - Meeting recording, system-audio capture and speaker diarization are outside the current scope.
-- Application installation and updates are manual through GitHub Releases. About shows the current version and release link; no update checks, downloads or automatic installer run in the app.
+- Application installation is via GitHub Releases. Newer signed releases support optional updates: check GitHub once at startup or manually from About; show the available version with **Update/Later**; never download or install without consent. A declined update can be offered on the next launch. A background check failure is silent; manual failures are reported. Startup from tray does not force-open the main window. Installation waits for any recording, processing, late text insertion or outstanding result card to finish. Older manual-only builds must be upgraded once with the GitHub installer.
 - One Windows NSIS `.exe` installer offers current-user or all-users installation.
   The built-in selection requires administrator access in either mode. Installing
   for all users shares application binaries; settings, API keys and history remain
@@ -72,5 +72,5 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 ## Open questions
 
 - Supported minimum Windows version.
-- Release signing and update distribution.
+- Windows Authenticode code signing and minimum supported installer/upgrade scope.
 - Future UI language support.

@@ -20,6 +20,14 @@ export function getState() {
   return orchestrator.getState()
 }
 
+export function beginUpdateInstallation(): boolean {
+  return orchestrator.beginUpdateInstallation()
+}
+
+export function endUpdateInstallation() {
+  orchestrator.endUpdateInstallation()
+}
+
 export async function initRecorder() {
   await orchestrator.init()
 }

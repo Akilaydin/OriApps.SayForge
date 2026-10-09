@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import Sidebar from './components/Sidebar'
 import TitleBar from './components/TitleBar'
 import WelcomeGuide from './components/WelcomeGuide'
+import UpdatePrompt from './components/UpdatePrompt'
 import Home from './pages/Home'
 import History from './pages/History'
 import Dictionary from './pages/Dictionary'
@@ -17,6 +18,7 @@ import { initTheme } from './stores/theme'
 import { initAiEnabled } from './stores/aiEnabled'
 import { getSetting, setSetting } from './services/store'
 import * as bridge from './services/bridge'
+import { checkForUpdates } from './services/appUpdates'
 
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(false)
@@ -27,8 +29,7 @@ export default function App() {
     void initTheme()
     void initAiEnabled()
     initRecorder()
-    // SayForge releases are installed manually until we have our own signed updater.
-    // This independent distribution does not launch an automatic update installer.
+    void checkForUpdates()
 
       ; (async () => {
         const onboardedVersion = await getSetting('onboardingVersion', '')
@@ -83,6 +84,7 @@ export default function App() {
         </main>
       </div>
       {showWelcome && <WelcomeGuide onComplete={handleWelcomeComplete} />}
+      {!showWelcome && <UpdatePrompt />}
     </div>
   )
 }

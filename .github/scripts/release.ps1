@@ -62,6 +62,41 @@ function Get-Installers([string[]] $Paths) {
     return @($files[0])
 }
 
+function Assert-UpdaterSignature([System.IO.FileInfo] $Installer, [string] $SignaturePath) {
+    $verifier = $env:SAYFORGE_UPDATER_VERIFIER
+    if ([string]::IsNullOrWhiteSpace($verifier) -or -not (Test-Path -LiteralPath $verifier -PathType Leaf)) {
+        throw 'Updater signature verifier executable is missing.'
+    }
+    # The verifier uses the same Minisign algorithm as tauri-plugin-updater and
+    # reads the trusted key directly from the checked-out Tauri configuration.
+    & $verifier $Installer.FullName $SignaturePath (Join-Path $RepositoryRoot 'client/src-tauri/tauri.conf.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Updater cryptographic signature verification failed.' }
+}
+
+function Assert-UpdaterAssets([System.IO.FileInfo] $Installer, [string] $Directory) {
+    $signaturePath = Join-Path $Directory "$($Installer.Name).sig"
+    if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) { throw 'Updater signature missing.' }
+    $signature = (Get-Content -LiteralPath $signaturePath -Raw -Encoding utf8).Trim()
+    if ($signature.Length -lt 200) { throw 'Updater signature is incomplete.' }
+    try { $null = [Convert]::FromBase64String($signature) }
+    catch { throw 'Updater signature is not valid Base64.' }
+
+    $manifestPath = Join-Path $Directory 'latest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Updater latest.json missing.' }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding utf8 | ConvertFrom-Json -AsHashtable
+    $platform = $manifest.platforms['windows-x86_64']
+    $expectedUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$($Installer.Name)"
+    if ($manifest.version -cne $version -or $manifest.platforms.Count -ne 1 -or
+        $platform.url -cne $expectedUrl -or $platform.signature -cne $signature) {
+        throw 'Updater manifest does not match the signed installer, version, platform and release URL.'
+    }
+    $date = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($manifest.pub_date, [ref] $date)) {
+        throw 'Updater manifest publication date is invalid.'
+    }
+    Assert-UpdaterSignature $Installer $signaturePath
+}
+
 if ($Stage -eq 'Preflight') {
     $needed = (Test-NewRelease).ToString().ToLowerInvariant()
     "version=$version", "release_needed=$needed" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -71,12 +106,35 @@ if ($Stage -eq 'Preflight') {
 $assetsDirectory = Join-Path $RepositoryRoot 'release-assets'
 if ($Stage -eq 'Prepare') {
     if ($env:TAURI_APP_VERSION -cne $version) { throw 'Tauri build version differs from the release version.' }
-    $installers = @(Get-Installers @(ConvertFrom-Json -InputObject $env:TAURI_ARTIFACT_PATHS))
+    $artifactPaths = @(ConvertFrom-Json -InputObject $env:TAURI_ARTIFACT_PATHS)
+    $installers = @(Get-Installers @($artifactPaths | Where-Object { $_ -notlike '*.sig' }))
+    $signatureSource = "$($installers[0].FullName).sig"
+    if (-not (Test-Path -LiteralPath $signatureSource -PathType Leaf)) { throw 'Updater signature missing.' }
+    $unexpected = @($artifactPaths | Where-Object {
+        $fullPath = (Get-Item -LiteralPath $_).FullName
+        $fullPath -cne $installers[0].FullName -and $fullPath -cne (Get-Item -LiteralPath $signatureSource).FullName
+    })
+    if ($unexpected.Count -ne 0) { throw 'Unexpected Tauri build artifact paths.' }
+    # Reject a valid signature made by the wrong key before staging any assets.
+    Assert-UpdaterSignature $installers[0] $signatureSource
     New-Item -ItemType Directory -Path $assetsDirectory -ErrorAction Stop | Out-Null
-    foreach ($file in $installers) { Copy-Item -LiteralPath $file.FullName -Destination $assetsDirectory }
+    Copy-Item -LiteralPath $installers[0].FullName, $signatureSource -Destination $assetsDirectory
     foreach ($notice in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-Item -LiteralPath (Join-Path $RepositoryRoot $notice) -Destination $assetsDirectory
     }
+    $manifest = @{
+        version = $version
+        notes = "See the GitHub release changelog for SayForge $tag."
+        pub_date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        platforms = @{
+            'windows-x86_64' = @{
+                url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$($installers[0].Name)"
+                signature = (Get-Content -LiteralPath $signatureSource -Raw -Encoding utf8).Trim()
+            }
+        }
+    }
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $assetsDirectory 'latest.json') -Encoding utf8
+    Assert-UpdaterAssets (Get-Item -LiteralPath (Join-Path $assetsDirectory $installers[0].Name)) $assetsDirectory
     $checksums = Get-ChildItem -LiteralPath $assetsDirectory -File | Sort-Object Name | ForEach-Object {
         "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
     }
@@ -86,16 +144,17 @@ if ($Stage -eq 'Prepare') {
 
 # Recheck the transferred files and remote state before obtaining a new tag.
 $assets = @(Get-ChildItem -LiteralPath $assetsDirectory -File)
-$null = Get-Installers @($assets | Where-Object { $_.Extension -in @('.exe', '.msi') } | ForEach-Object FullName)
-$expectedNames = @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'SHA256SUMS.txt')
-if ($assets.Count -ne 4 -or @($expectedNames | Where-Object { $_ -cnotin $assets.Name }).Count -ne 0) {
-    throw 'Release must contain one NSIS installer, license, third-party notices and checksums.'
+$installer = @(Get-Installers @($assets | Where-Object { $_.Extension -in @('.exe', '.msi') } | ForEach-Object FullName))[0]
+$expectedNames = @($installer.Name, "$($installer.Name).sig", 'latest.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SHA256SUMS.txt')
+if ($assets.Count -ne $expectedNames.Count -or @($expectedNames | Where-Object { $_ -cnotin $assets.Name }).Count -ne 0) {
+    throw 'Release must contain the signed NSIS installer, updater JSON, license, notices and checksums.'
 }
+Assert-UpdaterAssets $installer $assetsDirectory
 $checksumLines = @(Get-Content -LiteralPath (Join-Path $assetsDirectory 'SHA256SUMS.txt'))
 $expectedChecksums = @($assets | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
     "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
 })
-if ($checksumLines.Count -ne 3 -or @(Compare-Object $expectedChecksums $checksumLines -CaseSensitive).Count -ne 0) {
+if ($checksumLines.Count -ne 5 -or @(Compare-Object $expectedChecksums $checksumLines -CaseSensitive).Count -ne 0) {
     throw 'Release asset checksum verification failed.'
 }
 if ($env:GITHUB_SHA -notmatch '^[a-f0-9]{40}$') { throw 'A full tested commit SHA is required.' }
@@ -105,16 +164,16 @@ if (-not (Test-NewRelease)) { return }
 
 $source = "https://github.com/$env:GITHUB_REPOSITORY"
 $notes = @"
-Windows x64 NSIS installer: choose installation for the current user or all users.
+Windows x64 signed-updater-compatible NSIS installer: choose installation for the current user or all users.
 The installer requests administrator access, including for current-user installation.
-Download and install updates manually. Settings and history remain separate for each user.
+In-app updates are optional and cryptographically verified. Previous manual-only versions must be updated once with the installer. Settings and history remain separate for each user.
 
 This installer is unsigned; Windows SmartScreen may warn about an unrecognized publisher.
 
 Source and changes: $source/tree/$env:GITHUB_SHA and $source/blob/$env:GITHUB_SHA/CHANGELOG.md
 Corresponding source archives: $source/archive/refs/tags/$tag.zip and $source/archive/refs/tags/$tag.tar.gz
 AGPL-3.0 and LAME/LGPL-3.0 notices: $source/blob/$env:GITHUB_SHA/THIRD_PARTY_NOTICES.md
-See the attached LICENSE, THIRD_PARTY_NOTICES.md and SHA256SUMS.txt.
+See the attached LICENSE, THIRD_PARTY_NOTICES.md, latest.json, .sig and SHA256SUMS.txt.
 "@
 
 # POST refuses an existing ref, including a tag created concurrently outside this workflow.
@@ -125,9 +184,12 @@ $release = Invoke-GitHub @('api', '--method', 'POST', "repos/$env:GITHUB_REPOSIT
     '-f', "body=$notes", '-F', 'draft=false', '-F', 'prerelease=false') | ConvertFrom-Json
 
 try {
-    $null = Invoke-GitHub (@('release', 'upload', $tag, '--repo', $env:GITHUB_REPOSITORY) + @($assets.FullName))
+    # The manifest is deliberately published last: never advertise an update before its binary and signature.
+    $signedAssets = @($assets | Where-Object Name -ne 'latest.json')
+    $null = Invoke-GitHub (@('release', 'upload', $tag, '--repo', $env:GITHUB_REPOSITORY) + @($signedAssets.FullName))
+    $null = Invoke-GitHub @('release', 'upload', $tag, '--repo', $env:GITHUB_REPOSITORY, (Join-Path $assetsDirectory 'latest.json'))
     $published = Invoke-GitHub @('api', "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)") | ConvertFrom-Json
-    if ($published.draft -or $published.prerelease -or $published.tag_name -cne $tag -or $published.assets.Count -ne 4) {
+    if ($published.draft -or $published.prerelease -or $published.tag_name -cne $tag -or $published.assets.Count -ne 6) {
         throw 'Published release metadata is incorrect.'
     }
     foreach ($file in $assets) {

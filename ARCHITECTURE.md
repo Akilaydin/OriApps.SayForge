@@ -10,9 +10,9 @@ Technical reference for the current SayForge implementation. Product behavior be
 - Speech mode: `cloud_api`. Retired `local`/server values normalize and persist as `cloud_api` at frontend startup.
 - Optional AI refinement uses an OpenAI-compatible endpoint and a single prompt; Ollama, preset shortcuts, per-app rules and personalization statistics are inactive.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
-- Updates are manual through GitHub Releases; no updater service, installer commands or notification window are bundled.
+- The Tauri 2 updater checks one public static GitHub Releases `latest.json` at startup or when requested in About. The signed NSIS is downloaded only after consent; a small UI prompt does not open a separate window and does not interrupt tray startup. On Windows the native updater launches the installer and exits the app.
 - A push to `release` runs Windows tests and one Tauri NSIS build. A separate
-  job verifies transferred assets and publishes a public release for that exact
+  job verifies transferred assets, updater signature metadata and checksums, then publishes a public release for that exact
   commit; existing version tags cannot be overwritten. See `docs/releasing.md`.
 - NSIS uses the built-in `installMode: both` selection for current-user or
   per-machine installation; no custom installer template is maintained. The
@@ -151,6 +151,37 @@ updates it without a preceding destructive `disable()`. Flags are written after 
 read/write failures leave migration pending. Both historical string and boolean migration
 flags are accepted. Settings uses OS readback, showing failure/retry when state is unknown.
 
+## Signed optional updates
+
+`src/services/appUpdates.ts` coordinates a single startup/manual check through
+`@tauri-apps/plugin-updater`, transient state and one install attempt. The main
+window alone has `updater:default` capability; tray/overlay do not. Background
+network errors are ignored, manual checks display their outcome. "Later" never
+starts a download or permanently blacklists a version. No recurring HTTP polling
+or extra updater process runs while the application is idle.
+
+When the user accepts, the official updater downloads and verifies the signed
+installer. Before installation, `RecorderOrchestrator.beginUpdateInstallation()`
+atomically checks for in-flight capture, transcription, late results, insertion
+and undismissed fallback cards, then reserves the idle state against a new
+shortcut-triggered recording. If busy, the updater waits (and can be canceled).
+Failed installation releases that reservation. The NSIS updater uses `passive`
+mode, which may request administrator access with existing `installMode: both`.
+User data remain under `%LOCALAPPDATA%\com.oriapps.sayforge`.
+
+The release workflow signs the **existing single NSIS `.exe`** using an
+encrypted Tauri updater signing key from GitHub Actions Secrets. It does not
+perform Windows Authenticode signing. The build produces `.exe.sig`, and the
+build and publish jobs both cryptographically verify the NSIS signature against
+`plugins.updater.pubkey`, using a small independent Rust CLI that shares Tauri's
+`minisign-verify` algorithm. The verifier travels between CI jobs as a private
+workflow artifact (not a release asset), and the publish job validates the
+signature **before creating the tag**. It also validates six expected assets,
+hashes and the `windows-x86_64`
+entry in `latest.json`, publishing the manifest last. Neither existing tags nor
+past release assets are modified. See `docs/releasing.md` for key backup and
+upgrade verification; `v0.2.4` still requires a manual upgrade.
+
 ## Home and themes
 
 Home and light/dark/Claude themes are retained: root remains the Settings-close destination
@@ -181,4 +212,4 @@ Removal needs a separately agreed migration path for old archives.
 ## Open questions
 
 - Verified minimum Windows version.
-- Release signing and update-channel design.
+- Windows Authenticode signing and verified installer upgrade paths for both NSIS scopes.

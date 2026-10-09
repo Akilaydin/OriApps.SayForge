@@ -421,6 +421,7 @@ fn main() {
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -516,8 +517,7 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        // Independent distribution: no upstream auto-installer on app exit.
-        // Updates are published as manually installed releases on our GitHub.
+        // Signed updater checks are user-controlled and do not run during shutdown.
         .run(|_, _| {});
 }
 

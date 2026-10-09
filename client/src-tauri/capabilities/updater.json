@@ -1,0 +1,6 @@
+{
+  "identifier": "main-updater",
+  "description": "Only the main SayForge window may check, download or install signed updates",
+  "windows": ["main"],
+  "permissions": ["updater:default"]
+}

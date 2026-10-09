@@ -1,6 +1,6 @@
 {
   "productName": "SayForge",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "identifier": "com.oriapps.sayforge",
   "build": {
     "frontendDist": "../dist",
@@ -61,6 +61,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "nsis"
     ],
@@ -92,6 +93,13 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3QzcxNDk3Q0JFMzY4QzgKUldUSWFPUExseFRIWjFpaUZqenVDQkR0L1JYcWxIQld4SGc0c2hsUzVSWVJvRXBMRVFkNzMyYVoK",
+      "endpoints": ["https://github.com/Akilaydin/OriApps.SayForge/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

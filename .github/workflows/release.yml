@@ -27,14 +27,20 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Release guard regression tests
-        run: ./.github/scripts/test-release.ps1
-
       - name: Validate versions and skip existing tags
         id: preflight
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./.github/scripts/release.ps1 -Stage Preflight
+
+      - name: Require updater signing secrets
+        if: steps.preflight.outputs.release_needed == 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw 'Updater signing private key secret is missing.' }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) { throw 'Updater signing password secret is missing.' }
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.preflight.outputs.release_needed == 'true'
@@ -54,6 +60,20 @@ jobs:
         with:
           workspaces: client/src-tauri -> target
           cache-on-failure: false
+
+      - name: Build and test updater signature verifier
+        if: steps.preflight.outputs.release_needed == 'true'
+        run: |
+          cargo test --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Updater signature verifier tests failed.' }
+          cargo build --release --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Updater signature verifier build failed.' }
+
+      - name: Release guard regression tests
+        if: steps.preflight.outputs.release_needed == 'true'
+        env:
+          SAYFORGE_UPDATER_VERIFIER: ${{ github.workspace }}\.github\tools\updater-verifier\target\x86_64-pc-windows-msvc\release\sayforge-updater-verifier.exe
+        run: ./.github/scripts/test-release.ps1
 
       - name: Install frontend dependencies
         if: steps.preflight.outputs.release_needed == 'true'
@@ -79,6 +99,9 @@ jobs:
         id: tauri
         if: steps.preflight.outputs.release_needed == 'true'
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: client
           args: --target x86_64-pc-windows-msvc --bundles nsis -- --locked
@@ -92,6 +115,7 @@ jobs:
         env:
           TAURI_ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
           TAURI_APP_VERSION: ${{ steps.tauri.outputs.appVersion }}
+          SAYFORGE_UPDATER_VERIFIER: ${{ github.workspace }}\.github\tools\updater-verifier\target\x86_64-pc-windows-msvc\release\sayforge-updater-verifier.exe
         run: ./.github/scripts/release.ps1 -Stage Prepare
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -99,6 +123,14 @@ jobs:
         with:
           name: release-assets
           path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.preflight.outputs.release_needed == 'true'
+        with:
+          name: updater-verifier
+          path: .github/tools/updater-verifier/target/x86_64-pc-windows-msvc/release/sayforge-updater-verifier.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -120,8 +152,14 @@ jobs:
           name: release-assets
           path: release-assets
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: updater-verifier
+          path: updater-verifier
+
       - name: Publish public release for the tested commit
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          SAYFORGE_UPDATER_VERIFIER: ${{ github.workspace }}\updater-verifier\sayforge-updater-verifier.exe
         run: ./.github/scripts/release.ps1 -Stage Publish
