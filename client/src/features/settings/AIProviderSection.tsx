@@ -29,15 +29,9 @@ import { Button } from '@/components/ui/button'
 import { Feedback, FormatHint, type FeedbackTone } from '@/components/ui/feedback'
 import { Modal } from '@/components/ui/modal'
 import { PasswordInput } from '@/components/ui/password-input'
-import { Switch } from '@/components/ui/switch'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { getSetting, setSetting } from '@/services/store'
-import {
-  SERVER_AI_SOURCE_KEY,
-  setRuntimeServerAiSource,
-  type ServerAiSource,
-} from '@/services/transcription/serverAiSource'
 import { setEngineDraftDirty } from '@/stores/engineDraft'
 import { describeProviderError } from '@/lib/errorMessages'
 import {
@@ -282,12 +276,6 @@ export default function AIProviderSection() {
   const [checkingId, setCheckingId] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
-  const [serverAiSource, setServerAiSource] = useState<ServerAiSource>('managed')
-  const [savingServerAiSource, setSavingServerAiSource] = useState(false)
-  const [serverAiSourceError, setServerAiSourceError] = useState(false)
-  /** 工作模式与来源都读回后才渲染那一段（见 useEffect 里的注释） */
-  const [serverAiSourceLoaded, setServerAiSourceLoaded] = useState(false)
-  const [isServerMode, setIsServerMode] = useState(false)
   /** 「测试全部」的进度；null = 没在批量测试 */
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
   /** 批量测试是并发的，所以「正在测哪个」是一组而不是一个 */
@@ -319,21 +307,6 @@ export default function AIProviderSection() {
       setActiveId(state.activeId)
       setLoaded(true)
     })()
-    // 两个值一起等（Promise.all + 各自 catch 兜底），到齐后同一批渲染。
-    // 分两次落值会出两种假象：默认是服务器模式，本地/云模式的用户会看见这一段先出现再消失；
-    // 来源默认 managed，已保存 custom 的用户会看见开关自己滑一下（pitfalls #11）。
-    // 只在值到齐后才首次渲染，两者都不存在，也就不需要 ready/animate 那套过渡开关。
-    void Promise.all([
-      getSetting('workMode', 'server').catch(() => 'server'),
-      getSetting(SERVER_AI_SOURCE_KEY, 'managed').catch(() => 'managed'),
-    ]).then(([mode, value]) => {
-      if (cancelled) return
-      const source = value === 'custom' ? 'custom' : 'managed'
-      setServerAiSource(source)
-      setRuntimeServerAiSource(source)
-      setIsServerMode(mode === 'server')
-      setServerAiSourceLoaded(true)
-    })
     // 切走路由时复位「有未保存改动」，别把脏状态留给下一次进入
     return () => {
       cancelled = true
@@ -342,24 +315,6 @@ export default function AIProviderSection() {
   }, [])
 
   useEffect(() => { setEngineDraftDirty(draftDirty) }, [draftDirty])
-
-  async function handleServerAiSource(next: ServerAiSource) {
-    if (savingServerAiSource || next === serverAiSource) return
-    const previous = serverAiSource
-    setServerAiSource(next)
-    setRuntimeServerAiSource(next)
-    setSavingServerAiSource(true)
-    setServerAiSourceError(false)
-    try {
-      await setSetting(SERVER_AI_SOURCE_KEY, next)
-    } catch {
-      setServerAiSource(previous)
-      setRuntimeServerAiSource(previous)
-      setServerAiSourceError(true)
-    } finally {
-      setSavingServerAiSource(false)
-    }
-  }
 
   /** 唯一的写入点：列表 + 启用项一起落盘，并由 store 同步运行时那四个扁平键 */
   async function persist(nextProfiles: AiProfile[], nextActiveId: string) {
@@ -872,46 +827,6 @@ export default function AIProviderSection() {
   return (
     <Card>
       <CardContent className="p-6">
-        {/* 只在服务器模式出现：本地/云 API 模式下 AI 整理本来就走下面选中的服务，没有第二个
-            选项可选，摆一个恒定生效的开关只会让人以为它还管着别的事。
-            形态用设置页里那 8 处同构的开关行 —— 分段控件在本应用表示页面/短枚举切换，
-            而两个短选项撑成等宽卡会留一大片空白，还会和下方真正的服务卡争层级。
-            说明文字跟着开关状态走，直接说“当前由谁整理”，比让用户从「关」反推更省事。 */}
-        {serverAiSourceLoaded && isServerMode && (
-          <section className="mb-4 border-b border-border pb-4" aria-labelledby="server-ai-source-heading">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  {/* 字号与图标间距都对齐下面的「AI 服务」标题：两者是同一层级的两块内容，
-                      标题小一号会让它看着像附属于下面那块 */}
-                  <h2 id="server-ai-source-heading" className="text-lg font-semibold">
-                    {t('ai.serverSource.title')}
-                  </h2>
-                  <Tooltip variant="light" content={t('ai.serverSource.help')}>
-                    <Info
-                      aria-label={t('settings.helpAria', { label: t('ai.serverSource.title') })}
-                      className={helpIconClass}
-                    />
-                  </Tooltip>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t(serverAiSource === 'custom' ? 'ai.serverSource.descCustom' : 'ai.serverSource.descManaged')}
-                </p>
-              </div>
-              <Switch
-                checked={serverAiSource === 'custom'}
-                onChange={() => void handleServerAiSource(serverAiSource === 'custom' ? 'managed' : 'custom')}
-                labelledBy="server-ai-source-heading"
-                disabled={savingServerAiSource}
-              />
-            </div>
-
-            {serverAiSourceError && (
-              <Feedback className="mt-2" tone="error" message={t('ai.err.saveFailed')} />
-            )}
-          </section>
-        )}
-
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 grow basis-[18rem]">
             <div className="flex items-center gap-2">

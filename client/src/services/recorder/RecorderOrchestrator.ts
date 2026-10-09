@@ -1,8 +1,7 @@
 import * as bridge from '../bridge'
 import { startCapture, stopCapture } from '../audio'
-import { getProvider, MID_SESSION_DISCONNECT_ERROR, type TranscriptionProvider, type TranscriptionCallbacks, type FinalResult } from '../transcription'
-import { resolveAiPolicy, serverShouldPolish, type AiConfigSnapshot } from '../transcription/aiPolicy'
-import { getRuntimeServerAiSource } from '../transcription/serverAiSource'
+import { getProvider, type TranscriptionProvider, type TranscriptionCallbacks, type FinalResult } from '../transcription'
+import { resolveAiPolicy, type AiConfigSnapshot } from '../transcription/aiPolicy'
 import { isStreamingDisplayReady, resolveAsrDisplayModel } from '@/lib/asrModels'
 import {
   addHistory,
@@ -113,7 +112,6 @@ const MIC_MUTED_AUTO_CANCEL_MS = 3000
 
 function classifyHistoryProviderFailure(message: string): HistoryFailReasonCode {
   // 录音中掉线要单列：这段语音从未送达服务端，跟「服务端处理失败」的排查方向完全不同。
-  if (message === MID_SESSION_DISCONNECT_ERROR) return 'connection_lost'
   const code = describeProviderError(message).code
   switch (code) {
     case 'provider_timeout':
@@ -698,7 +696,7 @@ export class RecorderOrchestrator {
       mode: this.provider.mode,
     })
     this.provider.cancel()
-    if (this.provider.mode === 'server') this.ensureConnection()
+
     await this.failRunWithCard(runId, {
       title: params.title,
       detail: params.detail,
@@ -770,8 +768,6 @@ export class RecorderOrchestrator {
   /** 未就绪时的简短提示文案（按当前工作模式区分）。 */
   private notReadyMessage(): string {
     switch (this.provider.mode) {
-      case 'server':
-        return t('recorder.serverDisconnected')
       case 'local':
         return t('recorder.modelNotDownloaded')
       default:
@@ -1107,10 +1103,7 @@ export class RecorderOrchestrator {
         const themeActive = normalizeCustomThemeActive(rawCustomThemeActive as Record<string, unknown>, themes)
         return composeHotwords([], setWords, setActive, themes, themeActive)
       }),
-      getSetting('server.language', 'auto').then((lang) => {
-        const l = lang as string
-        return l && l !== 'auto' ? l : ''
-      }),
+      Promise.resolve(''),
     ])
 
     this.cachedHotwords = hotwordsResult.status === 'fulfilled' ? hotwordsResult.value : []
@@ -1402,7 +1395,7 @@ export class RecorderOrchestrator {
       if (this.getState() === 'processing' && this.activeRunId === 0) {
         this.resetToIdle({ keepOverlay: showCanceled })
       }
-      if (this.provider.mode === 'server') this.ensureConnection()
+
     }
   }
 
@@ -1449,7 +1442,7 @@ export class RecorderOrchestrator {
     this.resetToIdle({ keepOverlay: true })
 
     // ServerProvider.cancel 会主动断开旧 socket，隔离可能迟到的服务端结果。
-    if (this.provider.mode === 'server') this.ensureConnection()
+
   }
 
   // ── Provider callbacks ──
@@ -1541,7 +1534,7 @@ export class RecorderOrchestrator {
           // final 已经快照到前端，立即废弃旧 Provider 会话；尤其 Server 必须断开旧 socket，
           // 防止随后迟到的 done/error 在下一代 start 后误清新会话。
           this.provider.cancel()
-          if (this.provider.mode === 'server') this.ensureConnection()
+
           this.finalizingLateRunId = lateContext.runId
           // 用户已经放弃等待（宽限期里按了 Esc，或关掉了失败卡）：结果照样落历史，
           // 但**绝不自动插字**。界面上刚说完"不等了"，几秒后文字自己出现在输入框里，
@@ -1905,7 +1898,7 @@ export class RecorderOrchestrator {
   private ensureConnection() {
     if (this.provider.isReady()) return
     this.provider.connect(this.buildProviderCallbacks()).catch((err) => {
-      addRuntimeEvent('warn', 'websocket', 'Preconnection failed; retrying in 5s', { error: String(err) })
+      addRuntimeEvent('warn', 'transcription', 'Provider initialization failed; retrying in 5s', { error: String(err) })
       setTimeout(() => this.ensureConnection(), 5000)
     })
   }
@@ -2094,7 +2087,6 @@ export class RecorderOrchestrator {
       workMode: this.provider.mode,
       aiEnabled: this.cachedAiEnabled,
       aiMinDurationSec: this.cachedAiMinDurationSec,
-      serverAiSource: getRuntimeServerAiSource(),
     }
     this.currentOperationId = `${runId}-${Date.now().toString(36)}`
 
@@ -2206,7 +2198,7 @@ export class RecorderOrchestrator {
         this.provider.cancel()
         this.finishRun(runId)
         this.resetToIdle()
-        if (this.provider.mode === 'server') this.ensureConnection()
+
         return
       }
       this.startRecordingLock = false
@@ -2486,7 +2478,7 @@ export class RecorderOrchestrator {
       this.provider.cancel()
       this.finishRun(runId)
       this.resetToIdle()
-      if (this.provider.mode === 'server') this.ensureConnection()
+
       return
     }
 
@@ -2504,8 +2496,7 @@ export class RecorderOrchestrator {
         workMode: this.provider.mode,
         aiEnabled: this.cachedAiEnabled,
         aiMinDurationSec: this.cachedAiMinDurationSec,
-        serverAiSource: getRuntimeServerAiSource(),
-      }),
+        }),
       audioDurationSec: audioDur,
     })
     // 线上那个布尔只表达「服务端要不要做整理」。自配 AI 路线也会是 false，
@@ -2525,7 +2516,6 @@ export class RecorderOrchestrator {
 
     const stopAccepted = this.provider.stop({
       pttHoldMs,
-      disableAi: serverShouldPolish(aiPolicy) ? undefined : true,
       aiPolicy,
       audioStats,
     })
@@ -2637,7 +2627,7 @@ export class RecorderOrchestrator {
         if (this.timedOutProcessingContext === timedOutCtx) {
           this.timedOutProcessingContext = null
           this.provider.cancel()
-          if (this.provider.mode === 'server') this.ensureConnection()
+
         }
         void (async () => {
           // 等待终止之后才进失败卡 —— 宽限期里显示的是「仍在获取结果」，两者不能同时。
@@ -2834,25 +2824,6 @@ export class RecorderOrchestrator {
     const executionMeta = {
       aiSource: finalResult?.aiSource,
       aiStatus: finalResult?.aiStatus,
-    }
-    if (mode === 'server') {
-      let asrProvider = finalResult?.asrModel || finalResult?.asrEngine || 'server'
-      // 后端返回 HuggingFace repo 全名如 "Qwen/Qwen3-ASR-1.7B"，只取模型名
-      const slashIdx = asrProvider.lastIndexOf('/')
-      if (slashIdx >= 0) asrProvider = asrProvider.slice(slashIdx + 1)
-      if (finalResult?.aiSource === 'custom') {
-        return {
-          asrProvider,
-          aiProvider: finalResult.aiProvider,
-          aiModel: finalResult.aiModel,
-          ...executionMeta,
-        }
-      }
-      return {
-        asrProvider,
-        aiProvider: finalResult?.aiSource === 'none' ? undefined : 'server',
-        ...executionMeta,
-      }
     }
     if (mode === 'cloud_api') {
       const asrProviderKey = await getSetting('cloudAsr.provider', '') as string

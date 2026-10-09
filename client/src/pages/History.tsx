@@ -5,14 +5,11 @@ import { uint8ArrayToBase64 } from '@/lib/encoding'
 import { getWorkMode } from '@/services/transcription'
 import { polishWithClientAi } from '@/services/transcription/clientAiPolish'
 import {
-  extractServerAiEvidence,
   policyFromSnapshot,
   resolveAndLogAiOutcome,
-  serverShouldPolish,
   type AiConfigSnapshot,
   type AiOutcomeContext,
 } from '@/services/transcription/aiPolicy'
-import { SERVER_AI_SOURCE_KEY } from '@/services/transcription/serverAiSource'
 import type { AiExecutionSource, AiExecutionStatus, WorkMode } from '@/services/transcription'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -62,7 +59,6 @@ interface ReprocessResult {
   aiReason?: string
   aiProvider?: string
   aiModel?: string
-  serverAi?: { error?: string; provider?: string }
 }
 
 /**
@@ -77,8 +73,7 @@ interface ReprocessAiContext {
 }
 
 async function buildReprocessAiContext(recordId: string): Promise<ReprocessAiContext> {
-  const [rawSource, rawMin, rawEnabled] = await Promise.all([
-    getSetting(SERVER_AI_SOURCE_KEY, 'managed') as Promise<string>,
+  const [rawMin, rawEnabled] = await Promise.all([
     getSetting('aiMinDurationSec', 0),
     getSetting('aiEnabled', false),
   ])
@@ -87,163 +82,12 @@ async function buildReprocessAiContext(recordId: string): Promise<ReprocessAiCon
       workMode: getWorkMode(),
       aiEnabled: Boolean(rawEnabled),
       aiMinDurationSec: Math.max(0, Number(rawMin) || 0),
-      serverAiSource: rawSource === 'custom' ? 'custom' : 'managed',
     },
     context: {
       operationId: `reprocess-${recordId}-${Date.now().toString(36)}`,
       trigger: 'history_reprocess',
     },
   }
-}
-
-/** 服务器模式重新识别：通过独立 WebSocket 连接，避免干扰全局连接 */
-async function reprocessViaServer(
-  chunk: ArrayBuffer,
-  hotwords: string[],
-  ai: ReprocessAiContext,
-  systemPrompt: string | undefined,
-  clientMeta: Awaited<ReturnType<typeof bridge.getClientRuntimeInfo>> | null,
-): Promise<ReprocessResult> {
-  const { getWSUrl } = await import('@/services/runtimeConfig')
-  const wsUrl = getWSUrl()
-  const audioDurationSec = (chunk.byteLength / 2) / 16000
-  // 判据与实时录音共用同一个函数。这里原来自己又算了一遍门槛/来源/是否用内置 AI，
-  // 是本轮要消灭的第二份实现。
-  const policy = policyFromSnapshot(ai.snapshot, 'server', audioDurationSec)
-  const useManagedAi = serverShouldPolish(policy)
-  const useCustomAi = policy.allowCall && policy.route === 'custom'
-
-  const serverResult = await new Promise<ReprocessResult>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      try { socket.close() } catch { /* ignore */ }
-      reject(new Error('Retranscription timed out'))
-    }, 30_000) // ASR 最多 30 秒
-
-    const socket = new WebSocket(wsUrl)
-    socket.binaryType = 'arraybuffer'
-
-    let resolved = false
-
-    socket.onopen = () => {
-      const startMsg: Record<string, unknown> = {
-        cmd: 'start',
-        source: 'history_reprocess',
-        disable_ai: !useManagedAi,
-      }
-      if (useManagedAi && systemPrompt) startMsg.system_prompt = systemPrompt
-      if (clientMeta) {
-        startMsg.client_meta = {
-          user_id: clientMeta.userId,
-          device_id: clientMeta.deviceId,
-          hostname: clientMeta.hostname,
-          client_version: clientMeta.clientVersion,
-          platform: clientMeta.platform,
-          os_version: clientMeta.osVersion,
-          local_ip: clientMeta.localIp,
-          system_locale: clientMeta.systemLocale,
-          cpu_cores: clientMeta.cpuCores,
-          memory_mb: clientMeta.memoryMb,
-        }
-      }
-      if (hotwords.length > 0) startMsg.hotwords = hotwords
-      socket.send(JSON.stringify(startMsg))
-
-      // 分片发送 PCM 数据
-      const CHUNK_SIZE = 32000
-      const totalBytes = chunk.byteLength
-      for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, totalBytes)
-        socket.send(chunk.slice(offset, end))
-      }
-
-      socket.send(JSON.stringify({ cmd: 'stop' }))
-    }
-
-    socket.onmessage = (ev) => {
-      if (typeof ev.data !== 'string') return
-      try {
-        const msg = JSON.parse(ev.data)
-        if (msg.type === 'final') {
-          resolved = true
-          clearTimeout(timeout)
-          socket.close()
-          resolve({
-            asrText: msg.asr_text || '',
-            llmText: msg.llm_text || '',
-            asrMs: msg.asr_ms || 0,
-            llmMs: msg.llm_ms || 0,
-            durationSec: Number(msg.duration_sec || 0),
-            asrEngine: msg.asr_engine || undefined,
-            asrModel: msg.asr_model || undefined,
-            // 与实时路径同一个提取函数：重跑此前完全不看执行证据，于是服务端
-            // 调用失败在重跑后的记录里和"没调用"分不开。
-            serverAi: extractServerAiEvidence(msg.llm_debug),
-          })
-        } else if (msg.type === 'done' && !resolved) {
-          // 没有 final 就 done 了（后端判定为静音/无结果）
-          resolved = true
-          clearTimeout(timeout)
-          socket.close()
-          resolve({ asrText: '', llmText: '', asrMs: 0, llmMs: 0, durationSec: 0 })
-        } else if (msg.type === 'error') {
-          resolved = true
-          clearTimeout(timeout)
-          socket.close()
-          reject(new Error(msg.message || 'backend error'))
-        }
-      } catch { /* ignore parse errors */ }
-    }
-
-    socket.onerror = () => {
-      if (!resolved) {
-        resolved = true
-        clearTimeout(timeout)
-        reject(new Error('WebSocket connection error'))
-      }
-    }
-
-    socket.onclose = (ev) => {
-      if (!resolved) {
-        resolved = true
-        clearTimeout(timeout)
-        reject(new Error(`WebSocket closed unexpectedly, code=${ev.code}`))
-      }
-    }
-  })
-
-  if (!useCustomAi) {
-    // 内置 AI 路线（含空识别、总开关关闭、低于门槛）：结论一律由共用判据给出，
-    // 不再拿 llmMs > 0 反推成功失败。
-    const outcome = resolveAndLogAiOutcome(ai.context, policy, {
-      asrTextEmpty: !serverResult.asrText.trim(),
-      serverError: serverResult.serverAi?.error,
-      serverProvider: serverResult.serverAi?.provider,
-      llmMs: serverResult.llmMs,
-    })
-    return {
-      ...serverResult,
-      aiSource: outcome.source,
-      aiStatus: outcome.status,
-      aiReason: outcome.reason,
-      aiProvider: outcome.provider,
-      aiModel: outcome.model,
-    }
-  }
-
-  const polished = await polishWithClientAi({
-    asrText: serverResult.asrText,
-    startOptions: {
-      runId: 1,
-      operationId: ai.context.operationId,
-      aiConfig: ai.snapshot,
-      systemPrompt,
-      source: 'history_reprocess',
-    },
-    policy,
-    outcomeContext: ai.context,
-    logSource: 'history',
-  })
-  return polished ? { ...serverResult, ...polished } : serverResult
 }
 
 /** 云 API 模式重新识别：调用 cloud_transcribe + 可选 cloud_polish，与 CloudAPIProvider 一致 */
@@ -423,10 +267,7 @@ async function buildReprocessMetadata(
     const modelId = await getSetting('localAsr.modelId', '') as string
     return { asrProvider: modelId || 'local', ...aiFields }
   }
-  return {
-    asrProvider: (result.asrModel || result.asrEngine || 'server').replace(/^.*\//, ''),
-    ...aiFields,
-  }
+  return { ...aiFields }
 }
 
 export default function History() {
@@ -498,17 +339,6 @@ export default function History() {
     setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
 
-  /**
-   * 记下「这条的 ASR 纠错已提交 / 已撤回」。
-   *
-   * 只写 asrCorrection* 三个字段，**不动 llmText / charCount / manualEditedAt** ——
-   * 纠正的是识别原文，正文和统计不该被它带着改（handleEdit 改的才是正文）。
-   */
-  const handleSaveAsrCorrection = async (id: string, patch: Partial<HistoryRecord>) => {
-    await updateHistoryRecord(id, patch)
-    setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
-  }
-
   const handleExport = async () => {
     const result = await exportHistory({ keyword: debouncedKeyword })
     setExportResult(result)
@@ -567,7 +397,6 @@ export default function History() {
       hotwords = composeHotwords([], setWords, setActive, themes, themeActive)
     } catch { /* ignore */ }
 
-    const clientMeta = await bridge.getClientRuntimeInfo().catch(() => null)
 
     // 按用户当前选择的工作模式重新识别，与实时录音保持一致
     // （此前这里硬编码走服务器模式，导致云 API/本地模式下重新识别被错误地发回服务器）
@@ -588,7 +417,7 @@ export default function History() {
     } else if (workMode === 'local') {
       result = await reprocessViaLocal(chunk, hotwords, ai, systemPrompt)
     } else {
-      result = await reprocessViaServer(chunk, hotwords, ai, systemPrompt, clientMeta)
+      throw new Error('Unsupported transcription mode')
     }
 
     // 新链路优先采用显式执行状态；旧的云/本地历史重跑尚未返回状态时才兼容文本比较。
@@ -689,7 +518,6 @@ export default function History() {
         onToggleFavorite={handleToggleFavorite}
         onReprocess={handleReprocess}
         onEdit={handleEdit}
-        onSaveAsrCorrection={handleSaveAsrCorrection}
         highlight={debouncedKeyword}
         emptyText={keyword.trim() ? t('history.emptyNoMatch') : favoriteOnly ? t('history.emptyFavorites') : t('history.empty')}
       />

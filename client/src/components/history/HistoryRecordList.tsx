@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Trash2, VolumeX, Star, Play, Pause, RotateCcw, Loader2, Download, Check, Copy, X, FolderOpen, Pencil, ChevronDown, ChevronUp, SpellCheck } from 'lucide-react'
+import { Trash2, VolumeX, Star, Play, Pause, RotateCcw, Loader2, Download, Check, Copy, X, FolderOpen, Pencil, ChevronDown, ChevronUp } from 'lucide-react'
 import { Tooltip } from '@/components/ui/tooltip'
 import { Card, CardContent } from '@/components/ui/card'
 import { type HistoryRecord } from '@/services/store'
@@ -12,7 +12,6 @@ import { useT } from '@/i18n/useT'
 import { historyFailureReasonDisplay } from '@/i18n/displayNames'
 import { useRecordingPlayback } from './useRecordingPlayback'
 import { AudioProgressBar } from './AudioProgressBar'
-import { AsrCorrectionDialog } from './AsrCorrectionDialog'
 
 /** 云 API 内部 key → 用户友好的模型 ID */
 const ASR_PROVIDER_DISPLAY: Record<string, string> = {
@@ -34,7 +33,6 @@ interface HistoryRecordListProps {
   /** 手工编辑转换结果并保存 */
   onEdit?: (id: string, nextText: string) => Promise<void> | void
   /** 记下「这条的 ASR 纠错已提交/已撤回」，由页面写回本地记录 */
-  onSaveAsrCorrection?: (id: string, patch: Partial<HistoryRecord>) => Promise<void> | void
   emptyText?: string
   /** 搜索关键词：在正文与 ASR 原文里高亮命中处 */
   highlight?: string
@@ -90,7 +88,6 @@ function HistoryItem({
   onToggleFavorite,
   onReprocess,
   onEdit,
-  onSaveAsrCorrection,
   highlight = '',
 }: {
   record: HistoryRecord
@@ -98,7 +95,6 @@ function HistoryItem({
   onToggleFavorite?: (nextFavorite: boolean) => void
   onReprocess?: () => Promise<void> | void
   onEdit?: (nextText: string) => Promise<void> | void
-  onSaveAsrCorrection?: (patch: Partial<HistoryRecord>) => Promise<void> | void
   highlight?: string
 }) {
   // 详情区靠**点「展开详情」按钮**开合，不用 hover。
@@ -116,7 +112,6 @@ function HistoryItem({
   const [downloadStatus, setDownloadStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
   const [downloadPath, setDownloadPath] = useState('')
   const [copied, setCopied] = useState(false)
-  const [correcting, setCorrecting] = useState(false)
   const playback = useRecordingPlayback(record.audioFilePath)
 
   const text = record.llmText || record.asrText
@@ -126,19 +121,6 @@ function HistoryItem({
     audioSec: record.audioDurationSec,
     asrSec: record.asrDurationSec,
   })
-
-  /**
-   * 「纠正识别」入口的门槛。
-   *
-   * 只有服务器模式：只有服务器上的模型是我们能改的，云 API / 本地模型认错了，
-   * 把用户音频收上来既没用又是一次隐私意外（见 .kiro/decisions.md）。
-   * 必须有录音路径：没有音频的纠正对改进识别没有用。路径存在但文件已被保留期清掉
-   * 这种情况留给面板去说明 —— 列表渲染时不该为每一行去摸一次磁盘。
-   */
-  const canCorrectAsr = Boolean(
-    onSaveAsrCorrection && record.workMode === 'server' && record.asrText && !isEmpty && record.audioFilePath,
-  )
-  const asrCorrectionSubmitted = Boolean(record.asrCorrectionId)
 
   const handleReprocess = useCallback(async () => {
     if (!onReprocess || reprocessing) return
@@ -453,18 +435,6 @@ function HistoryItem({
                         </button>
                       </Tooltip>
                     )}
-                    {canCorrectAsr && (
-                      <Tooltip content={asrCorrectionSubmitted ? t('asrCorrection.entrySubmitted') : t('asrCorrection.entry')}>
-                        <button
-                          type="button"
-                          onClick={() => setCorrecting(true)}
-                          className="relative top-[0.5px] flex h-7 w-7 items-center justify-center rounded p-1.5 hover:bg-accent"
-                          aria-label={asrCorrectionSubmitted ? t('asrCorrection.entrySubmitted') : t('asrCorrection.entry')}
-                        >
-                          <SpellCheck className={`h-3.5 w-3.5 ${asrCorrectionSubmitted ? 'text-success' : 'text-muted-foreground'}`} />
-                        </button>
-                      </Tooltip>
-                    )}
                     {record.audioFilePath && onReprocess && (
                       <Tooltip content={t('record.reprocess')}>
                         <button
@@ -509,13 +479,6 @@ function HistoryItem({
         </div>
       </div>
 
-      {correcting && onSaveAsrCorrection && (
-        <AsrCorrectionDialog
-          record={record}
-          onClose={() => setCorrecting(false)}
-          onSubmitted={(patch) => { void onSaveAsrCorrection(patch) }}
-        />
-      )}
     </div>
   )
 }
@@ -527,7 +490,6 @@ function DayGroup({
   onToggleFavorite,
   onReprocess,
   onEdit,
-  onSaveAsrCorrection,
   highlight,
 }: {
   label: string
@@ -536,7 +498,6 @@ function DayGroup({
   onToggleFavorite?: (id: string, nextFavorite: boolean) => Promise<void> | void
   onReprocess?: (record: HistoryRecord) => Promise<void> | void
   onEdit?: (id: string, nextText: string) => Promise<void> | void
-  onSaveAsrCorrection?: (id: string, patch: Partial<HistoryRecord>) => Promise<void> | void
   highlight?: string
 }) {
   return (
@@ -552,7 +513,6 @@ function DayGroup({
               onToggleFavorite={onToggleFavorite ? (next) => onToggleFavorite(record.id, next) : undefined}
               onReprocess={onReprocess ? () => onReprocess(record) : undefined}
               onEdit={onEdit ? (nextText) => onEdit(record.id, nextText) : undefined}
-              onSaveAsrCorrection={onSaveAsrCorrection ? (patch) => onSaveAsrCorrection(record.id, patch) : undefined}
               highlight={highlight}
             />
           ))}
@@ -568,7 +528,6 @@ export default function HistoryRecordList({
   onToggleFavorite,
   onReprocess,
   onEdit,
-  onSaveAsrCorrection,
   emptyText,
   highlight,
 }: HistoryRecordListProps) {
@@ -617,7 +576,6 @@ export default function HistoryRecordList({
           onToggleFavorite={onToggleFavorite}
           onReprocess={onReprocess}
           onEdit={onEdit}
-          onSaveAsrCorrection={onSaveAsrCorrection}
           highlight={highlight}
         />
       ))}

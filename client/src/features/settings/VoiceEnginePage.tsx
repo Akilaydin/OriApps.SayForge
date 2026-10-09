@@ -10,7 +10,6 @@ import { setEngineDraftDirty } from '@/stores/engineDraft'
 import WorkModeSection from './WorkModeSection'
 import CloudAPISection from './CloudAPISection'
 import LocalModeSection, { LocalModeAdvancedSection } from './LocalModeSection'
-import ServerSection from './ServerSection'
 import AsrTestSection from './AsrTestSection'
 import { useT } from '@/i18n/useT'
 
@@ -22,9 +21,9 @@ export default function VoiceEnginePage() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   useEffect(() => {
-    getSetting('workMode', 'server').then((value) => {
+    getSetting('workMode', 'cloud_api').then((value) => {
       const v = value as WorkMode
-      if (v === 'server' || v === 'cloud_api' || v === 'local') setWorkMode(v)
+      setWorkMode(v === 'local' ? 'local' : 'cloud_api')
     })
   }, [])
 
@@ -53,7 +52,6 @@ export default function VoiceEnginePage() {
         {/* id 供「工作模式」右上角的「待配置」徽标点击后滚动定位 */}
         <div id="engine-config" className="space-y-6">
           {workMode === 'local' && <LocalModeSection />}
-          {workMode === 'server' && <ServerSection />}
           {workMode === 'cloud_api' && <CloudAPISection />}
         </div>
 

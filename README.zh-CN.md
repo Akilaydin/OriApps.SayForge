@@ -31,8 +31,8 @@ ASR API 转写，将文本插入当前输入框，可选用 AI 进行整理。
 独立构建版本将发布在 [GitHub Releases](https://github.com/Akilaydin/OriApps.SayForge/releases)。
 目前不自动下载和安装更新，也不会从原 SayIt 的服务器更新。尚未发布经过签名验证的正式安装包。
 
-默认服务器模式地址是 `http://127.0.0.1:8000`，需要自己部署服务器；
-SayForge 没有公共语音试用服务器。也可以直接配置云端模型或使用本地模型。
+SayForge 现在仅支持云端 API 和本地识别，无需部署独立服务器。
+原 Server Mode 已移除；旧设置会在启动时自动切换至 Cloud API。
 
 ## 从 SayIt 迁移
 
@@ -44,7 +44,7 @@ SayForge 使用独立的应用标识 `com.oriapps.sayforge` 和用户数据目�
 ## 开发与贡献
 
 客户端由 Rust、Tauri、React 和 TypeScript 开发。构建方法参见
-[英文 README](README.md#development)，服务器说明参见 [server/README.md](server/README.md)。
+[英文 README](README.md#development)。
 欢迎在本仓库提交 Issues 和 Pull Requests。
 
 ## 许可证

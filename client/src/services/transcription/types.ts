@@ -5,21 +5,11 @@ import type { ActiveAppContext, TextContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'
 import type { AiConfigSnapshot, AiPolicy } from './aiPolicy'
 
-export type WorkMode = 'server' | 'cloud_api' | 'local'
+export type WorkMode = 'cloud_api' | 'local'
 
 export type ProviderState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-/**
- * 一次录音进行中连接掉线的哨兵错误。
- *
- * 走 onError 的统一失败通道（这样音频存档/历史/提示都复用同一条路），但录音器要能把它
- * 单独归类成 connection_lost —— 这段语音是**从未送达**服务端，跟「服务端处理失败」
- * 不是一回事，用户看到的解释也不该相同。
- */
-export const MID_SESSION_DISCONNECT_ERROR
-  = 'sayit_error:server_unreachable:websocket disconnected mid-session'
-
-export type AiExecutionSource = 'server' | 'custom' | 'none'
+export type AiExecutionSource = 'custom' | 'none'
 export type AiExecutionStatus = 'applied' | 'skipped' | 'unavailable' | 'failed'
 
 export interface ASRResult {
@@ -61,7 +51,6 @@ export interface FinalResult {
    * 顺着结果对象传播出去早晚会被某处日志整条打出来。
    * 有它才能把「服务端跑了但很快」和「服务端压根没跑」分开 —— 光看 llm_ms=0 分不出来。
    */
-  serverAi?: { error?: string; provider?: string }
 }
 
 export interface TranscriptionCallbacks {

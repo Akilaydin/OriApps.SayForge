@@ -129,7 +129,7 @@ export default function DiagnosticsPage() {
       id: 'workMode',
       label: t('diagnostics.health.workMode'),
       status: 'ok',
-      detail: t(workMode === 'server' ? 'diagnostics.mode.server' : workMode === 'cloud_api' ? 'diagnostics.mode.cloud' : 'diagnostics.mode.local'),
+      detail: t(workMode === 'cloud_api' ? 'diagnostics.mode.cloud' : 'diagnostics.mode.local'),
     })
 
     // ASR 检查
@@ -208,8 +208,6 @@ export default function DiagnosticsPage() {
       } catch (err) {
         items.push({ id: 'localEngine', label: t('diagnostics.health.localEngine'), status: 'error', detail: String(err) })
       }
-    } else {
-      items.push({ id: 'asr', label: t('diagnostics.health.asr'), status: 'ok', detail: t('diagnostics.fromServer') })
     }
 
     // AI 检查：所有模式都先看「AI 整理」总开关。关闭即极速模式（不经 AI），
@@ -218,8 +216,6 @@ export default function DiagnosticsPage() {
     const aiEnabled = await getSetting('aiEnabled', false) as boolean
     if (!aiEnabled) {
       items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'disabled', detail: t('diagnostics.aiDisabled') })
-    } else if (workMode === 'server') {
-      items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'ok', detail: t('diagnostics.fromServer') })
     } else {
       const aiProvider = await getSetting('cloudAi.provider', '') as string
       const aiApiKey = await getSetting('cloudAi.apiKey', '') as string
