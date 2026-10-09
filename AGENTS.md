@@ -47,6 +47,8 @@ npm run i18n:check
 npm run build
 ```
 
+`npm run lint` is currently blocked: ESLint 10 requires `eslint.config.*`, but the repository only has `.eslintrc.cjs`. Do not report lint as passing until the configuration is fixed.
+
 For Rust changes, from the repository root:
 
 ```powershell

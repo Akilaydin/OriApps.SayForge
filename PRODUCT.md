@@ -26,7 +26,7 @@ Cancellation must not insert late results. Empty/silent recordings can produce n
 
 ## Speech engines
 
-**Cloud API:** sends recorded audio directly to the configured provider. Supported integrations include OpenAI, Groq, Gemini, OpenRouter and custom OpenAI-compatible endpoints. Protocol/model support determines streaming and hotwords. OpenAI-compatible chat audio supports WAV or optional MP3 input. Users supply their own endpoint, credentials and payment arrangements.
+**Cloud API:** sends recorded audio directly to the configured provider. Supported integrations include OpenAI, Groq, Gemini, OpenRouter and custom OpenAI-compatible endpoints. Protocol/model support determines streaming and hotwords. OpenAI-compatible chat audio supports WAV or optional MP3 input. Users provide API credentials and pay any provider charges directly.
 
 **Local:** runs a downloaded GGUF model on the user's device. The catalog includes NVIDIA Parakeet Unified EN (English) and Nemotron 3.5 ASR (multilingual, including Russian). Performance and compatibility depend on available hardware and drivers.
 
