@@ -22,7 +22,7 @@ own cloud API, optionally polish the text, and paste it into another application
 - Global press-to-talk and hands-free shortcuts, with insertion into the active Windows app.
 - Searchable text history and TXT export, hotwords, optional AI cleanup and an editable prompt.
 - OpenAI-compatible HTTP transcription and chat/audio endpoints with configurable URL, model and API key.
-- **Standard OpenAI input_audio** with **WAV or optional MP3** (64 kbps mono), and
+- **Standard OpenAI input_audio** with **MP3** (64 kbps mono) or WAV, and
   separate **System Instruction** and **User Prompt** for transcription.
 
 ## Install

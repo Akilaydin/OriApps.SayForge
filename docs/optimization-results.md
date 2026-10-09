@@ -40,6 +40,31 @@ Local socket tests check exact attempts, explicit selection, cache reuse/invalid
 shape fallback and actual timeout. Live gateways remain unverified.
 Validation: 115 Rust tests and `git diff --check` passed.
 
+## 4. MP3-first Cloud API
+
+New profiles default to MP3; missing/migrated codec settings keep WAV. Multipart and
+standard chat share the existing LAME encoder, executed on blocking workers including
+connection tests. Legacy chat remains WAV. Payload tests verify filenames/MIME, standard
+chat format and legacy data URLs. A rejected MP3 requires explicit WAV selection.
+
+Measured on synthetic 16 kHz mono sine audio in Rust debug tests, one run per cell.
+Upload fixture replies immediately after consuming the body; its throttled read loop
+approximates 256,000 bytes/s. Native total includes decode/encoding/request, excludes
+recording/UI/settings/real ASR inference. Fast loopback can favor WAV. Encoding varies
+between runs; these figures are measurements, not production latency guarantees.
+
+| Audio seconds | WAV/MP3 bytes | WAV/MP3 encoding ms | Loopback native ms | Throttled native ms |
+| --- | --- | --- | --- | --- |
+| 8 | 256044 / 63648 | 0.147 / 39.121 | 16.943 / 50.430 | 1022.056 / 287.635 |
+| 30 | 960044 / 239616 | 0.333 / 175.327 | 20.169 / 203.337 | 3852.496 / 1181.106 |
+| 60 | 1920044 / 479808 | 0.537 / 463.050 | 40.104 / 418.519 | 7714.369 / 2335.825 |
+
+Multipart body adds 735 WAV / 736 MP3 bytes in this fixture. Reproduce with
+`cargo test --manifest-path client/src-tauri/Cargo.toml benchmark_cloud_audio_formats -- --ignored --nocapture`.
+No saved endpoint/profiles were configured locally; Russian ASR quality remains unverified.
+Validation: 379 frontend and 116 Rust tests passed (benchmark ignored by default and
+passed separately); ffprobe verified MP3 decoding, TypeScript/i18n/diff checks passed.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

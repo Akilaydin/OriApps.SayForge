@@ -216,7 +216,7 @@ export interface AsrProfile {
   name: string
   apiUrl: string
   protocol: AsrCompatProtocol
-  /** OpenAI-compatible chat_standard: WAV by default; optionally MP3/64 kbps mono. */
+  /** Multipart/standard chat audio: MP3/64 kbps mono for new profiles; WAV remains available. */
   audioEncoding: AsrAudioEncoding
   /** OpenAI-compatible chat: override the built-in transcription system instruction. */
   systemInstruction: string
@@ -250,7 +250,7 @@ export function emptyAsrProfile(provider = ASR_PROVIDERS[0].id): AsrProfile {
     name: '',
     apiUrl: '',
     protocol: 'auto',
-    audioEncoding: 'wav',
+    audioEncoding: 'mp3',
     systemInstruction: '',
     userPrompt: '',
     model: entry ? asrModelsOf(entry)[0].id : '',

@@ -688,7 +688,7 @@
   "asr.protocol.chat": "Chat style - data URL (/chat/completions)",
   "asr.protocol.chat_standard": "Chat style - OpenAI audio object (/chat/completions)",
   "asr.audioEncoding": "Audio upload format",
-  "asr.audioEncodingHint": "MP3 is supported only by standard OpenAI chat-style audio; other protocols continue to use WAV. WAV remains the default for compatibility.",
+  "asr.audioEncodingHint": "New profiles use MP3 (64 kbps mono) for multipart and standard chat audio. Use WAV if your endpoint rejects MP3. Legacy chat always uses WAV; existing profiles keep their format.",
   "asr.systemInstruction": "System Instruction",
   "asr.systemInstructionPlaceholder": "Leave blank to use the built-in transcription instruction.",
   "asr.systemInstructionHint": "Sent as a system message. Use it to specify the transcription language and output rules. Empty uses the built-in instruction.",

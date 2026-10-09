@@ -86,7 +86,7 @@ describe('ASR profile persistence and orphan protection', () => {
       protocol:'chat_standard',audioEncoding:'mp3',systemInstruction:'Transcribe Russian',
       userPrompt:'Keep RabbitMQ spelling',
     })
-    const second=profile('openai_compat',{id:'groq',apiKey:'other'})
+    const second=profile('openai_compat',{id:'groq',apiKey:'other',audioEncoding:'wav'})
     store.set(ASR_PROFILES_KEY,[first,second])
     store.set(ASR_ACTIVE_PROFILE_KEY,'custom')
     const loaded=await loadAsrProfiles()

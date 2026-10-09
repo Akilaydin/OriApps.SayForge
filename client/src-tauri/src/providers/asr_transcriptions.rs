@@ -1,4 +1,5 @@
 use super::diag;
+use super::asr_openai_chat_audio::{pcm_to_mp3, pcm_to_wav};
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
 use std::time::Instant;
 
@@ -87,25 +88,6 @@ fn resolve_model(config: &AsrProviderConfig, endpoint: &Endpoint) -> String {
 const PUNCTUATION_PROMPT: &str = "Transcribe the audio faithfully, with natural punctuation, correct capitalization, and no extra explanation.";
 
 ///
-fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
-    let ds = pcm.len() as u32;
-    let mut w = Vec::with_capacity(44 + pcm.len());
-    w.extend_from_slice(b"RIFF");
-    w.extend_from_slice(&(36 + ds).to_le_bytes());
-    w.extend_from_slice(b"WAVEfmt ");
-    w.extend_from_slice(&16u32.to_le_bytes());
-    w.extend_from_slice(&1u16.to_le_bytes());
-    w.extend_from_slice(&1u16.to_le_bytes());
-    w.extend_from_slice(&sr.to_le_bytes());
-    w.extend_from_slice(&(sr * 2).to_le_bytes());
-    w.extend_from_slice(&2u16.to_le_bytes());
-    w.extend_from_slice(&16u16.to_le_bytes());
-    w.extend_from_slice(b"data");
-    w.extend_from_slice(&ds.to_le_bytes());
-    w.extend_from_slice(pcm);
-    w
-}
-
 ///
 fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     let raw = config
@@ -122,15 +104,16 @@ fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
 }
 
 fn build_form(
-    wav: Vec<u8>,
+    audio: Vec<u8>,
+    mp3: bool,
     model: &str,
     language: Option<&str>,
     scope: &str,
     with_prompt: bool,
 ) -> Result<reqwest::multipart::Form, String> {
-    let part = reqwest::multipart::Part::bytes(wav)
-        .file_name("audio.wav")
-        .mime_str("audio/wav")
+    let part = reqwest::multipart::Part::bytes(audio)
+        .file_name(if mp3 { "audio.mp3" } else { "audio.wav" })
+        .mime_str(if mp3 { "audio/mpeg" } else { "audio/wav" })
         .map_err(|e| diag::fail(scope, "build_form", format!("Failed to build the audio part: {}", e)))?;
 
     let mut form = reqwest::multipart::Form::new()
@@ -210,14 +193,23 @@ pub async fn transcribe(
     let language = resolve_language(config);
     let model = resolve_model(config, endpoint);
     let url = resolve_url(config, endpoint)?;
-    let wav = pcm_to_wav(&pcm, sample_rate);
+    let start = Instant::now();
+    let mp3 = config.extra.get("audioEncoding").and_then(serde_json::Value::as_str) == Some("mp3");
+    let encoding_start = Instant::now();
+    let audio = if mp3 {
+        tokio::task::spawn_blocking(move || pcm_to_mp3(&pcm, sample_rate))
+            .await.map_err(|e| format!("MP3 encoding task failed: {e}"))??
+    } else {
+        pcm_to_wav(&pcm, sample_rate)
+    };
+    diag::log(scope, "encoding", &format!("mp3={mp3} bytes={} elapsed_ms={}", audio.len(), encoding_start.elapsed().as_millis()));
 
     diag::log(
         scope,
         "start",
         &format!(
-            "wav_bytes={} audio_sec={:.1} rate={} language={}",
-            wav.len(),
+            "upload_bytes={} audio_sec={:.1} rate={} language={}",
+            audio.len(),
             audio_sec,
             sample_rate,
             language.as_deref().unwrap_or("auto(omitted)")
@@ -225,11 +217,9 @@ pub async fn transcribe(
     );
 
     let client = super::http_client::shared();
-    let start = Instant::now();
-
     let mut with_prompt = true;
     let (body_text, http_summary, elapsed_ms) = loop {
-        let form = build_form(wav.clone(), &model, language.as_deref(), scope, with_prompt)?;
+        let form = build_form(audio.clone(), mp3, &model, language.as_deref(), scope, with_prompt)?;
         let resp = client
             .post(&url)
             .header("Authorization", format!("Bearer {}", config.api_key))
@@ -305,7 +295,13 @@ pub async fn transcribe(
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let endpoint = endpoint_for(&config.provider);
     let silence = vec![0u8; 16000];
-    let wav = pcm_to_wav(&silence, 16000);
+    let mp3 = config.extra.get("audioEncoding").and_then(serde_json::Value::as_str) == Some("mp3");
+    let audio = if mp3 {
+        match tokio::task::spawn_blocking(move || pcm_to_mp3(&silence, 16000)).await {
+            Ok(Ok(audio)) => audio,
+            error => return TestResult { ok: false, message: format!("MP3 encoding failed: {error:?}"), elapsed_ms: 0, detail: String::new() },
+        }
+    } else { pcm_to_wav(&silence, 16000) };
     let model = resolve_model(config, endpoint);
 
     let url = match resolve_url(config, endpoint) {
@@ -320,7 +316,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         }
     };
 
-    let form = match build_form(wav, &model, None, endpoint.scope, true) {
+    let form = match build_form(audio, mp3, &model, None, endpoint.scope, true) {
         Ok(f) => f,
         Err(e) => {
             return TestResult {

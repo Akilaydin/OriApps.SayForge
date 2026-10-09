@@ -274,7 +274,13 @@ mod tests {
     }
 
     fn mock_http(responses: Vec<(u16, &'static str)>) -> (
-        String, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<Vec<String>>,
+        String, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<Vec<(String, Vec<u8>)>>,
+    ) {
+        mock_http_throttled(responses, None)
+    }
+
+    fn mock_http_throttled(responses: Vec<(u16, &'static str)>, bytes_per_second: Option<u64>) -> (
+        String, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<Vec<(String, Vec<u8>)>>,
     ) {
         use std::io::{Read, Write};
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -286,7 +292,7 @@ mod tests {
         let done = stop.clone();
         let handle = std::thread::spawn(move || {
             let mut paths = Vec::new();
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             while !done.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
                 let (mut stream, _) = match listener.accept() {
                     Ok(pair) => pair,
@@ -310,9 +316,12 @@ mod tests {
                     let n = stream.read(&mut chunk).unwrap();
                     assert!(n > 0);
                     request.extend_from_slice(&chunk[..n]);
+                    if let Some(rate) = bytes_per_second {
+                        std::thread::sleep(std::time::Duration::from_secs_f64(n as f64 / rate as f64));
+                    }
                 }
                 let (status, body) = responses.get(paths.len()).copied().unwrap_or((500, "unexpected request"));
-                paths.push(path);
+                paths.push((path, request));
                 if status != 0 {
                     write!(stream, "HTTP/1.1 {status} Synthetic\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
                 }
@@ -326,9 +335,9 @@ mod tests {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
     }
 
-    fn stop_server(stop: std::sync::Arc<std::sync::atomic::AtomicBool>, handle: std::thread::JoinHandle<Vec<String>>) -> Vec<String> {
+    fn stop_server(stop: std::sync::Arc<std::sync::atomic::AtomicBool>, handle: std::thread::JoinHandle<Vec<(String, Vec<u8>)>>) -> Vec<String> {
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
-        handle.join().unwrap()
+        handle.join().unwrap().into_iter().map(|(path, _)| path).collect()
     }
 
     #[test]
@@ -412,5 +421,78 @@ mod tests {
             assert_eq!(crate::error_protocol::code(&encoded), Some("provider_timeout"));
             assert!(!may_probe_next(&encoded));
         });
+    }
+
+    fn synthetic_pcm(seconds: usize) -> Vec<u8> {
+        (0..16000 * seconds).flat_map(|i| {
+            let sample = ((i as f32 * 2.0 * std::f32::consts::PI * 440.0 / 16000.0).sin() * 8000.0) as i16;
+            sample.to_le_bytes()
+        }).collect()
+    }
+
+    #[test]
+    fn selected_codec_reaches_multipart_standard_chat_and_legacy_chat() {
+        use base64::Engine;
+        let pcm = synthetic_pcm(1);
+        let audio = base64::engine::general_purpose::STANDARD.encode(&pcm);
+        for protocol in ["transcriptions", "chat_standard", "chat"] {
+            for encoding in ["mp3", "wav"] {
+                let (url, stop, server) = mock_http(vec![(200, r#"{"text":"Synthetic","choices":[{"message":{"content":"Synthetic"}}]}"#)]);
+                let cfg = config(serde_json::json!({"baseUrl":url,"model":"synthetic","protocol":protocol,"audioEncoding":encoding}));
+                runtime().block_on(async { assert_eq!(transcribe(&audio, 16000, &cfg, &[]).await.unwrap().text, "Synthetic"); });
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                let requests = server.join().unwrap();
+                assert_eq!(requests.len(), 1);
+                let request = &requests[0].1;
+                let header_end = request.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+                let body = &request[header_end..];
+                if protocol == "transcriptions" {
+                    let text = String::from_utf8_lossy(body);
+                    assert!(text.contains(&format!("filename=\"audio.{encoding}\"")));
+                    assert!(text.contains(if encoding == "mp3" { "audio/mpeg" } else { "audio/wav" }));
+                    if encoding == "wav" { assert!(body.windows(4).any(|w| w == b"RIFF")); }
+                } else {
+                    let json: serde_json::Value = serde_json::from_slice(body).unwrap();
+                    let fields: Vec<_> = json["messages"].as_array().unwrap().iter().flat_map(|m| m["content"].as_array().unwrap()).collect();
+                    let input = &fields.iter().find(|f| f["type"] == "input_audio").unwrap()["input_audio"];
+                    if protocol == "chat" { assert!(input.as_str().unwrap().starts_with("data:audio/wav;base64,")); }
+                    else {
+                        assert_eq!(input["format"], encoding);
+                        let bytes = base64::engine::general_purpose::STANDARD.decode(input["data"].as_str().unwrap()).unwrap();
+                        if encoding == "wav" { assert_eq!(&bytes[44..], pcm); }
+                        else { assert!(bytes.len() < pcm.len() / 2); }
+                    }
+                }
+            }
+        }
+        assert!(super::super::asr_openai_chat_audio::pcm_to_mp3(&[0], 16000).is_err());
+    }
+
+    #[test]
+    #[ignore = "synthetic encoding/upload benchmark; run explicitly with --nocapture"]
+    fn benchmark_cloud_audio_formats() {
+        use base64::Engine;
+        for seconds in [8, 30, 60] {
+            let pcm = synthetic_pcm(seconds);
+            for encoding in ["wav", "mp3"] {
+                let start = std::time::Instant::now();
+                let encoded = if encoding == "mp3" { super::super::asr_openai_chat_audio::pcm_to_mp3(&pcm, 16000).unwrap() }
+                    else { super::super::asr_openai_chat_audio::pcm_to_wav(&pcm, 16000) };
+                let encode_ms = start.elapsed().as_secs_f64() * 1000.0;
+                for rate in [None, Some(256_000)] {
+                    let (url, stop, server) = mock_http_throttled(vec![(200, r#"{"text":"Synthetic"}"#)], rate);
+                    let cfg = config(serde_json::json!({"baseUrl":url,"model":"synthetic","protocol":"transcriptions","audioEncoding":encoding}));
+                    let input = base64::engine::general_purpose::STANDARD.encode(&pcm);
+                    let start = std::time::Instant::now();
+                    runtime().block_on(async { transcribe(&input, 16000, &cfg, &[]).await.unwrap(); });
+                    let total_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                    let requests = server.join().unwrap();
+                    let request = &requests[0].1;
+                    let body_start = request.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+                    println!("BENCH seconds={seconds} codec={encoding} bytes={} encode_ms={encode_ms:.3} rate={rate:?} body_bytes={} native_total_ms={total_ms:.3}", encoded.len(), request.len() - body_start);
+                }
+            }
+        }
     }
 }

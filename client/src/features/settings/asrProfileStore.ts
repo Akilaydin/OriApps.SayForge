@@ -84,6 +84,8 @@ export function topUpProfiles(
     if (existing.some((p) => p.provider === entry.id)) continue
     if (autoCards.has(entry.id)) continue
     const profile = emptyAsrProfile(entry.id)
+    // Existing platform credentials came from the legacy WAV-only setup.
+    profile.audioEncoding = 'wav'
     profile.apiKey = creds.apiKey
     profile.otherKey = creds.otherKey
     profile.appId = creds.appId

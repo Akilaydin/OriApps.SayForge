@@ -90,6 +90,14 @@ Tauri's automatic bundled-script/style hashes and nonces remain enabled, as desc
 WebView2 automatically allows microphone and denies camera; other permissions use the
 browser default. Global browser flags, including `--ignore-certificate-errors`, are unchanged.
 
+## Cloud audio encoding
+
+Multipart and standard chat reuse the existing mono 64 kbps LAME encoder on a blocking
+worker. Multipart sends `audio.mp3`/`audio/mpeg` or `audio.wav`/`audio/wav`.
+Missing legacy codec settings and legacy chat remain WAV. New profile defaults alone
+change to MP3; migrations preserve WAV. A 415 stops without another paid request.
+Users can explicitly select WAV for incompatible endpoints. LAME/LGPL notices remain.
+
 ## Open questions
 
 - Verified minimum Windows version.

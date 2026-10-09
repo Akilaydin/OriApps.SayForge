@@ -38,9 +38,13 @@ describe('OpenAI-compatible protocol, credentials and validation', () => {
     for(const p of ASR_COMPAT_PROTOCOLS) expect(parseAsrCompatProtocol(p)).toBe(p)
     for(const p of ['other','',null,undefined]) expect(parseAsrCompatProtocol(p)).toBe('auto')
   })
-  it('allows optional MP3 explicitly but defaults to WAV', () => {
+  it('defaults new profiles to MP3 while missing legacy settings remain WAV', () => {
+    expect(emptyAsrProfile().audioEncoding).toBe('mp3')
     expect(parseAsrAudioEncoding('mp3')).toBe('mp3')
     for(const value of [undefined,null,'aac','']) expect(parseAsrAudioEncoding(value)).toBe('wav')
+    for(const value of ['wav', undefined]) {
+      expect(parseAsrProfiles([{id:'legacy',provider:'openai_compat',model:'custom',audioEncoding:value}])[0].audioEncoding).toBe('wav')
+    }
   })
   it('requires a URL for a custom gateway, but not an API key for a self-hosted gateway', () => {
     const empty=profile({provider:'openai_compat',apiUrl:'',apiKey:''})

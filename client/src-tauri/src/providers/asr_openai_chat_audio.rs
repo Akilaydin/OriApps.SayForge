@@ -101,7 +101,7 @@ fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
 }
 
 ///
-fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
+pub(super) fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     let ds = pcm.len() as u32;
     let mut w = Vec::with_capacity(44 + pcm.len());
     w.extend_from_slice(b"RIFF");
@@ -153,9 +153,8 @@ fn audio_encoding(config: &AsrProviderConfig, payload: AudioPayloadFormat) -> Au
     }
 }
 
-/// Encode 16-bit little-endian mono PCM at 64 kbps. MP3 encoding is opt-in
-/// because lossless WAV is the existing behavior and not every endpoint accepts MP3.
-fn pcm_to_mp3(pcm: &[u8], sample_rate: u32) -> Result<Vec<u8>, String> {
+/// Encode 16-bit little-endian mono PCM at 64 kbps. Missing legacy codec settings remain WAV.
+pub(super) fn pcm_to_mp3(pcm: &[u8], sample_rate: u32) -> Result<Vec<u8>, String> {
     use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, MonoPcm, Quality, VbrMode};
 
     if pcm.len() % 2 != 0 {
@@ -398,9 +397,9 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     let silence = vec![0u8; 16000];
     let audio = match encoding {
         AudioEncoding::Wav => pcm_to_wav(&silence, 16000),
-        AudioEncoding::Mp3 => match pcm_to_mp3(&silence, 16000) {
-            Ok(audio) => audio,
-            Err(e) => return TestResult { ok: false, message: e, elapsed_ms: 0, detail: String::new() },
+        AudioEncoding::Mp3 => match tokio::task::spawn_blocking(move || pcm_to_mp3(&silence, 16000)).await {
+            Ok(Ok(audio)) => audio,
+            error => return TestResult { ok: false, message: format!("MP3 encoding failed: {error:?}"), elapsed_ms: 0, detail: String::new() },
         },
     };
     let instruction = resolve_instruction(config, &model, payload, &[]);

@@ -638,8 +638,8 @@ export default function CloudAPISection() {
                   value={draft.audioEncoding}
                   onChange={(e) => patchDraft({ audioEncoding: parseAsrAudioEncoding(e.target.value) })}
                 >
-                  <option value="wav">WAV (lossless)</option>
                   <option value="mp3">MP3 (64 kbps, mono)</option>
+                  <option value="wav">WAV (lossless compatibility)</option>
                 </select>
                 <p className="mt-1 text-xs text-muted-foreground">{t('asr.audioEncodingHint')}</p>
               </div>

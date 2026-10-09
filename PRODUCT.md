@@ -26,7 +26,7 @@ Cancellation must not insert late results. Empty/silent recordings can produce n
 
 ## Speech engines
 
-**Cloud API:** sends recorded audio directly to the configured provider. Only OpenAI-compatible HTTP endpoints are supported: multipart audio/transcriptions or chat audio. Protocol/model support determines hotwords. OpenAI-compatible chat audio supports WAV or optional MP3 input. Users provide endpoint, model and optional API credentials and pay any provider charges directly. Existing OpenAI/Groq file profiles migrate to this interface; incompatible vendor/realtime profiles remain stored and require compatible endpoint setup.
+**Cloud API:** sends recorded audio directly to the configured provider. Only OpenAI-compatible HTTP endpoints are supported: multipart audio/transcriptions or chat audio. Protocol/model support determines hotwords. New profiles default to MP3 (64 kbps mono) for multipart and standard chat; existing and migrated profiles keep WAV or their selected format. Legacy chat always uses WAV. Endpoints rejecting MP3 require manually selecting WAV; there is no automatic codec retry. Users provide endpoint, model and optional API credentials and pay any provider charges directly. Existing OpenAI/Groq file profiles migrate to this interface; incompatible vendor/realtime profiles remain stored and require compatible endpoint setup.
 
 Legacy local-mode settings migrate to Cloud API. Downloaded model files and retired settings remain on disk.
 
