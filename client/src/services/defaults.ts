@@ -1,3 +1,4 @@
+import { DEFAULT_MIC_GAIN_DB, DEFAULT_MIC_GAIN_ENABLED } from './micGain'
 
 export const DEFAULTS: Record<string, unknown> = {
 
@@ -10,6 +11,8 @@ export const DEFAULTS: Record<string, unknown> = {
   selectedMic: '',
   muteSystemAudioWhileRecording: false,
   micNoiseSuppression: true,
+  micGainEnabled: DEFAULT_MIC_GAIN_ENABLED,
+  micGainDb: DEFAULT_MIC_GAIN_DB,
 
   protectClipboard: true,
 

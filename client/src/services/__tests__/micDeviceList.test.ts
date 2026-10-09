@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMicrophoneDigitalGain,
   isPseudoInputDevice,
   listMicrophones,
   matchRealEndpoint,
+  microphoneCaptureConstraints,
   normalizeSelectedMicId,
   realInputEndpoints,
 } from '../audio'
+import { microphoneGainMultiplier } from '../micGain'
 
 const HEADSET = 'Headset Microphone (Plantronics Blackwire 5220 Series) (047f:c053)'
 
@@ -29,6 +32,42 @@ afterEach(() => {
 })
 
 describe('microphone device list', () => {
+  it('disables WebRTC gain changes for default and selected microphones', () => {
+    expect(microphoneCaptureConstraints(undefined)).toEqual({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: true,
+        autoGainControl: false,
+      },
+    })
+    expect(microphoneCaptureConstraints('headset', false)).toEqual({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        deviceId: { exact: 'headset' },
+      },
+    })
+  })
+
+  it('amplifies only the captured Web Audio stream at the selected boost level', () => {
+    const gainNode = { gain: { value: 1 } }
+    const ctx = { createGain: vi.fn(() => gainNode) }
+    const source = { connect: vi.fn() }
+
+    const context = ctx as unknown as AudioContext
+    const input = source as unknown as AudioNode
+    expect(createMicrophoneDigitalGain(context, input, { enabled: true, db: 12 })).toBe(gainNode)
+    expect(gainNode.gain.value).toBeCloseTo(microphoneGainMultiplier({ enabled: true, db: 12 }))
+    expect(source.connect).toHaveBeenCalledWith(gainNode)
+
+    createMicrophoneDigitalGain(context, input, { enabled: false, db: 12 })
+    expect(gainNode.gain.value).toBe(1)
+    expect(source.connect).toHaveBeenCalledWith(gainNode)
+  })
+
   it('recognizes the two pseudo devices Chromium adds, and nothing else', () => {
     expect(isPseudoInputDevice('default')).toBe(true)
     expect(isPseudoInputDevice('communications')).toBe(true)
@@ -85,5 +124,6 @@ describe('microphone device list', () => {
     await listMicrophones()
 
     expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(getUserMedia).toHaveBeenCalledWith(microphoneCaptureConstraints(undefined))
   })
 })
