@@ -53,18 +53,13 @@ function Test-NewRelease {
 
 function Get-Installers([string[]] $Paths) {
     $files = @($Paths | ForEach-Object { Get-Item -LiteralPath $_ })
-    $exe = @($files | Where-Object { $_.Extension -eq '.exe' })
-    $msi = @($files | Where-Object { $_.Extension -eq '.msi' })
-    if ($exe.Count -ne 1 -or $msi.Count -ne 1) { throw 'Exactly one NSIS .exe and one MSI .msi are required.' }
+    if ($files.Count -ne 1 -or $files[0].Extension -cne '.exe') { throw 'Exactly one NSIS .exe installer is required; additional installers are not allowed.' }
     $prefix = '^' + [regex]::Escape("$($config.productName)_${version}_x64")
-    if ($exe[0].Name -cnotmatch ($prefix + '-setup\.exe$') -or
-        $msi[0].Name -cnotmatch ($prefix + '_[^/\\]+\.msi$')) {
-        throw 'Installer names must match the release product, version and x64 architecture.'
+    if ($files[0].Name -cnotmatch ($prefix + '-setup\.exe$')) {
+        throw 'Installer name must match the release product, version and x64 architecture.'
     }
-    foreach ($file in @($exe[0], $msi[0])) {
-        if ($file.Length -le 0) { throw "Empty installer: $($file.Name)." }
-    }
-    return @($exe[0], $msi[0])
+    if ($files[0].Length -le 0) { throw "Empty installer: $($files[0].Name)." }
+    return @($files[0])
 }
 
 if ($Stage -eq 'Preflight') {
@@ -93,14 +88,14 @@ if ($Stage -eq 'Prepare') {
 $assets = @(Get-ChildItem -LiteralPath $assetsDirectory -File)
 $null = Get-Installers @($assets | Where-Object { $_.Extension -in @('.exe', '.msi') } | ForEach-Object FullName)
 $expectedNames = @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'SHA256SUMS.txt')
-if ($assets.Count -ne 5 -or @($expectedNames | Where-Object { $_ -cnotin $assets.Name }).Count -ne 0) {
-    throw 'Release must contain both installers, license, third-party notices and checksums.'
+if ($assets.Count -ne 4 -or @($expectedNames | Where-Object { $_ -cnotin $assets.Name }).Count -ne 0) {
+    throw 'Release must contain one NSIS installer, license, third-party notices and checksums.'
 }
 $checksumLines = @(Get-Content -LiteralPath (Join-Path $assetsDirectory 'SHA256SUMS.txt'))
 $expectedChecksums = @($assets | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
     "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
 })
-if ($checksumLines.Count -ne 4 -or @(Compare-Object $expectedChecksums $checksumLines -CaseSensitive).Count -ne 0) {
+if ($checksumLines.Count -ne 3 -or @(Compare-Object $expectedChecksums $checksumLines -CaseSensitive).Count -ne 0) {
     throw 'Release asset checksum verification failed.'
 }
 if ($env:GITHUB_SHA -notmatch '^[a-f0-9]{40}$') { throw 'A full tested commit SHA is required.' }
@@ -110,9 +105,11 @@ if (-not (Test-NewRelease)) { return }
 
 $source = "https://github.com/$env:GITHUB_REPOSITORY"
 $notes = @"
-Windows x64 installers: NSIS (current user) and MSI. Download and install updates manually.
+Windows x64 NSIS installer: choose installation for the current user or all users.
+The installer requests administrator access, including for current-user installation.
+Download and install updates manually. Settings and history remain separate for each user.
 
-These installers are unsigned; Windows SmartScreen may warn about an unrecognized publisher.
+This installer is unsigned; Windows SmartScreen may warn about an unrecognized publisher.
 
 Source and changes: $source/tree/$env:GITHUB_SHA and $source/blob/$env:GITHUB_SHA/CHANGELOG.md
 Corresponding source archives: $source/archive/refs/tags/$tag.zip and $source/archive/refs/tags/$tag.tar.gz
@@ -130,7 +127,7 @@ $release = Invoke-GitHub @('api', '--method', 'POST', "repos/$env:GITHUB_REPOSIT
 try {
     $null = Invoke-GitHub (@('release', 'upload', $tag, '--repo', $env:GITHUB_REPOSITORY) + @($assets.FullName))
     $published = Invoke-GitHub @('api', "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)") | ConvertFrom-Json
-    if ($published.draft -or $published.prerelease -or $published.tag_name -cne $tag -or $published.assets.Count -ne 5) {
+    if ($published.draft -or $published.prerelease -or $published.tag_name -cne $tag -or $published.assets.Count -ne 4) {
         throw 'Published release metadata is incorrect.'
     }
     foreach ($file in $assets) {

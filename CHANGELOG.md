@@ -15,6 +15,13 @@ source history remains available in Git.
 - Preserved AGPL-3.0 attribution and third-party license information in the
   README's licensing section.
 
+## 0.2.4
+
+- Publish one NSIS `.exe` installer with a choice of current-user or all-users
+  installation. The built-in Tauri selection requires administrator access in
+  either mode; settings and history remain per user.
+- Stop building and publishing MSI; retain checksums, licenses and version/tag guards.
+
 ## 0.2.3
 
 - Added automatic public Windows NSIS/MSI releases from the `release` branch,

@@ -1,6 +1,6 @@
 {
   "name": "oriapps-sayforge",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "SayForge - open-source Windows voice typing (Tauri)",
   "type": "module",
   "scripts": {

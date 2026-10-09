@@ -28,7 +28,9 @@ own cloud API, optionally polish the text, and paste it into another application
 ## Install
 
 Check [SayForge Releases](https://github.com/Akilaydin/OriApps.SayForge/releases)
-for packaged Windows builds.
+for the Windows NSIS `.exe` installer. It offers installation for the current user
+or all users; the built-in Tauri `both` mode requests administrator access in
+either case. Settings, API keys and history remain separate for each Windows user.
 
 Until a verified SayForge update channel exists, **updates are manual only**.
 The application does not automatically download or install updates.

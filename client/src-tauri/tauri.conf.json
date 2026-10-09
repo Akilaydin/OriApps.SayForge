@@ -1,6 +1,6 @@
 {
   "productName": "SayForge",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "identifier": "com.oriapps.sayforge",
   "build": {
     "frontendDist": "../dist",
@@ -62,8 +62,7 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
-      "msi"
+      "nsis"
     ],
     "resources": {
       "resources/*": "resources/"
@@ -81,17 +80,12 @@
     "category": "Productivity",
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "both",
         "displayLanguageSelector": false,
         "languages": [
           "English"
         ],
         "installerIcon": "icons/icon.ico"
-      },
-      "wix": {
-        "language": [
-          "en-US"
-        ]
       }
     }
   },

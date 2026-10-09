@@ -11,9 +11,12 @@ Technical reference for the current SayForge implementation. Product behavior be
 - Optional AI refinement uses an OpenAI-compatible endpoint and a single prompt; Ollama, preset shortcuts, per-app rules and personalization statistics are inactive.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - Updates are manual through GitHub Releases; no updater service, installer commands or notification window are bundled.
-- A push to `release` runs Windows tests and one Tauri NSIS/MSI build. A separate
+- A push to `release` runs Windows tests and one Tauri NSIS build. A separate
   job verifies transferred assets and publishes a public release for that exact
   commit; existing version tags cannot be overwritten. See `docs/releasing.md`.
+- NSIS uses the built-in `installMode: both` selection for current-user or
+  per-machine installation; no custom installer template is maintained. The
+  selection requires administrator access. Runtime storage remains per user.
 
 ## Dictation flow
 

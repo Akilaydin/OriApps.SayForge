@@ -17,10 +17,17 @@ There is no draft, approval step or in-app updater.
    create `release` from the reviewed stable `main` and push it.
 4. Follow **Actions → Windows release**. After tests, packaging and verification,
    CI creates `v<version>` at the exact tested push commit and publishes
-   **SayForge v<version>** with the two installers, `SHA256SUMS.txt`, `LICENSE`
+   **SayForge v<version>** with one NSIS `.exe` installer, `SHA256SUMS.txt`, `LICENSE`
    and `THIRD_PARTY_NOTICES.md`. GitHub also provides corresponding source archives.
-5. Check the run, tag commit and Release assets. Download the installers and
-   manually verify installation, shortcuts, recording and text insertion on Windows.
+5. Check the run, tag commit and Release assets. Download the installer and
+   manually verify both installation scopes, shortcuts, recording and text insertion
+   on Windows, including upgrades of existing current-user installs.
+
+The installer uses Tauri's built-in NSIS `installMode: "both"` page: current user
+or all users. This mode requests administrator access even for current-user
+installation. All-users installation shares binaries, while each Windows user
+retains separate settings, API keys and history. MSI is not built or published
+starting with v0.2.4; the already published v0.2.3 assets remain unchanged.
 
 ## Pipeline and repository settings
 
@@ -30,11 +37,12 @@ There is no draft, approval step or in-app updater.
   An existing tag skips publication without changing that tag or any assets.
   A lower version, inconsistent manifest/lock or orphaned release fails.
 - Frontend tests, strict i18n and locked Rust tests must pass. One Tauri release
-  build runs TypeScript/Vite via `beforeBuildCommand` and packages NSIS and MSI.
+  build runs TypeScript/Vite via `beforeBuildCommand` and packages only NSIS.
   ESLint is excluded: ESLint 10 currently has no compatible flat config in this repo.
   Its absence is not a successful lint result.
-- Installers must exist, be nonempty and match the product/version/x64 names
-  returned by Tauri. The publish job rechecks SHA-256 after artifact transfer.
+- Exactly one NSIS installer must exist, be nonempty and match the
+  product/version/x64 name returned by Tauri. Additional installers, including MSI,
+  are rejected. The publish job rechecks SHA-256 after artifact transfer.
 - Build has `contents: read`; only publish has `contents: write`. Both use the
   built-in `GITHUB_TOKEN`; no PAT or certificate secret is required. Repository
   **Settings → Actions → General** must allow these actions and job-level write
