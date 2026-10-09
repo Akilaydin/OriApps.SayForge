@@ -8,6 +8,7 @@ const LANGUAGE_SETTING_KEY = 'ui.language'
 const UNSUPPORTED_ASR_RUNTIME_BACKUP_KEY = 'cloudAsr.unsupportedRuntimeBackup'
 const SUPPORTED_ASR_RUNTIME_PROVIDERS = new Set([
   ...ASR_PROVIDERS.flatMap((entry) => entry.models.map((model) => model.provider)),
+  'groq', 'groq_whisper', 'openai', 'openai_transcribe',
   'openai_compat_transcribe', 'openai_chat_audio', 'openai_chat_audio_standard',
 ])
 
@@ -21,21 +22,9 @@ export async function initLanguage(): Promise<Locale> {
 /** Preserve user-configured values but use international defaults on fresh installs. */
 export async function initLocaleDefaults(_locale: Locale): Promise<void> {
   const defaults: Record<string, string> = {
-    'localAsr.downloadSource': 'HuggingFace',
     'cloudAi.provider': 'openai_compat',
     'ai.builtinPromptLanguage': 'en',
-    'localAsr.modelId': 'nemotron-asr-streaming-0.6b-gguf',
   }
-  // This distribution no longer offers the old Chinese-origin GGUF models.
-  // Keep their files intact but migrate the selected model to multilingual Nemotron.
-  const selectedModel = await bridge.storeGet('localAsr.modelId')
-  if (typeof selectedModel === 'string' && ['sensevoice-small-gguf',
-    'funasr-nano-2512-gguf', 'qwen3-asr-0.6b-gguf',
-    'qwen3-asr-1.7b-q4-gguf', 'qwen3-asr-1.7b-gguf',
-  ].includes(selectedModel)) {
-    await bridge.storeSet('localAsr.modelId', 'nemotron-asr-streaming-0.6b-gguf')
-  }
-
   // A previously selected vendor may no longer exist. Back up the whole
   // runtime configuration before disarming that route; persisted profiles
   // and provider-specific credential settings remain untouched.

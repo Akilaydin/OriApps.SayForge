@@ -17,28 +17,10 @@ import { useLocale } from '@/i18n/useT'
 type HealthStatus = 'ok' | 'error' | 'unknown' | 'disabled'
 
 interface HealthItem {
-  id: 'workMode' | 'asr' | 'localEngine' | 'compute' | 'ai'
+  id: 'workMode' | 'asr' | 'ai'
   label: string
   status: HealthStatus
   detail: string
-}
-
-interface GgufDevice {
-  kind: string
-  name: string
-  memory_mb: number
-  id: string
-  index: number
-  is_gpu: boolean
-}
-
-interface GgufDiagnostics {
-  devices: GgufDevice[]
-  current_backend: string | null
-  current_device: string | null
-  loading_model: string | null
-  native_version: string
-  process_memory_mb: number
 }
 
 function StatusIcon({ status }: { status: HealthStatus }) {
@@ -116,7 +98,7 @@ export default function DiagnosticsPage() {
       id: 'workMode',
       label: t('diagnostics.health.workMode'),
       status: 'ok',
-      detail: t(workMode === 'cloud_api' ? 'diagnostics.mode.cloud' : 'diagnostics.mode.local'),
+      detail: t('diagnostics.mode.cloud'),
     })
 
     if (workMode === 'cloud_api') {
@@ -151,42 +133,6 @@ export default function DiagnosticsPage() {
             items.push({ id: 'asr', label: t('diagnostics.health.asr'), status: 'error', detail: `${displayName} — ${String(err)}` })
           }
         }
-      }
-    } else if (workMode === 'local') {
-      const modelId = await getSetting('localAsr.modelId', '') as string
-      items.push({ id: 'asr', label: t('diagnostics.health.asr'), status: modelId ? 'ok' : 'error', detail: modelId || t('diagnostics.noModel') })
-      try {
-        const d = await invoke<GgufDiagnostics>('gguf_asr_diagnostics')
-        items.push({
-          id: 'localEngine',
-          label: t('diagnostics.health.localEngine'),
-          status: 'ok',
-          detail: t('diagnostics.localEngineDetail', {
-            backend: d.loading_model
-              ? t('diagnostics.loadingModel', { model: d.loading_model })
-              : d.current_backend
-                ? d.current_device ? `${d.current_backend} · ${d.current_device}` : d.current_backend
-                : t('diagnostics.modelUnloaded'),
-            memory: d.process_memory_mb,
-            version: d.native_version,
-          }),
-        })
-        items.push({
-          id: 'compute',
-          label: t('diagnostics.health.compute'),
-          status: d.devices.length > 0 ? 'ok' : 'error',
-          detail: d.devices.length > 0
-            ? d.devices.map((dev) => t('diagnostics.deviceDetail', {
-              name: dev.name,
-              kind: dev.kind,
-              memory: dev.memory_mb > 0
-                ? t('diagnostics.deviceMemory', { memory: (dev.memory_mb / 1024).toFixed(0) })
-                : '',
-            })).join(t('diagnostics.deviceSeparator'))
-            : t('diagnostics.noCompute'),
-        })
-      } catch (err) {
-        items.push({ id: 'localEngine', label: t('diagnostics.health.localEngine'), status: 'error', detail: String(err) })
       }
     }
 

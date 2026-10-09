@@ -1,9 +1,7 @@
 
-import { invoke } from '@tauri-apps/api/core'
 import { getSetting, setSetting } from '../store'
 import { addRuntimeEvent } from '../debugLog'
 import { CloudAPIProvider } from './CloudAPIProvider'
-import { LocalProvider } from './LocalProvider'
 import type { TranscriptionProvider, WorkMode } from './types'
 
 export type {
@@ -22,21 +20,13 @@ export type {
 let currentProvider: TranscriptionProvider | null = null
 let currentMode: WorkMode = 'cloud_api'
 
-/** Treat the removed Server Mode and unknown legacy values as Cloud API. */
-export function normalizeWorkMode(stored: unknown): WorkMode {
-  return stored === 'local' ? 'local' : 'cloud_api'
+/** Treat the removed local/server modes and unknown legacy values as Cloud API. */
+export function normalizeWorkMode(_stored: unknown): WorkMode {
+  return 'cloud_api'
 }
 
-function createProvider(mode: WorkMode): TranscriptionProvider {
-  switch (mode) {
-    case 'cloud_api':
-      return new CloudAPIProvider()
-    case 'local':
-      return new LocalProvider()
-    default:
-      addRuntimeEvent('warn', 'transcription', `Unknown processing mode "${mode}"; falling back to cloud API mode`)
-      return new CloudAPIProvider()
-  }
+function createProvider(_mode: WorkMode): TranscriptionProvider {
+  return new CloudAPIProvider()
 }
 
 export function getProvider(): TranscriptionProvider {
@@ -62,15 +52,6 @@ export async function switchProvider(mode: WorkMode): Promise<TranscriptionProvi
       currentProvider.disconnect()
     } catch {
       // ignore
-    }
-  }
-
-  // Avoid leaving the local model loaded when switching to a cloud provider.
-  if (currentMode === 'local' && mode !== 'local') {
-    try {
-      await invoke('unload_local_model')
-    } catch (err) {
-      addRuntimeEvent('warn', 'transcription', 'Failed to release local model', { error: String(err) })
     }
   }
 

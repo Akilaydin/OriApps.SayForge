@@ -10,7 +10,6 @@ mod keyboard;
 mod context;
 mod inject;
 mod providers;
-mod models;
 mod identity;
 
 use storage::Storage;
@@ -244,47 +243,6 @@ fn main() {
     let ai_toggle_str = ai_toggle_setting_val.as_str().unwrap_or("").to_string();
     log::info!("PTT setting from DB: raw={:?} parsed={:?}", ptt_setting_val, ptt_str);
     log::info!("HF setting from DB: raw={:?} parsed={:?}", hf_setting_val, hf_str);
-
-    let models_dir_val = storage.get("localAsr.modelsDir", None);
-    if let Some(custom_dir) = models_dir_val.as_str().map(str::trim).filter(|s| !s.is_empty()) {
-        models::downloader::set_custom_models_dir(Some(std::path::PathBuf::from(custom_dir)));
-        log::info!("Custom models dir from DB: {}", custom_dir);
-    }
-
-    //
-    //
-
-    models::local_asr::spawn_legacy_reclaim();
-
-    if storage.get("workMode", None).as_str() == Some("local") {
-        let model_id = storage
-            .get("localAsr.modelId", None)
-            .as_str()
-            .unwrap_or("nemotron-asr-streaming-0.6b-gguf")
-            .to_string();
-        let accelerator = storage
-            .get("localAsr.accelerator", None)
-            .as_str()
-            .unwrap_or("auto")
-            .to_string();
-        let gpu_device = storage
-            .get("localAsr.gpuDevice", None)
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        std::thread::spawn(move || {
-            match models::gguf_asr::preload(&model_id, &accelerator, &gpu_device) {
-                Ok(()) => log::info!("Startup local model warm-up completed: {}", model_id),
-                Err(e) => log::info!("Startup local model warm-up skipped ({}): {}", model_id, e),
-            }
-        });
-    }
-
-    let idle_minutes = storage
-        .get("localAsr.unloadIdleMinutes", None)
-        .as_u64()
-        .unwrap_or(0);
-    models::gguf_asr::spawn_idle_unloader(idle_minutes);
 
     let window_state = WindowState::new();
     let keyboard_hook = KeyboardHookManager::new();
@@ -598,24 +556,7 @@ fn main() {
             providers::registry::test_asr_connection,
             providers::capabilities::asr_hotword_capability,
             providers::capabilities::asr_hotword_capability_matrix,
-            // OpenAI realtime transcription (gpt-live-transcribe)
-            // Models (local model management)
-            models::registry::list_available_models,
-            models::registry::list_downloaded_models,
-            models::registry::download_model,
-            models::registry::delete_model,
-            models::registry::open_models_folder,
-            models::registry::open_model_folder,
-            models::registry::get_models_dir,
-            models::registry::set_models_dir,
-            models::local_asr::local_transcribe,
-            models::local_asr::preload_local_model,
-            models::local_asr::unload_local_model,
-            models::local_asr::set_local_model_idle_unload,
-            models::local_asr::legacy_models_reclaimed_bytes,
-            models::gguf_asr::gguf_asr_diagnostics,
-            models::test_audio::run_asr_benchmark,
-            models::test_audio::get_test_audio_b64,
+            commands::test_audio::get_test_audio_b64,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

@@ -3,7 +3,6 @@ import en from '../locales/en.json'
 import { getLocale, isLocale, normalizePreference, resolveLocale, setLocale, t, LOCALES } from '..'
 import {
   appPromptRuleDisplayName, historyFailureReasonDisplay,
-  localModelDisplayDescription, localModelDisplayLanguages, localModelDisplayName,
   promptPresetDisplayName, recordedAppDisplayName, recordedPromptPresetDisplayName,
 } from '../displayNames'
 
@@ -38,14 +37,6 @@ describe('English-only UI locale', () => {
     expect(promptPresetDisplayName({ id: 'custom', name: 'My preset', builtin: false }))
       .toBe('My preset')
     expect(recordedAppDisplayName('custom', 'Custom name')).toBe('Custom name')
-  })
-  it('formats local-model names and preserves raw unknown model descriptions', () => {
-    const known = { id: 'parakeet-unified-en-0.6b-gguf', name: 'raw', description: 'raw', languages_label: 'raw' }
-    expect(localModelDisplayName(known)).toBe(en['localModel.parakeetEn.name'])
-    const unknown = { id: 'unknown-model', name: 'Custom model', description: 'Custom description', languages_label: 'English' }
-    expect(localModelDisplayName(unknown)).toBe(unknown.name)
-    expect(localModelDisplayDescription(unknown)).toBe(unknown.description)
-    expect(localModelDisplayLanguages(unknown)).toBe(unknown.languages_label)
   })
   it('formats stable history failure codes and preserves legacy reasons', () => {
     expect(historyFailureReasonDisplay({ failReasonCode: 'provider_bad_key', failReason: 'old' }))

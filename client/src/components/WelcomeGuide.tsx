@@ -246,7 +246,7 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
     }
   }, [step])
 
-  const canTest = workMode === 'cloud_api' || workMode === 'local'
+  const canTest = workMode === 'cloud_api'
   const totalSteps = 5
   const isLast = step === totalSteps - 1
 

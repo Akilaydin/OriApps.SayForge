@@ -13,15 +13,15 @@ vi.mock('@/services/bridge', () => ({
 
 import { initLocaleDefaults } from '../language'
 
-describe('English-only first-run defaults and local-model migration', () => {
+describe('English-only first-run defaults and retired settings preservation', () => {
   beforeEach(() => bridgeState.values.clear())
 
-  it('defaults to Hugging Face, Nemotron, OpenAI-compatible and English prompts', async () => {
+  it('defaults to OpenAI-compatible and English prompts', async () => {
     await initLocaleDefaults('en')
-    expect(bridgeState.values.get('localAsr.downloadSource')).toBe('HuggingFace')
+    expect(bridgeState.values.has('localAsr.downloadSource')).toBe(false)
     expect(bridgeState.values.get('cloudAi.provider')).toBe('openai_compat')
     expect(bridgeState.values.get('ai.builtinPromptLanguage')).toBe('en')
-    expect(bridgeState.values.get('localAsr.modelId')).toBe('nemotron-asr-streaming-0.6b-gguf')
+    expect(bridgeState.values.has('localAsr.modelId')).toBe(false)
   })
 
   it('does not overwrite existing unrelated settings', async () => {
@@ -35,11 +35,11 @@ describe('English-only first-run defaults and local-model migration', () => {
   })
   it.each(['sensevoice-small-gguf', 'funasr-nano-2512-gguf',
     'qwen3-asr-0.6b-gguf', 'qwen3-asr-1.7b-q4-gguf', 'qwen3-asr-1.7b-gguf']) (
-    'migrates unsupported legacy model %s to Nemotron without deleting other settings', async (id) => {
+    'preserves the retired model selection %s', async (id) => {
       bridgeState.values.set('localAsr.modelId', id)
       bridgeState.values.set('cloudAi.provider', 'custom-user-provider')
       await initLocaleDefaults('en')
-      expect(bridgeState.values.get('localAsr.modelId')).toBe('nemotron-asr-streaming-0.6b-gguf')
+      expect(bridgeState.values.get('localAsr.modelId')).toBe(id)
       expect(bridgeState.values.get('cloudAi.provider')).toBe('custom-user-provider')
     },
   )
@@ -61,6 +61,15 @@ describe('English-only first-run defaults and local-model migration', () => {
     })
   })
 
+  it.each(['groq_whisper','openai_transcribe'])('keeps migratable HTTP credentials %s available for profile migration', async (provider) => {
+    bridgeState.values.set('cloudAsr.provider',provider)
+    bridgeState.values.set('cloudAsr.apiKey','legacy-test')
+    bridgeState.values.set('cloudAsr.baseUrl','https://relay.example/v1')
+    await initLocaleDefaults('en')
+    expect(bridgeState.values.get('cloudAsr.provider')).toBe(provider)
+    expect(bridgeState.values.get('cloudAsr.apiKey')).toBe('legacy-test')
+    expect(bridgeState.values.get('cloudAsr.baseUrl')).toBe('https://relay.example/v1')
+  })
   it('keeps supported custom gateway credentials unchanged on startup', async () => {
     bridgeState.values.set('cloudAsr.provider', 'openai_compat')
     bridgeState.values.set('cloudAsr.apiKey', 'LIVE-CREDENTIAL')

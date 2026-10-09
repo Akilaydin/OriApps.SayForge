@@ -1,7 +1,4 @@
 [env]
 CL = "/utf-8"
 
-#   Could NOT find Vulkan (missing: Vulkan_LIBRARY Vulkan_INCLUDE_DIR glslc)
-VULKAN_SDK = "C:\\VulkanSDK\\1.4.350.0"
-
 RUST_TEST_THREADS = "1"

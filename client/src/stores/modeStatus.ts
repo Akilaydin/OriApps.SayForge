@@ -1,8 +1,6 @@
 //
 //
 
-import { invoke } from '@tauri-apps/api/core'
-import { getSetting } from '../services/store'
 import { loadAsrProfiles } from '../features/settings/asrProfileStore'
 import {
   describeAsrMissing,
@@ -12,7 +10,7 @@ import {
 } from '../features/settings/asrProviderCatalog'
 import { subscribeLocale, t } from '@/i18n'
 
-export type ModeStatusMode = 'cloud_api' | 'local'
+export type ModeStatusMode = 'cloud_api'
 
 export interface ModeStatus {
   mode: ModeStatusMode
@@ -47,31 +45,13 @@ function cloudProviderShort(provider: string): string {
 }
 
 export async function refreshModeStatus(): Promise<void> {
-  const stored = await getSetting('workMode', 'cloud_api') as string
-  const mode: ModeStatusMode =
-    stored === 'local' ? 'local' : 'cloud_api'
+  const mode: ModeStatusMode = 'cloud_api'
 
   let detail = ''
   let ready: boolean | null = null
   let blockedReason = ''
 
-  if (mode === 'local') {
-    const modelId = await getSetting('localAsr.modelId', 'nemotron-asr-streaming-0.6b-gguf') as string
-    try {
-      const models = await invoke<{ id: string; name: string }[]>('list_available_models')
-      detail = models.find((m) => m.id === modelId)?.name ?? modelId
-    } catch {
-      detail = modelId
-    }
-    try {
-      const downloaded = await invoke<{ id: string; complete: boolean }[]>('list_downloaded_models')
-      ready = downloaded.some((m) => m.id === modelId && m.complete)
-      if (!ready) blockedReason = t('modeStatus.modelNotDownloaded')
-    } catch {
-      ready = false
-      blockedReason = t('modeStatus.modelListUnavailable')
-    }
-  } else if (mode === 'cloud_api') {
+  {
     const state = await loadAsrProfiles()
     const active = resolveActiveAsrProfile(state.profiles, state.activeId)
     if (!active) {

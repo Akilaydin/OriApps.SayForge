@@ -9,3 +9,4 @@ pub mod storage;
 pub mod system;
 pub mod tray;
 pub mod window;
+pub mod test_audio;

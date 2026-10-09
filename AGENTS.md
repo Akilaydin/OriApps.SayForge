@@ -22,14 +22,13 @@ Read the relevant documents and actual code before changing behavior. Report con
 ## Project constraints
 
 - The Windows app lives in `client/` and uses React/TypeScript with Tauri 2/Rust.
-- The two transcription modes are `cloud_api` and `local`.
-- React services own recording and transcription orchestration; Rust handles native Windows integration, local inference, storage and cloud provider calls.
+- The transcription mode is `cloud_api`; retired local-mode settings migrate without deleting models.
+- React services own recording and transcription orchestration; Rust handles native Windows integration, storage and cloud provider calls.
 - Recording run IDs must isolate cancellations and late responses. Never insert text from a stale run.
 - Preserve focused-target probing and a copyable fallback when insertion fails or cannot be confirmed.
 - Preserve the identity `com.oriapps.sayforge`, database `sayforge.db` and existing user data.
 - The UI is English-only; speech recognition languages depend on the selected provider or model.
-- The local catalog uses NVIDIA Parakeet and Nemotron GGUF models. Verify download sources and checksums before changing it.
-- Optional AI refinement may send text and editor context to a remote provider even with local ASR.
+- Optional AI refinement may send text and editor context to a remote provider independently of ASR.
 - Protect audio, transcripts, editor text, API keys and backup credentials. Use synthetic test data; do not expose real content in logs or commits.
 - Configure WebView2 browser arguments globally for windows sharing one environment.
 - Updates are manual until a verified signed release channel exists.

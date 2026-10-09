@@ -27,8 +27,8 @@ function policy(over: Partial<Parameters<typeof resolveAiPolicy>[0]> = {}) {
   return resolveAiPolicy({ ...CLOUD, audioDurationSec: 10, ...over })
 }
 
-describe('resolveAiPolicy: cloud and local only', () => {
-  it.each(['cloud_api', 'local'] as const)('%s uses client AI by default', (workMode) => {
+describe('resolveAiPolicy: cloud only', () => {
+  it.each(['cloud_api'] as const)('%s uses client AI by default', (workMode) => {
     expect(policy({ workMode })).toMatchObject({ route: 'custom', allowCall: true })
   })
   it('disabled AI overrides the minimum-duration rule', () => {
@@ -77,8 +77,8 @@ describe('resolveAiOutcome: client AI evidence', () => {
 
 describe('policyFromSnapshot', () => {
   it('keeps the per-record duration policy independent of later settings', () => {
-    const p = policyFromSnapshot({ workMode: 'local', aiEnabled: true, aiMinDurationSec: 60 }, 'cloud_api', 4.8)
-    expect(p).toMatchObject({ workMode: 'local', route: 'custom', allowCall: false, reason: 'duration_below_min' })
+    const p = policyFromSnapshot({ workMode: 'cloud_api', aiEnabled: true, aiMinDurationSec: 60 }, 'cloud_api', 4.8)
+    expect(p).toMatchObject({ workMode: 'cloud_api', route: 'custom', allowCall: false, reason: 'duration_below_min' })
   })
   it('defaults missing snapshots to enabled client AI without a minimum', () => {
     expect(policyFromSnapshot(undefined, 'cloud_api', 1)).toMatchObject({ route: 'custom', allowCall: true })

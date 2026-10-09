@@ -6,8 +6,8 @@ Technical reference for the current SayForge implementation. Product behavior be
 
 - One Windows desktop application: **Tauri 2 + Rust + React + TypeScript + Vite**.
 - React manages the UI, microphone capture, recording lifecycle and text processing.
-- Rust handles Win32 integration, persistence, local inference and cloud HTTP calls.
-- Speech modes: `cloud_api` (user-configured remote ASR) and `local` (downloaded on-device GGUF model).
+- Rust handles Win32 integration, persistence and cloud HTTP calls.
+- Speech mode: `cloud_api`. Retired `local`/server values normalize and persist as `cloud_api` at frontend startup.
 - Optional AI refinement is independent of the speech engine.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - Updates are manual through GitHub Releases; no updater service, installer commands or notification window are bundled.
@@ -20,7 +20,6 @@ Global hotkey / UI
     -> RecorderOrchestrator
     -> microphone capture (16 kHz mono PCM)
        -> CloudAPIProvider -> Rust ASR adapter -> configured API
-       OR LocalProvider -> Rust GGUF inference
     -> optional AI refinement and text transforms
     -> history / optional audio archive
     -> captured Windows text target
@@ -35,7 +34,7 @@ Paths below are relative to `client/`.
 
 - `services/recorder/RecorderOrchestrator.ts` — state, PTT/hands-free events, session IDs, cancellation, timeouts and final results.
 - `services/audio.ts` — `getUserMedia`, AudioWorklet with fallback, resampling and PCM frames.
-- `services/transcription/` — provider interface, mode selection, buffered cloud delivery, local provider and AI execution policy.
+- `services/transcription/` — provider interface, mode selection, buffered cloud delivery and AI execution policy.
 - `services/personalization/` and `services/contextAware.ts` — presets, application-aware prompts and bounded editor context.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
@@ -47,7 +46,6 @@ Paths below are relative to `client/`.
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
 - `providers/` — OpenAI-compatible HTTP ASR, optional AI cleanup and capability reporting.
-- `models/` — local GGUF model catalog, downloads, integrity checks and inference via `transcribe-cpp`/Vulkan.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
 - `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.
 
@@ -64,11 +62,11 @@ Paths below are relative to `client/`.
 - Probe and preserve the original edit target; provide fallback text when native insertion fails or is unconfirmed.
 - Treat editor context as bounded, untrusted data. Do not replace selected text unless an AI edit was applied.
 - Keep ASR UI capabilities, protocol selection and Rust provider dispatch consistent.
-- Local ASR can work on-device, but enabled cloud AI refinement may transmit text/context.
+- Cloud ASR sends recorded audio; optional cloud AI refinement may transmit text/context. Retired model files/settings remain untouched.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.
 
 ## Open questions
 
-- Verified minimum Windows version and hardware/driver requirements for local inference.
+- Verified minimum Windows version.
 - Release signing and update-channel design.

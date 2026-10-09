@@ -157,56 +157,6 @@ async function reprocessViaCloudApi(
   }
 }
 
-async function reprocessViaLocal(
-  chunk: ArrayBuffer,
-  hotwords: string[],
-  ai: ReprocessAiContext,
-  systemPrompt: string | undefined,
-): Promise<ReprocessResult> {
-  const durationSec = (chunk.byteLength / 2) / 16000
-  const audioB64 = uint8ArrayToBase64(new Uint8Array(chunk))
-
-  const modelId = await getSetting('localAsr.modelId', 'nemotron-asr-streaming-0.6b-gguf') as string
-  const language = await getSetting('localAsr.language', 'auto') as string
-  const accelerator = await getSetting('localAsr.accelerator', 'auto') as string
-  const gpuDevice = await getSetting('localAsr.gpuDevice', '') as string
-
-  void hotwords
-  const asrResult = await invoke<{ text: string; elapsed_ms: number }>('local_transcribe', {
-    audioB64, modelId, language, accelerator, gpuDevice,
-  })
-  const asrText = asrResult.text
-  const asrMs = asrResult.elapsed_ms
-
-  const policy = policyFromSnapshot(ai.snapshot, 'local', durationSec)
-  const polish = await polishWithClientAi({
-    asrText,
-    startOptions: {
-      runId: 1,
-      operationId: ai.context.operationId,
-      aiConfig: ai.snapshot,
-      systemPrompt,
-      source: 'history_reprocess',
-    },
-    policy,
-    outcomeContext: ai.context,
-    logSource: 'history',
-  })
-
-  return {
-    asrText,
-    llmText: polish?.llmText ?? asrText,
-    asrMs,
-    llmMs: polish?.llmMs ?? 0,
-    durationSec,
-    aiSource: polish?.aiSource,
-    aiStatus: polish?.aiStatus,
-    aiReason: polish?.aiReason,
-    aiProvider: polish?.aiProvider,
-    aiModel: polish?.aiModel,
-  }
-}
-
 async function buildReprocessMetadata(
   workMode: WorkMode,
   result: ReprocessResult,
@@ -229,10 +179,6 @@ async function buildReprocessMetadata(
     const asrProviderKey = await getSetting('cloudAsr.provider', '') as string
     const asrSelectedModel = await getSetting('cloudAsr.model', '') as string
     return { asrProvider: resolveAsrDisplayModel(asrProviderKey, asrSelectedModel), ...aiFields }
-  }
-  if (workMode === 'local') {
-    const modelId = await getSetting('localAsr.modelId', '') as string
-    return { asrProvider: modelId || 'local', ...aiFields }
   }
   return { ...aiFields }
 }
@@ -373,8 +319,6 @@ export default function History() {
     let result: ReprocessResult
     if (workMode === 'cloud_api') {
       result = await reprocessViaCloudApi(chunk, hotwords, ai, systemPrompt)
-    } else if (workMode === 'local') {
-      result = await reprocessViaLocal(chunk, hotwords, ai, systemPrompt)
     } else {
       throw new Error('Unsupported transcription mode')
     }

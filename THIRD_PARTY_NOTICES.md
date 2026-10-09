@@ -26,7 +26,6 @@ repository alone may not satisfy the LGPL static-linking obligations.
 
 ## Other dependencies and assets
 
-- Native transcribe.cpp bindings (`transcribe-cpp`) identify as MIT-licensed.
 - Other JavaScript, Rust and Python dependencies retain their own licenses.
   Review the resolved dependency lists before distribution.
 - The current icon artwork is maintained with its design source files under

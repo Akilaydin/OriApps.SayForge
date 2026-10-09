@@ -4,12 +4,12 @@
 
 ## Overview
 
-SayForge is an open-source Windows dictation app by OriApps. Press a global shortcut, speak, and insert recognized text into the active application. Users choose a local model or their own cloud speech provider.
+SayForge is an open-source Windows dictation app by OriApps. Press a global shortcut, speak, and insert recognized text into the active application. Users configure their own OpenAI-compatible speech endpoint.
 
 ## Current capabilities
 
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
-- Cloud and local speech recognition; cloud audio is uploaded after recording stops.
+- Cloud speech recognition; cloud audio is uploaded after recording stops.
 - Optional AI cleanup, custom prompts, presets and per-application prompt rules.
 - Hotwords, text replacements, formatting and context-aware editing of selected text.
 - Searchable local history, favorites, audio playback and text export.
@@ -28,11 +28,11 @@ Cancellation must not insert late results. Empty/silent recordings can produce n
 
 **Cloud API:** sends recorded audio directly to the configured provider. Only OpenAI-compatible HTTP endpoints are supported: multipart audio/transcriptions or chat audio. Protocol/model support determines hotwords. OpenAI-compatible chat audio supports WAV or optional MP3 input. Users provide endpoint, model and optional API credentials and pay any provider charges directly. Existing OpenAI/Groq file profiles migrate to this interface; incompatible vendor/realtime profiles remain stored and require compatible endpoint setup.
 
-**Local:** runs a downloaded GGUF model on the user's device. The catalog includes NVIDIA Parakeet Unified EN (English) and Nemotron 3.5 ASR (multilingual, including Russian). Performance and compatibility depend on available hardware and drivers.
+Legacy local-mode settings migrate to Cloud API. Downloaded model files and retired settings remain on disk.
 
 ## AI and personal data
 
-- AI refinement is optional and configured separately from ASR. It may send recognized text and bounded editor context to a cloud provider, even when recognition is local.
+- AI refinement is optional and configured separately from ASR. It may send recognized text and bounded editor context to a cloud provider.
 - If refinement is disabled or fails, preserve useful source text. Do not overwrite a selection unless the requested edit was actually applied.
 - Settings and transcription history are stored locally; audio files are stored separately when enabled.
 - History and retention are configurable. Settings-only exports do not include history or audio. Backups are local and initiated by the user; no scheduled remote backup runs.
@@ -47,6 +47,6 @@ Cancellation must not insert late results. Empty/silent recordings can produce n
 
 ## Open questions
 
-- Supported minimum Windows version and local-inference hardware requirements.
+- Supported minimum Windows version.
 - Release signing and update distribution.
 - Future UI language support.

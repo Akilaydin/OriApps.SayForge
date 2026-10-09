@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Home, Clock, BookOpen, Settings, Info, Cpu, Cloud, AudioLines, Sparkles, Wand2 } from 'lucide-react'
+import { Home, Clock, BookOpen, Settings, Info, Cloud, AudioLines, Sparkles, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/modeStatus'
@@ -97,15 +97,15 @@ function FooterIcons() {
   )
 }
 
-/** Local and cloud voice engine readiness, without server connection state. */
+/** Cloud voice engine readiness, without server connection state. */
 function ModeIndicator() {
   const t = useT()
-  const { mode, detail, ready, blockedReason } = useSyncExternalStore(subscribeModeStatus, getModeStatus)
+  const { detail, ready, blockedReason } = useSyncExternalStore(subscribeModeStatus, getModeStatus)
 
   useEffect(() => { void refreshModeStatus() }, [])
 
-  const Icon = mode === 'local' ? Cpu : Cloud
-  const title = mode === 'local' ? t('mode.local') : t('mode.cloudApi')
+  const Icon = Cloud
+  const title = t('mode.cloudApi')
   const notReady = ready === false
   const tip = notReady
     ? t('mode.tooltipNotReady', { mode: title, reason: blockedReason || t('mode.notReadyFallback') })

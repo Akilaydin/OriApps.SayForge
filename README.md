@@ -14,7 +14,7 @@
 ## About
 
 SayForge is an independently maintained Windows dictation application by **OriApps**.
-Record speech using a configurable hotkey, transcribe it with a local model or your
+Record speech using a configurable hotkey, transcribe it with your
 own cloud API, optionally polish the text, and paste it into another application.
 
 ### Features
@@ -24,8 +24,6 @@ own cloud API, optionally polish the text, and paste it into another application
 - OpenAI-compatible HTTP transcription and chat/audio endpoints with configurable URL, model and API key.
 - **Standard OpenAI input_audio** with **WAV or optional MP3** (64 kbps mono), and
   separate **System Instruction** and **User Prompt** for transcription.
-- Local ASR via NVIDIA Parakeet (English) or Nemotron (multilingual, including Russian),
-  built with Rust/CMake/Vulkan.
 
 ## Install
 
@@ -42,8 +40,8 @@ The application does not automatically download or install updates.
 2. Configure the recording shortcut.
 3. Press the shortcut, speak, release, and verify that the transcript reaches your text field.
 
-SayForge supports **two voice engines**: Cloud API (direct calls to a user-configured
-ASR provider) and Local (on-device recognition).
+SayForge uses Cloud API: direct calls to a user-configured OpenAI-compatible
+ASR endpoint. Retired local-mode settings migrate to Cloud API; downloaded models remain on disk.
 
 ### Application data and settings
 
@@ -68,7 +66,7 @@ Client stack: **Rust + Tauri 2 + React + TypeScript**. No separate SayForge
 backend is required.
 
 Requirements: Node.js 18+, Rust toolchain, Visual Studio C++ Build Tools,
-CMake and the Vulkan SDK for the local inference modules.
+CMake for the retained MP3 encoder. No Vulkan SDK or model download is required.
 
 ```powershell
 git clone https://github.com/Akilaydin/OriApps.SayForge.git

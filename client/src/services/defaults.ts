@@ -3,7 +3,7 @@ export const DEFAULTS: Record<string, unknown> = {
 
   'ui.language': 'en',
 
-  workMode: 'cloud_api', // Supported modes: cloud_api | local
+  workMode: 'cloud_api',
 
   shortcutPTT: 'ControlRight',
   shortcutHandsFree: 'AltRight',
@@ -40,14 +40,6 @@ export const DEFAULTS: Record<string, unknown> = {
   'cloudAsr.activeProfileId': '',
   'cloudAsr.autoCreatedProviders': [],
 
-  // | 'funasr-nano-2512-gguf' | 'qwen3-asr-0.6b-gguf'
-  'localAsr.modelId': 'nemotron-asr-streaming-0.6b-gguf',
-  'localAsr.language': 'auto',
-  'localAsr.downloadSource': 'HuggingFace',
-  'localAsr.model': '',
-  'localAsr.accelerator': 'auto',
-  'localAsr.gpuDevice': '',
-  'localAsr.unloadIdleMinutes': 0,
 
 
   overlayWaveTheme: 'black-rainbow',

@@ -3,7 +3,7 @@ import type { ActiveAppContext, TextContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'
 import type { AiConfigSnapshot, AiPolicy } from './aiPolicy'
 
-export type WorkMode = 'cloud_api' | 'local'
+export type WorkMode = 'cloud_api'
 
 export type ProviderState = 'disconnected' | 'connecting' | 'connected' | 'error'
 

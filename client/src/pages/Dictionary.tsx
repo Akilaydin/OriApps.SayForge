@@ -110,20 +110,6 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
     let disposed = false
 
     const load = async () => {
-      const mode = await getSetting('workMode', 'cloud_api') as string
-
-      if (mode === 'local') {
-        if (!disposed) {
-          setState({
-            ui: 'not_sent',
-            pathDependent: false,
-            clientCap: null,
-            hasSpacingRestore: false,
-            undecidedReason: null,
-          })
-        }
-        return
-      }
       const [provider, protocol, streamingOn] = await Promise.all([
         getSetting('cloudAsr.provider', '') as Promise<string>,
         getSetting('cloudAsr.protocol', 'auto') as Promise<string>,
