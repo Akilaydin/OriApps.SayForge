@@ -60,8 +60,6 @@ export default function GeneralSettingsPage() {
   const [handsFreeKey, setHandsFreeKey] = useState('AltRight')
   const [aiToggleKey, setAiToggleKey] = useState('')
   const [historyEnabled, setHistoryEnabled] = useState(true)
-  const [audioRetentionEnabled, setAudioRetentionEnabled] = useState(true)
-  const [audioRetentionDays, setAudioRetentionDays] = useState(30)
   const [logRetentionDays, setLogRetentionDays] = useState(30)
   const [readySoundEnabled, setReadySoundEnabled] = useState(true)
   const [ready, setReady] = useState(false)
@@ -73,15 +71,13 @@ export default function GeneralSettingsPage() {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [launch, mute, clip, contextAware, history, retention, readySound, audioDays, logDays] = await Promise.all([
+      const [launch, mute, clip, contextAware, history, readySound, logDays] = await Promise.all([
         bridge.getAutoLaunch().catch(() => false),
         getSetting('muteSystemAudioWhileRecording', false).catch(() => false),
         getSetting('protectClipboard', true).catch(() => true),
         getSetting('contextAwareWritingEnabled', false).catch(() => false),
         getSetting('historyEnabled', true).catch(() => true),
-        getSetting('audioRetentionEnabled', true).catch(() => true),
         getSetting('readySoundEnabled', true).catch(() => true),
-        getSetting('audioRetentionDays', -1).catch(() => -1),
         getSetting('logRetentionDays', 30).catch(() => 30),
       ])
       if (cancelled) return
@@ -90,10 +86,7 @@ export default function GeneralSettingsPage() {
       setProtectClipboard(Boolean(clip))
       setContextAwareWriting(Boolean(contextAware))
       setHistoryEnabled(Boolean(history))
-      setAudioRetentionEnabled(Boolean(retention))
       setReadySoundEnabled(Boolean(readySound))
-      const ad = Number(audioDays)
-      if (ad === 7 || ad === 30 || ad === 90 || ad === -1) setAudioRetentionDays(ad)
       const ld = Number(logDays)
       if (ld === 7 || ld === 15 || ld === 30 || ld === 90) setLogRetentionDays(ld)
       setReady(true)
@@ -159,9 +152,7 @@ export default function GeneralSettingsPage() {
     }
   }
   const toggleHistoryEnabled = async () => { const next = !historyEnabled; setHistoryEnabled(next); await setSetting('historyEnabled', next) }
-  const toggleAudioRetention = async () => { const next = !audioRetentionEnabled; setAudioRetentionEnabled(next); await setSetting('audioRetentionEnabled', next) }
   const toggleReadySound = async () => { const next = !readySoundEnabled; setReadySoundEnabled(next); await setSetting('readySoundEnabled', next); await refreshRecorderSettings() }
-  const handleAudioRetentionDaysChange = async (value: number) => { setAudioRetentionDays(value); await setSetting('audioRetentionDays', value) }
   const handleLogRetentionDaysChange = async (value: number) => { setLogRetentionDays(value); await setSetting('logRetentionDays', value) }
   const handlePTTChange = async (value: string) => { setPttKey(value); await setSetting('shortcutPTT', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }
   const handleHandsFreeChange = async (value: string) => { setHandsFreeKey(value); await setSetting('shortcutHandsFree', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }
@@ -395,33 +386,6 @@ export default function GeneralSettingsPage() {
               </div>
               <Switch checked={historyEnabled} onChange={() => void toggleHistoryEnabled()} noAnimation={!animate} hidden={!ready} />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold">{t('settings.audio.title')}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{t('settings.audio.desc')}</p>
-              </div>
-              <Switch checked={audioRetentionEnabled} onChange={() => void toggleAudioRetention()} noAnimation={!animate} hidden={!ready} />
-            </div>
-            {audioRetentionEnabled && (
-              <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <label className="text-sm text-muted-foreground">{t('settings.audio.retentionLabel')}</label>
-                <div className="shrink-0" style={ready ? undefined : { visibility: 'hidden' }}>
-                  <Segmented
-                    label={t('settings.audio.retentionLabel')}
-                    value={audioRetentionDays}
-                    options={([{ value: 7, labelKey: 'settings.retention.7d' }, { value: 30, labelKey: 'settings.retention.1m' }, { value: 90, labelKey: 'settings.retention.3m' }, { value: -1, labelKey: 'settings.retention.forever' }] as const satisfies readonly { value: number; labelKey: TranslationKey }[]).map((opt) => ({ value: opt.value, label: t(opt.labelKey) }))}
-                    onChange={(value) => void handleAudioRetentionDaysChange(value)}
-                    animated={animate}
-                    className="justify-end"
-                  />
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 

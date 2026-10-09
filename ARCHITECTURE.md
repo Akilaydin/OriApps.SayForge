@@ -21,7 +21,7 @@ Global hotkey / UI
     -> microphone capture (16 kHz mono PCM)
        -> CloudAPIProvider -> Rust ASR adapter -> configured API
     -> optional AI refinement and text transforms
-    -> history / optional audio archive
+    -> text history
     -> captured Windows text target
        -> native insertion, or copyable fallback card
 ```
@@ -53,8 +53,8 @@ Paths below are relative to `client/`.
 
 - SQLite: `%LOCALAPPDATA%\com.oriapps.sayforge\sayforge.db`, using WAL and versioned migrations.
 - `app_settings` holds JSON settings; `history_records` stores transcription records. Legacy prompt presets, app rules, corrections and feedback retain their existing tables for compatibility.
-- Audio files and logs reside in app-specific directories; cleanup follows retention settings.
-- A settings-only export excludes history and audio. Full backups are a separate local operation. Retired WebDAV settings remain stored and included in settings exports for compatibility.
+- Recording PCM lives only in the cloud provider buffer; no second archive buffer or audio retention cleanup runs. Older audio files remain on disk. Log cleanup still follows its retention setting.
+- Settings JSON export/import excludes history and audio. Legacy selected settings and full ZIP imports remain compatible; preview tokens protect settings import confirmation. Retired settings and SQLite columns/tables remain intact. History favorites and statistics have no active UI; recording no longer updates statistics.
 
 ## Invariants
 

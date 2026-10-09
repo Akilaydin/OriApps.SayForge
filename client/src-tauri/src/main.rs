@@ -41,51 +41,6 @@ fn browser_args_fingerprint(value: &str) -> String {
 }
 
 /// Clean up expired audio files based on retention setting.
-fn cleanup_expired_audio(storage: &Storage) {
-    let retention_val = storage.get("audioRetentionDays", Some(&serde_json::json!(-1)));
-    let retention_days = retention_val.as_i64().unwrap_or(-1);
-    if retention_days < 0 {
-        return; // -1 = keep forever
-    }
-
-    let cutoff_ms = chrono::Utc::now().timestamp_millis() - retention_days * 24 * 60 * 60 * 1000;
-    let audio_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(identity::APP_ID)
-        .join("audio");
-
-    if !audio_dir.exists() {
-        return;
-    }
-
-    let mut deleted = 0u32;
-    if let Ok(entries) = std::fs::read_dir(&audio_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if let Ok(meta) = std::fs::metadata(&path) {
-                if let Ok(modified) = meta.modified() {
-                    let mtime_ms = modified
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as i64;
-                    if mtime_ms < cutoff_ms {
-                        if std::fs::remove_file(&path).is_ok() {
-                            deleted += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if deleted > 0 {
-        log::info!("Audio cleanup: deleted {} expired files", deleted);
-    }
-}
-
 /// Clean up expired log files based on retention setting.
 fn cleanup_expired_logs(storage: &Storage) {
     let retention_val = storage.get("logRetentionDays", Some(&serde_json::json!(30)));
@@ -228,8 +183,6 @@ fn main() {
     // Users may migrate settings through Settings → Export/Import; the upstream
     // app and its audio/history files must remain untouched.
 
-    // Clean up expired audio files on startup
-    cleanup_expired_audio(&storage);
 
     // Clean up expired log files on startup
     cleanup_expired_logs(&storage);
@@ -514,11 +467,6 @@ fn main() {
             commands::tray::hide_tray_menu,
             commands::tray::quit_from_tray,
             // Audio
-            commands::audio::save_audio_file,
-            commands::audio::save_pcm_as_wav,
-            commands::audio::read_audio_file,
-            commands::audio::audio_file_exists,
-            commands::audio::delete_audio_file,
             commands::audio_mute::mute_system_output,
             commands::audio_mute::restore_system_output,
             commands::audio_mute::get_mic_mute_state,
@@ -532,11 +480,8 @@ fn main() {
             commands::shortcuts::end_shortcut_capture,
             // Export
             commands::export::save_text_export,
-            commands::export::save_export_bundle,
-            commands::export::save_full_export,
             commands::backup::get_backup_directory,
             commands::backup::export_config,
-            commands::backup::export_full,
             commands::backup::inspect_config_import,
             commands::backup::import_config,
             commands::backup::import_full,

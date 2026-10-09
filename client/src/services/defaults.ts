@@ -53,8 +53,6 @@ export const DEFAULTS: Record<string, unknown> = {
   readySoundEnabled: true,
 
   historyEnabled: true,
-  audioRetentionEnabled: true,
-  audioRetentionDays: -1,
   logRetentionDays: 30,
 
 

@@ -1,7 +1,6 @@
 //
 
 import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { TextReplacementRule } from './textReplacement'
 import { t } from '@/i18n'
@@ -52,38 +51,8 @@ export interface ConfigImportResult {
   requiresRestart: boolean
 }
 
-export interface BackupExportProgress {
-  status: 'running' | 'completed' | 'failed'
-  phase: 'preparing' | 'packingData' | 'packingAudio' | 'finalizing' | 'completed' | 'failed'
-  filePath: string
-  currentFile: string | null
-  processedFiles: number
-  totalFiles: number
-  processedBytes: number
-  totalBytes: number
-  percent: number
-  error: string | null
-}
-
-export function getBackupDirectory(): Promise<string> {
-  return invoke<string>('get_backup_directory')
-}
-
-export function onBackupExportProgress(
-  handler: (progress: BackupExportProgress) => void,
-): Promise<UnlistenFn> {
-  return listen<BackupExportProgress>('backup-export-progress', (event) => handler(event.payload))
-}
-
 export async function exportConfigFile(selection: ConfigExportSelection): Promise<ExportResult> {
   const path = await invoke<string>('export_config', { selection })
-  return { canceled: false, filePath: path }
-}
-
-export async function exportFullFile(): Promise<ExportResult> {
-  const path = await invoke<string>('export_full', {
-    scope: { includeHistory: true, includeAudio: true },
-  })
   return { canceled: false, filePath: path }
 }
 

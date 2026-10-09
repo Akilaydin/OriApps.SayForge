@@ -287,8 +287,6 @@ impl Storage {
             params![id, timestamp, favorite as i32, char_count, duration_sec, is_empty as i32, app_id, app_name, audio_file_path, raw_json],
         )?;
 
-        // Update stats
-        self.update_stats_delta(&db, char_count, duration_sec, 1);
         Ok(())
     }
 
@@ -307,8 +305,6 @@ impl Storage {
         };
 
         let mut prev: serde_json::Map<String, Value> = serde_json::from_str(&raw_json).unwrap_or_default();
-        let prev_chars = prev.get("charCount").and_then(|v| v.as_i64()).unwrap_or(0);
-        let prev_dur = prev.get("durationSec").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
         if let Some(patch_obj) = patch.as_object() {
             for (k, v) in patch_obj {
@@ -332,8 +328,6 @@ impl Storage {
             params![timestamp, favorite as i32, char_count, duration_sec, is_empty as i32, app_id, app_name, audio_file_path, new_json, id],
         )?;
 
-        // Update stats: subtract old, add new
-        self.update_stats_replacement(&db, prev_chars, prev_dur, char_count, duration_sec);
         Ok(())
     }
 
@@ -346,19 +340,15 @@ impl Storage {
             |row| Ok((row.get(0)?, row.get(1)?)),
         ).ok();
 
-        let (list_order, raw_json) = match row {
+        let (list_order, _) = match row {
             Some(r) => r,
             None => return Ok(()),
         };
 
-        let obj: serde_json::Map<String, Value> = serde_json::from_str(&raw_json).unwrap_or_default();
-        let char_count = obj.get("charCount").and_then(|v| v.as_i64()).unwrap_or(0);
-        let duration_sec = obj.get("durationSec").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
         db.execute("DELETE FROM history_records WHERE id = ?1", params![id])?;
         db.execute("UPDATE history_records SET list_order = list_order - 1 WHERE list_order > ?1", params![list_order])?;
 
-        self.update_stats_delta(&db, char_count, duration_sec, -1);
         Ok(())
     }
 
@@ -505,57 +495,6 @@ impl Storage {
         Self::replace_collection_on(&db, key, items)
     }
 
-    // ─── Stats helpers ───
-
-    fn update_stats_delta(&self, db: &Connection, char_count: i64, duration_sec: f64, direction: i64) {
-        let stats_json: Option<String> = db.query_row(
-            "SELECT value_json FROM app_settings WHERE key = 'stats'",
-            [], |row| row.get(0),
-        ).ok();
-
-        let (mut total_dur, mut total_chars) = parse_stats(&stats_json);
-        total_dur = (total_dur + duration_sec * direction as f64).max(0.0);
-        total_chars = (total_chars + char_count * direction).max(0);
-
-        let new_stats = serde_json::json!({"totalDurationSec": total_dur, "totalChars": total_chars});
-        let now = chrono::Utc::now().timestamp_millis();
-        let _ = db.execute(
-            "INSERT INTO app_settings (key, value_json, updated_at) VALUES ('stats', ?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
-            params![new_stats.to_string(), now],
-        );
-    }
-
-    fn update_stats_replacement(&self, db: &Connection, prev_chars: i64, prev_dur: f64, next_chars: i64, next_dur: f64) {
-        let stats_json: Option<String> = db.query_row(
-            "SELECT value_json FROM app_settings WHERE key = 'stats'",
-            [], |row| row.get(0),
-        ).ok();
-
-        let (mut total_dur, mut total_chars) = parse_stats(&stats_json);
-        total_dur = (total_dur - prev_dur + next_dur).max(0.0);
-        total_chars = (total_chars - prev_chars + next_chars).max(0);
-
-        let new_stats = serde_json::json!({"totalDurationSec": total_dur, "totalChars": total_chars});
-        let now = chrono::Utc::now().timestamp_millis();
-        let _ = db.execute(
-            "INSERT INTO app_settings (key, value_json, updated_at) VALUES ('stats', ?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
-            params![new_stats.to_string(), now],
-        );
-    }
-}
-
-fn parse_stats(json: &Option<String>) -> (f64, i64) {
-    match json {
-        Some(s) => {
-            let v: Value = serde_json::from_str(s).unwrap_or(Value::Null);
-            let dur = v.get("totalDurationSec").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let chars = v.get("totalChars").and_then(|v| v.as_i64()).unwrap_or(0);
-            (dur, chars)
-        }
-        None => (0.0, 0),
-    }
 }
 
 impl Storage {

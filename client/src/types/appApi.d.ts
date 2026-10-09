@@ -149,10 +149,6 @@ export interface AppAPI {
     content: string
     filters?: Array<{ name: string; extensions: string[] }>
   }) => Promise<string | null>
-  saveExportBundle: (payload: {
-    defaultPath: string
-    files: Array<{ name: string; content: string }>
-  }) => Promise<string | null>
   notifyShortcutsChanged: () => void
   testShortcut: (accelerator: string) => Promise<{ valid: boolean }>
   getAutoLaunch: () => Promise<boolean>
@@ -171,9 +167,6 @@ export interface AppAPI {
   }) => Promise<string>
   readDiagnosticsZip: (path: string) => Promise<number[] | null>
   readLogFile: (logType: 'frontend' | 'ptt') => Promise<string | null>
-  saveAudioFile: (id: string, wavBase64: string) => Promise<string>
-  readAudioFile: (filePath: string) => Promise<string | null>
-  deleteAudioFile: (filePath: string) => Promise<boolean>
   onOverlayState: (cb: (data: unknown) => void) => void
   onActiveAppContext: (cb: (data: ActiveAppContext | null) => void) => () => void
   onPTTDown: (cb: (data?: unknown) => void) => void

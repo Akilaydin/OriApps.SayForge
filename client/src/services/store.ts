@@ -63,11 +63,6 @@ export type HistoryFailReasonCode =
   | 'processing_timeout'
   | 'connection_lost'
 
-export interface Stats {
-  totalDurationSec: number
-  totalChars: number
-}
-
 export interface PromptPreset {
   id: string
   name: string
@@ -158,14 +153,6 @@ export async function updateHistoryRecord(id: string, patch: Partial<HistoryReco
   await api().historyUpdate(id, patch as Record<string, unknown>)
 }
 
-export async function setHistoryFavorite(id: string, favorite: boolean): Promise<void> {
-  await api().historySetFavorite(id, favorite)
-}
-
-export async function getFavoriteHistory(): Promise<HistoryRecord[]> {
-  return listHistory({ favoriteOnly: true })
-}
-
 export async function getFeedbackQueue(): Promise<FeedbackRecord[]> {
   return ((await api().storeGet('feedbackQueue')) as FeedbackRecord[]) || []
 }
@@ -184,16 +171,6 @@ export async function addManualCorrection(record: ManualCorrectionRecord): Promi
   const corrections = await getManualCorrections()
   corrections.unshift(record)
   await api().storeSet('manualCorrections', corrections.slice(0, 200))
-}
-
-export async function getStats(): Promise<Stats> {
-  try {
-    const raw = await api().storeGet('stats')
-    return (raw as Stats) || { totalDurationSec: 0, totalChars: 0 }
-  } catch (err) {
-    console.error('[store] getStats FAILED:', err)
-    return { totalDurationSec: 0, totalChars: 0 }
-  }
 }
 
 import { getDefault } from './defaults'

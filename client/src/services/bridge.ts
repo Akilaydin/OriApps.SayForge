@@ -235,13 +235,6 @@ export function saveTextExport(payload: {
   return invoke<string | null>('save_text_export', { payload })
 }
 
-export function saveExportBundle(payload: {
-  defaultPath: string
-  files: Array<{ name: string; content: string }>
-}) {
-  return invoke<string | null>('save_export_bundle', { payload })
-}
-
 // ─── Shortcuts ───
 
 export const SHORTCUTS_CHANGED_EVENT = 'sayforge:shortcuts-changed'
@@ -298,26 +291,6 @@ export function onAiCleanupToggleRequested(cb: () => void) {
 }
 
 // ─── Audio Files ───
-
-export function saveAudioFile(id: string, wavBase64: string) {
-  return invoke<string>('save_audio_file', { id, wavBase64 })
-}
-
-export function savePcmAsWav(id: string, pcmBase64: string, sampleRate?: number) {
-  return invoke<string>('save_pcm_as_wav', { id, pcmBase64, sampleRate: sampleRate ?? null })
-}
-
-export function readAudioFile(filePath: string) {
-  return invoke<string | null>('read_audio_file', { filePath })
-}
-
-export function audioFileExists(filePath: string) {
-  return invoke<boolean>('audio_file_exists', { filePath })
-}
-
-export function deleteAudioFile(filePath: string) {
-  return invoke('delete_audio_file', { filePath })
-}
 
 // ─── Diagnostics ───
 

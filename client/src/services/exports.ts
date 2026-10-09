@@ -1,155 +1,21 @@
 import * as bridge from './bridge'
-import { invoke } from '@tauri-apps/api/core'
-import {
-  BUILTIN_SET_ACTIVE_KEY,
-  BUILTIN_SET_WORDS_KEY,
-  CUSTOM_THEME_ACTIVE_KEY,
-  CUSTOM_THEMES_KEY,
-  LEGACY_MANUAL_WORDS_KEY,
-} from './hotwords/model'
-import {
-  countHistory,
-  getSetting,
-  listHistory,
-  type HistoryListQuery,
-  type HistoryRecord,
-} from './store'
+import { save } from '@tauri-apps/plugin-dialog'
+import { BUILTIN_SET_ACTIVE_KEY, BUILTIN_SET_WORDS_KEY, CUSTOM_THEME_ACTIVE_KEY, CUSTOM_THEMES_KEY, LEGACY_MANUAL_WORDS_KEY } from './hotwords/model'
+import { getSetting, listHistory, type HistoryListQuery } from './store'
 
-type ExportFormat = 'json' | 'csv'
+function slugTimestamp() { return new Date().toISOString().replace(/[:.]/g, '-') }
 
-const SETTINGS_EXPORT_KEYS = [
-  'activePresetId',
-  'aiEnabled',
-  'aiMinDurationSec',
-  'contextAwareWritingEnabled',
-  'hotwordLearning',
-  'overlayShowDuration',
-  'overlayWaveTheme',
-  'selectedMic',
-  'shortcutHandsFree',
-  'shortcutToggleAi',
-  'shortcutKey',
-  'shortcutPTT',
-  'shortcutPTTCombo',
-  'styleProfile',
-] as const
-
-interface SaveResult {
-  canceled: boolean
-  filePath: string | null
+async function saveTextFile(defaultPath: string, content: string, filters: Array<{ name: string; extensions: string[] }>) {
+  const path = await save({ defaultPath, filters })
+  if (!path) return { canceled: true, filePath: null }
+  const filePath = await bridge.saveTextExport({ defaultPath: path, content, filters })
+  return { canceled: !filePath, filePath }
 }
 
-function slugTimestamp(ts = new Date()) {
-  return ts.toISOString().replace(/[:.]/g, '-')
-}
-
-function escapeCsv(value: unknown) {
-  const text = String(value ?? '')
-  if (text.includes('"') || text.includes(',') || text.includes('\n')) {
-    return `"${text.replace(/"/g, '""')}"`
-  }
-  return text
-}
-
-function historyToCsv(records: HistoryRecord[]) {
-  const headers = [
-    'id',
-    'timestamp',
-    'favorite',
-    'appName',
-    'durationSec',
-    'charCount',
-    'asrText',
-    'llmText',
-    'promptPresetName',
-    'promptSummary',
-    'styleSummary',
-  ]
-
-  const lines = records.map((record) => [
-    record.id,
-    record.timestamp,
-    record.favorite ? 'true' : 'false',
-    record.appName || '',
-    record.durationSec,
-    record.charCount,
-    record.asrText || '',
-    record.llmText || '',
-    record.promptPresetName || '',
-    record.promptSummary || '',
-    record.styleSummary || '',
-  ].map(escapeCsv).join(','))
-
-  return [headers.join(','), ...lines].join('\n')
-}
-
-async function saveTextFile(defaultPath: string, content: string, filters: Array<{ name: string; extensions: string[] }>): Promise<SaveResult> {
-  const filePath = await bridge.saveTextExport({
-    defaultPath,
-    content,
-    filters,
-  })
-
-  return {
-    canceled: !filePath,
-    filePath: filePath || null,
-  }
-}
-
-async function saveBundle(defaultPath: string, files: Array<{ name: string; content: string }>): Promise<SaveResult> {
-  const filePath = await bridge.saveExportBundle({
-    defaultPath,
-    files,
-  })
-
-  return {
-    canceled: !filePath,
-    filePath: filePath || null,
-  }
-}
-
-async function buildHistoryPayload(query: HistoryListQuery = {}) {
-  const [records, total] = await Promise.all([
-    listHistory(query),
-    countHistory({
-      keyword: query.keyword,
-      favoriteOnly: query.favoriteOnly,
-    }),
-  ])
-
-  return {
-    exportedAt: new Date().toISOString(),
-    filters: {
-      keyword: query.keyword || '',
-      favoriteOnly: !!query.favoriteOnly,
-    },
-    total,
-    records,
-  }
-}
-
-async function buildSettingsPayload() {
-  const settingsEntries = await Promise.all(
-    SETTINGS_EXPORT_KEYS.map(async (key) => [key, await getSetting(key, null)] as const),
-  )
-
-  const [autoLaunch, promptPresets, appPromptRules, userStats] = await Promise.all([
-    bridge.getAutoLaunch() ?? false,
-    getSetting('promptPresets', []),
-    getSetting('appPromptRules', []),
-    getSetting('userStats', null),
-  ])
-
-  return {
-    exportedAt: new Date().toISOString(),
-    appSettings: {
-      ...Object.fromEntries(settingsEntries),
-      autoLaunch,
-    },
-    promptPresets,
-    appPromptRules,
-    userStats,
-  }
+export async function exportHistory(query: HistoryListQuery = {}) {
+  const records = await listHistory({ keyword: query.keyword })
+  const text = records.map((record) => new Date(record.timestamp).toISOString() + '\n' + (record.llmText || record.asrText)).join('\n\n')
+  return saveTextFile('sayforge-history-' + slugTimestamp() + '.txt', text, [{ name: 'Text', extensions: ['txt'] }])
 }
 
 async function buildHotwordsPayload() {
@@ -186,53 +52,6 @@ async function buildHotwordsPayload() {
   }
 }
 
-export async function exportHistory(query: HistoryListQuery = {}, format: ExportFormat = 'json') {
-  const payload = await buildHistoryPayload(query)
-  const stamp = slugTimestamp()
-
-  if (format === 'csv') {
-    return saveTextFile(
-      `sayforge-history-${stamp}.csv`,
-      historyToCsv(payload.records),
-      [{ name: 'CSV Files', extensions: ['csv'] }],
-    )
-  }
-
-  return saveTextFile(
-    `sayforge-history-${stamp}.json`,
-    JSON.stringify(payload, null, 2),
-    [{ name: 'JSON Files', extensions: ['json'] }],
-  )
-}
-
-export async function exportFavorites(format: ExportFormat = 'json') {
-  const payload = await buildHistoryPayload({ favoriteOnly: true })
-  const stamp = slugTimestamp()
-
-  if (format === 'csv') {
-    return saveTextFile(
-      `sayforge-favorites-${stamp}.csv`,
-      historyToCsv(payload.records),
-      [{ name: 'CSV Files', extensions: ['csv'] }],
-    )
-  }
-
-  return saveTextFile(
-    `sayforge-favorites-${stamp}.json`,
-    JSON.stringify(payload, null, 2),
-    [{ name: 'JSON Files', extensions: ['json'] }],
-  )
-}
-
-export async function exportSettings() {
-  const payload = await buildSettingsPayload()
-  return saveTextFile(
-    `sayforge-settings-${slugTimestamp()}.json`,
-    JSON.stringify(payload, null, 2),
-    [{ name: 'JSON Files', extensions: ['json'] }],
-  )
-}
-
 export async function exportHotwords() {
   const payload = await buildHotwordsPayload()
   return saveTextFile(
@@ -240,44 +59,4 @@ export async function exportHotwords() {
     JSON.stringify(payload, null, 2),
     [{ name: 'JSON Files', extensions: ['json'] }],
   )
-}
-
-export async function exportAllDataBundle() {
-  const [history, favorites, settings, hotwords] = await Promise.all([
-    buildHistoryPayload(),
-    buildHistoryPayload({ favoriteOnly: true }),
-    buildSettingsPayload(),
-    buildHotwordsPayload(),
-  ])
-
-  const exportedAt = new Date().toISOString()
-  const files = [
-    {
-      name: 'manifest.json',
-      content: JSON.stringify({
-        exportedAt,
-        files: ['history.json', 'favorites.json', 'settings.json', 'hotwords.json'],
-        includesAudio: true,
-        counts: {
-          history: history.total,
-          favorites: favorites.total,
-          activeHotwords: Array.isArray(hotwords.activeWords) ? hotwords.activeWords.length : 0,
-        },
-      }, null, 2),
-    },
-    { name: 'history.json', content: JSON.stringify(history, null, 2) },
-    { name: 'favorites.json', content: JSON.stringify(favorites, null, 2) },
-    { name: 'settings.json', content: JSON.stringify(settings, null, 2) },
-    { name: 'hotwords.json', content: JSON.stringify(hotwords, null, 2) },
-  ]
-
-  const defaultPath = `sayforge-export-${slugTimestamp()}.zip`
-  const filePath = await invoke<string | null>('save_full_export', {
-    payload: { defaultPath, files },
-  })
-
-  return {
-    canceled: !filePath,
-    filePath: filePath || null,
-  }
 }

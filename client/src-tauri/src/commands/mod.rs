@@ -1,4 +1,3 @@
-pub mod audio;
 pub mod audio_mute;
 pub mod backup;
 pub mod diagnostics;

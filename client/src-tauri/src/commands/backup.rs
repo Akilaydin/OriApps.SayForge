@@ -4,10 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, State};
+use tauri::State;
 
 use crate::storage::Storage;
 
@@ -29,14 +28,6 @@ pub struct ConfigExportSelection {
     text_replacements: Option<Vec<Value>>,
     #[serde(default)]
     prompt_preset_ids: Vec<String>,
-}
-
-///
-#[derive(Clone, Copy, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackupScope {
-    pub include_history: bool,
-    pub include_audio: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -260,39 +251,6 @@ fn build_selected_config_value(
         "exportedAt": chrono::Utc::now().to_rfc3339(),
         "items": Value::Object(items),
     }))
-}
-
-///
-fn build_full_value(storage: &Storage, scope: BackupScope) -> Value {
-    let mut payload = json!({
-        "kind": "full",
-        "formatVersion": FORMAT_VERSION,
-        "appVersion": app_version(),
-        "exportedAt": chrono::Utc::now().to_rfc3339(),
-        "scope": {
-            "includeHistory": scope.include_history,
-            "includeAudio": scope.include_audio,
-        },
-        "appSettings": storage.export_app_settings(&[]),
-        "promptPresets": storage.get("promptPresets", None),
-        "appPromptRules": storage.get("appPromptRules", None),
-    });
-
-    if scope.include_history {
-        if let Some(object) = payload.as_object_mut() {
-            object.insert("history".to_string(), storage.get("history", None));
-            object.insert(
-                "manualCorrections".to_string(),
-                storage.get("manualCorrections", None),
-            );
-            object.insert(
-                "feedbackQueue".to_string(),
-                storage.get("feedbackQueue", None),
-            );
-        }
-    }
-
-    payload
 }
 
 fn check_kind_and_version(data: &Value, expected_kind: &str, max_version: i64) -> Result<i64, String> {
@@ -679,68 +637,6 @@ fn build_selected_import_plan(storage: &Storage, data: &Value) -> Result<Selecte
 }
 
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BackupExportProgress {
-    status: String,
-    phase: String,
-    file_path: String,
-    current_file: Option<String>,
-    processed_files: u64,
-    total_files: u64,
-    processed_bytes: u64,
-    total_bytes: u64,
-    percent: f64,
-    error: Option<String>,
-}
-
-struct AudioExportFile {
-    path: PathBuf,
-    name: String,
-    size: u64,
-}
-
-fn emit_export_progress(app: &AppHandle, progress: BackupExportProgress) {
-    let _ = app.emit("backup-export-progress", progress);
-}
-
-fn collect_audio_export_files(include_audio: bool) -> Vec<AudioExportFile> {
-    let mut files = Vec::new();
-    if !include_audio {
-        return files;
-    }
-    let adir = audio_dir();
-    if let Ok(entries) = fs::read_dir(adir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(metadata) = entry.metadata() else {
-                continue;
-            };
-            if !metadata.is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.is_empty() {
-                files.push(AudioExportFile {
-                    path,
-                    name,
-                    size: metadata.len(),
-                });
-            }
-        }
-    }
-    files.sort_by(|a, b| a.name.cmp(&b.name));
-    files
-}
-
-fn audio_progress_percent(processed_bytes: u64, total_bytes: u64) -> f64 {
-    if total_bytes == 0 {
-        95.0
-    } else {
-        (5.0 + processed_bytes as f64 / total_bytes as f64 * 90.0).min(95.0)
-    }
-}
-
 #[tauri::command]
 pub fn get_backup_directory() -> Result<String, String> {
     let directory = backup_dir();
@@ -768,224 +664,6 @@ pub async fn export_config(
     log::info!("Config backup exported to {}", path);
     Ok(path)
 }
-
-pub struct ArchiveProgress<'a> {
-    pub phase: &'static str,
-    pub current_file: Option<&'a str>,
-    pub processed_files: u64,
-    pub total_files: u64,
-    pub processed_bytes: u64,
-    pub total_bytes: u64,
-    pub percent: f64,
-}
-
-///
-///
-///
-pub fn write_backup_archive(
-    storage: &Storage,
-    scope: BackupScope,
-    output: &Path,
-    on_progress: &mut dyn FnMut(ArchiveProgress),
-) -> Result<(), String> {
-    let temp_path = PathBuf::from(format!("{}.part", output.to_string_lossy()));
-    let audio_files = collect_audio_export_files(scope.include_audio);
-    let total_files = audio_files.len() as u64;
-    let total_bytes = audio_files.iter().map(|file| file.size).sum::<u64>();
-
-    on_progress(ArchiveProgress {
-        phase: "preparing",
-        current_file: None,
-        processed_files: 0,
-        total_files,
-        processed_bytes: 0,
-        total_bytes,
-        percent: 2.0,
-    });
-
-    let result = (|| -> Result<(), String> {
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("Failed to create export directory: {}", e))?;
-        }
-
-        let payload = build_full_value(storage, scope);
-        let json_str = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
-        on_progress(ArchiveProgress {
-            phase: "packingData",
-            current_file: Some("backup.json"),
-            processed_files: 0,
-            total_files,
-            processed_bytes: 0,
-            total_bytes,
-            percent: 5.0,
-        });
-
-        let file = fs::File::create(&temp_path).map_err(|e| format!("Failed to create file: {}", e))?;
-        let mut zip = zip::ZipWriter::new(file);
-        let text_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
-        let audio_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
-
-        zip.start_file("backup.json", text_opts)
-            .map_err(|e| e.to_string())?;
-        zip.write_all(json_str.as_bytes())
-            .map_err(|e| e.to_string())?;
-
-        let mut processed_bytes = 0u64;
-        let mut processed_files = 0u64;
-        let mut last_emit = Instant::now() - Duration::from_secs(1);
-        let mut buffer = vec![0u8; 256 * 1024];
-
-        for audio in &audio_files {
-            zip.start_file(format!("audio/{}", audio.name), audio_opts)
-                .map_err(|e| e.to_string())?;
-            let mut source = fs::File::open(&audio.path)
-                .map_err(|e| format!("Failed to read audio file {}: {}", audio.name, e))?;
-
-            loop {
-                let read = source
-                    .read(&mut buffer)
-                    .map_err(|e| format!("Failed to read audio file {}: {}", audio.name, e))?;
-                if read == 0 {
-                    break;
-                }
-                zip.write_all(&buffer[..read]).map_err(|e| e.to_string())?;
-                processed_bytes += read as u64;
-
-                if last_emit.elapsed() >= Duration::from_millis(150) {
-                    on_progress(ArchiveProgress {
-                        phase: "packingAudio",
-                        current_file: Some(&audio.name),
-                        processed_files,
-                        total_files,
-                        processed_bytes,
-                        total_bytes,
-                        percent: audio_progress_percent(processed_bytes, total_bytes),
-                    });
-                    last_emit = Instant::now();
-                }
-            }
-
-            processed_files += 1;
-            on_progress(ArchiveProgress {
-                phase: "packingAudio",
-                current_file: Some(&audio.name),
-                processed_files,
-                total_files,
-                processed_bytes,
-                total_bytes,
-                percent: audio_progress_percent(processed_bytes, total_bytes),
-            });
-        }
-
-        on_progress(ArchiveProgress {
-            phase: "finalizing",
-            current_file: None,
-            processed_files,
-            total_files,
-            processed_bytes,
-            total_bytes,
-            percent: 98.0,
-        });
-        zip.finish().map_err(|e| e.to_string())?;
-
-        if output.exists() {
-            fs::remove_file(output).map_err(|e| format!("Failed to replace the previous backup: {}", e))?;
-        }
-        fs::rename(&temp_path, output).map_err(|e| format!("Failed to finalize the backup file: {}", e))?;
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            let _ = fs::remove_file(&temp_path);
-            Err(error)
-        }
-    }
-}
-
-#[tauri::command]
-pub async fn export_full(
-    app: AppHandle,
-    scope: BackupScope,
-    storage: State<'_, Storage>,
-) -> Result<String, String> {
-    let output = timestamped_backup_path("sayforge-backup", "zip");
-    let out_path = output.to_string_lossy().to_string();
-
-    let mut seen_totals = (0u64, 0u64);
-    let export_result = {
-        let progress_app = app.clone();
-        let progress_path = out_path.clone();
-        write_backup_archive(storage.inner(), scope, &output, &mut |progress| {
-            seen_totals = (progress.total_files, progress.total_bytes);
-            emit_export_progress(
-                &progress_app,
-                BackupExportProgress {
-                    status: "running".to_string(),
-                    phase: progress.phase.to_string(),
-                    file_path: progress_path.clone(),
-                    current_file: progress.current_file.map(ToString::to_string),
-                    processed_files: progress.processed_files,
-                    total_files: progress.total_files,
-                    processed_bytes: progress.processed_bytes,
-                    total_bytes: progress.total_bytes,
-                    percent: progress.percent,
-                    error: None,
-                },
-            );
-        })
-    };
-    let (total_files, total_bytes) = seen_totals;
-
-    match export_result {
-        Ok(()) => {
-            emit_export_progress(
-                &app,
-                BackupExportProgress {
-                    status: "completed".to_string(),
-                    phase: "completed".to_string(),
-                    file_path: out_path.clone(),
-                    current_file: None,
-                    processed_files: total_files,
-                    total_files,
-                    processed_bytes: total_bytes,
-                    total_bytes,
-                    percent: 100.0,
-                    error: None,
-                },
-            );
-            log::info!(
-                "Full backup exported to {} (history={} audio={})",
-                out_path,
-                scope.include_history,
-                scope.include_audio
-            );
-            Ok(out_path)
-        }
-        Err(error) => {
-            emit_export_progress(
-                &app,
-                BackupExportProgress {
-                    status: "failed".to_string(),
-                    phase: "failed".to_string(),
-                    file_path: out_path,
-                    current_file: None,
-                    processed_files: 0,
-                    total_files,
-                    processed_bytes: 0,
-                    total_bytes,
-                    percent: 0.0,
-                    error: Some(error.clone()),
-                },
-            );
-            Err(error)
-        }
-    }
-}
-
 
 fn content_fingerprint(content: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
@@ -1322,59 +1000,23 @@ mod tests {
         (storage, dir)
     }
 
-        ///
-                    #[test]
-    fn config_only_backup_omits_history_instead_of_emptying_it() {
-        let (storage, dir) = temp_storage("scope");
-        storage
-            .set(
-                "history",
-                &json!([{ "id": "h1", "timestamp": 1, "charCount": 3 }]),
-            )
-            .unwrap();
-
-        let config_only = build_full_value(
-            &storage,
-            BackupScope {
-                include_history: false,
-                include_audio: false,
-            },
-        );
-        assert!(
-            config_only.get("history").is_none(),
-            "history must be absent, got {:?}",
-            config_only.get("history")
-        );
-        assert!(config_only.get("manualCorrections").is_none());
-        assert!(config_only.get("feedbackQueue").is_none());
-        assert_eq!(config_only.get("kind").and_then(Value::as_str), Some("full"));
-        assert!(config_only.get("appSettings").is_some());
-        assert_eq!(
-            config_only.pointer("/scope/includeAudio").and_then(Value::as_bool),
-            Some(false)
-        );
-
-        let with_history = build_full_value(
-            &storage,
-            BackupScope {
-                include_history: true,
-                include_audio: false,
-            },
-        );
-        assert_eq!(
-            with_history
-                .get("history")
-                .and_then(Value::as_array)
-                .map(Vec::len),
-            Some(1)
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-        #[test]
-    fn audio_files_are_only_collected_when_requested() {
-        assert!(collect_audio_export_files(false).is_empty());
+    #[test]
+    fn settings_import_preserves_existing_history_and_retired_audio_settings() {
+        let (source, source_dir) = temp_storage("settings-source");
+        let (destination, destination_dir) = temp_storage("settings-destination");
+        let history = json!([{ "id": "old", "timestamp": 1, "charCount": 3,
+            "audioFilePath": "synthetic-old.wav", "favorite": true }]);
+        destination.set("history", &history).unwrap();
+        source.set("audioRetentionDays", &json!(30)).unwrap();
+        let config = build_config_value(&source);
+        assert!(config.get("history").is_none());
+        apply_config_part(&destination, &config, &[]).unwrap();
+        assert_eq!(destination.get("history", None), history);
+        assert_eq!(destination.get("audioRetentionDays", None), json!(30));
+        drop(source);
+        drop(destination);
+        fs::remove_dir_all(source_dir).unwrap();
+        fs::remove_dir_all(destination_dir).unwrap();
     }
 
     #[test]

@@ -12,8 +12,8 @@ SayForge is an open-source Windows dictation app by OriApps. Press a global shor
 - Cloud speech recognition; cloud audio is uploaded after recording stops.
 - Optional AI cleanup with one editable prompt and an OpenAI-compatible endpoint.
 - Hotwords, text replacements, formatting and context-aware editing of selected text.
-- Searchable local history, favorites, audio playback and text export.
-- Settings/full backup and restore, tray controls and diagnostics.
+- Searchable local text history with copying and TXT export.
+- Local settings export/import and legacy ZIP restore, tray controls and diagnostics.
 
 ## Dictation workflow
 
@@ -34,8 +34,8 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 
 - AI refinement is optional and configured separately from ASR. It may send recognized text and bounded editor context to a cloud provider.
 - If refinement is disabled or fails, preserve useful source text. Do not overwrite a selection unless the requested edit was actually applied.
-- Settings and transcription history are stored locally; audio files are stored separately when enabled.
-- History and retention are configurable. Settings-only exports do not include history or audio. Backups are local and initiated by the user; no scheduled remote backup runs.
+- Settings and transcription history are stored locally. New recordings are not archived; older audio files and history remain untouched.
+- Text history can be disabled. Settings exports exclude history and audio; older ZIP backups can still be restored after confirmation. Backups are local and initiated by the user.
 - The app uses `%LOCALAPPDATA%\com.oriapps.sayforge`. Protect user transcripts, credentials and editor context.
 
 ## Scope and limitations

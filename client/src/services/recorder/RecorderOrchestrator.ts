@@ -12,7 +12,6 @@ import {
   type HistoryRecord,
 } from '../store'
 import { addRuntimeEvent } from '../debugLog'
-import { saveRecordingAudio } from '../audioFileService'
 import {
   BUILTIN_SET_ACTIVE_KEY,
   BUILTIN_SET_WORDS_KEY,
@@ -77,7 +76,6 @@ const VALID_TRANSITIONS: StateTransition[] = [
 ]
 
 const LATE_FINAL_GRACE_MS = 15000
-const AUDIO_ARCHIVE_WAIT_MS = 30_000
 const INSERTION_TIMEOUT_EXTENSION_MS = 5000
 const INSERTION_TIMEOUT_MS = 15000
 const MAX_INSERTION_TIMEOUT_EXTENSIONS = 3
@@ -109,7 +107,6 @@ interface TimedOutProcessingContext {
   wallTimeSec: number
   promptResolution: PromptResolution | null
   appContext: ActiveAppContext | null
-  audioChunks: ArrayBuffer[]
   probeResult: ProbeResult | null
 }
 
@@ -131,13 +128,6 @@ type HistoryMetadata = Pick<
   | 'promptSummary'
   | 'workMode'
 >
-
-interface AudioArchive {
-  runId: number
-  recordId: string
-  promise: Promise<string | null>
-  discarded: boolean
-}
 
 export class RecorderOrchestrator {
   private state: RecorderState = 'idle'
@@ -167,8 +157,7 @@ export class RecorderOrchestrator {
   private insertionTimeoutId: ReturnType<typeof setTimeout> | null = null
   private finalReceivedAt = 0
   private timedOutProcessingContext: TimedOutProcessingContext | null = null
-  private pendingHistoryArtifact: { runId: number; recordId: string; audioFilePath?: string } | null = null
-  private audioArchives = new Map<number, AudioArchive>()
+  private pendingHistoryArtifact: { runId: number; recordId: string } | null = null
   private canceledRuns = new Set<number>()
 
   private handsFreeMode = false
@@ -211,7 +200,6 @@ export class RecorderOrchestrator {
   private readonly overlayService = new OverlayService(() => this.getLiveElapsedSec())
   private readonly pasteService = new PasteService()
   private get provider(): TranscriptionProvider { return getProvider() }
-  private recordedChunks: ArrayBuffer[] = []
   private captureReadyPromise: Promise<void> | null = null
   /** 5-minute auto-stop timer for hands-free mode */
   private handsFreeAutoStopId: ReturnType<typeof setTimeout> | null = null
@@ -263,99 +251,6 @@ export class RecorderOrchestrator {
     return runId === 0 || this.canceledRuns.has(runId)
   }
 
-  private beginAudioArchive(runId: number, chunks: ArrayBuffer[]): string {
-    const recordId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-    const promise = (async (): Promise<string | null> => {
-      try {
-        if (chunks.length === 0) return null
-        const [historyEnabled, retentionEnabled] = await Promise.all([
-          getSetting('historyEnabled', true),
-          getSetting('audioRetentionEnabled', true),
-        ])
-        if (!historyEnabled || !retentionEnabled) return null
-        const savedPath = await saveRecordingAudio(recordId, chunks)
-        addRuntimeEvent('info', 'recorder', 'Recording audio archived', {
-          runId,
-          recordId,
-          saved: Boolean(savedPath),
-          chunks: chunks.length,
-        })
-        return savedPath
-      } catch (error) {
-        addRuntimeEvent('warn', 'recorder', 'Failed to archive recording audio', {
-          runId,
-          recordId,
-          error: String(error),
-        })
-        return null
-      }
-    })()
-    this.audioArchives.set(runId, { runId, recordId, promise, discarded: false })
-    if (this.audioArchives.size > 8) {
-      const oldest = this.audioArchives.keys().next()
-      if (!oldest.done) this.audioArchives.delete(oldest.value)
-    }
-    return recordId
-  }
-
-  private ensureAudioArchive(runId: number, chunks: ArrayBuffer[]): void {
-    if (this.audioArchives.has(runId)) return
-    this.beginAudioArchive(runId, chunks)
-  }
-
-  private async takeArchivedAudio(
-    runId: number,
-  ): Promise<{ recordId: string; audioFilePath?: string; pendingLate?: boolean } | null> {
-    const archive = this.audioArchives.get(runId)
-    if (!archive) return null
-    this.audioArchives.delete(runId)
-    let timedOutWaiting = false
-    const savedPath = await Promise.race([
-      archive.promise,
-      new Promise<null>((resolve) => setTimeout(() => {
-        timedOutWaiting = true
-        resolve(null)
-      }, AUDIO_ARCHIVE_WAIT_MS)),
-    ])
-    if (archive.discarded) return null
-    if (timedOutWaiting) {
-      addRuntimeEvent('warn', 'recorder', 'Audio archive did not finish in time; writing history without the audio path', {
-        runId,
-        recordId: archive.recordId,
-        waitedMs: AUDIO_ARCHIVE_WAIT_MS,
-      })
-      void archive.promise.then(async (latePath) => {
-        if (!latePath || archive.discarded) return
-        try {
-          await updateHistoryRecord(archive.recordId, { audioFilePath: latePath })
-          void bridge.emit('history-updated')
-          addRuntimeEvent('info', 'recorder', 'Attached late audio archive to its history record', {
-            recordId: archive.recordId,
-          })
-          this.overlayService.updateFailureRecovery('history', archive.runId)
-        } catch (error) {
-          addRuntimeEvent('warn', 'recorder', 'Failed to attach late audio archive', {
-            recordId: archive.recordId,
-            error: String(error),
-          })
-        }
-      })
-      return { recordId: archive.recordId, pendingLate: true }
-    }
-    return { recordId: archive.recordId, audioFilePath: savedPath ?? undefined }
-  }
-
-  private discardAudioArchive(runId: number) {
-    const archive = this.audioArchives.get(runId)
-    if (!archive || archive.discarded) return
-    archive.discarded = true
-    this.audioArchives.delete(runId)
-    void archive.promise.then((savedPath) => {
-      if (!savedPath) return
-      void bridge.deleteAudioFile(savedPath).catch(() => {  })
-    })
-  }
-
   private async archiveFailedRun(params: {
     runId: number
     audioDurationSec: number
@@ -369,12 +264,11 @@ export class RecorderOrchestrator {
     aiStatus?: HistoryRecord['aiStatus']
   }): Promise<FailureRecovery> {
     const { runId } = params
-    let artifact: { recordId: string; audioFilePath?: string; pendingLate?: boolean } | null = null
+    let artifact: { recordId: string } | null = null
     try {
       const historyEnabled = await getSetting('historyEnabled', true)
       if (!historyEnabled) return 'none'
-      artifact = await this.takeArchivedAudio(runId)
-      if (!artifact) return 'none'
+      artifact = { recordId: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
       if (this.isRunCanceled(runId)) {
         await this.discardCanceledHistory(artifact)
         return 'none'
@@ -397,7 +291,6 @@ export class RecorderOrchestrator {
         failReasonCode: params.failReasonCode,
         aiSource: params.aiSource,
         aiStatus: params.aiStatus,
-        audioFilePath: artifact.audioFilePath,
       })
       if (this.isRunCanceled(runId)) {
         await this.discardCanceledHistory(artifact)
@@ -407,13 +300,10 @@ export class RecorderOrchestrator {
       addRuntimeEvent('info', 'recorder', 'Saved recording to history without text', {
         runId,
         recordId: artifact.recordId,
-        audioSaved: Boolean(artifact.audioFilePath),
         audioSec: params.audioDurationSec,
         failReasonCode: params.failReasonCode,
       })
-      //
-      if (artifact.audioFilePath) return 'history'
-      return artifact.pendingLate ? 'unknown' : 'none'
+      return 'none'
     } catch (error) {
       if (artifact) await this.discardCanceledHistory(artifact)
       addRuntimeEvent('warn', 'recorder', 'Failed to save recording to history', {
@@ -1001,10 +891,7 @@ export class RecorderOrchestrator {
     }
   }
 
-  private async discardCanceledHistory(artifact: { recordId: string; audioFilePath?: string }) {
-    try {
-      if (artifact.audioFilePath) await bridge.deleteAudioFile(artifact.audioFilePath)
-    } catch {  }
+  private async discardCanceledHistory(artifact: { recordId: string }) {
     try {
       await deleteHistory(artifact.recordId)
       void bridge.emit('history-updated')
@@ -1038,7 +925,6 @@ export class RecorderOrchestrator {
     this.processingCancelable = false
     this.overlayService.stopListeningTicker()
     this.restoreSystemMuteIfNeeded()
-    this.recordedChunks = []
     this.finishRun(canceledRunId)
     this.provider.cancel()
 
@@ -1081,14 +967,12 @@ export class RecorderOrchestrator {
     const historyArtifact = this.pendingHistoryArtifact
     this.clearProcessingTimeout()
     this.markRunCanceled(canceledRunId)
-    this.discardAudioArchive(canceledRunId)
     if (this.timedOutProcessingContext?.runId === canceledRunId) {
       this.timedOutProcessingContext.settled = true
     }
     this.timedOutProcessingContext = null
     this.processingCancelable = false
     this.provider.cancel()
-    this.recordedChunks = []
     this.finishRun(canceledRunId)
     if (historyArtifact?.runId === canceledRunId) {
       void this.discardCanceledHistory(historyArtifact)
@@ -1125,7 +1009,6 @@ export class RecorderOrchestrator {
 
         const audioDur = this.getAudioDurationSec()
         const wallSec = this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : audioDur
-        const audioChunkCount = this.recordedChunks.length
         const historyMeta = this.buildHistoryMetadata(
           this.currentPromptResolution,
           this.currentActiveAppContext,
@@ -1136,7 +1019,6 @@ export class RecorderOrchestrator {
           mode: this.provider.mode,
           audioSec: Number(audioDur.toFixed(1)),
           asrMs: result.asrMs || 0,
-          audioChunks: audioChunkCount,
           silenceProven,
           peakAmplitude: Math.round(this.audioStatsPeakAmplitude * 10000) / 10000,
           runId,
@@ -1225,7 +1107,6 @@ export class RecorderOrchestrator {
           wallTimeSec: this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : this.getAudioDurationSec(),
           promptResolution: this.currentPromptResolution ? { ...this.currentPromptResolution } : null,
           appContext: this.currentActiveAppContext ? { ...this.currentActiveAppContext } : null,
-          audioChunks: this.recordedChunks.slice(),
           probeResult: this.cachedProbeResult ? { ...this.cachedProbeResult } : null,
         }, {
           allowInsertionWhenIdle: false,
@@ -1240,14 +1121,14 @@ export class RecorderOrchestrator {
         const runId = this.activeRunId
         this.clearProcessingTimeout()
 
-        if (this.audioArchives.has(runId)) {
+        if (this.getAudioDurationSec() >= 0.5) {
           const audioDur = this.getAudioDurationSec()
           const wallSec = this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : audioDur
           const historyMeta = this.buildHistoryMetadata(
             this.currentPromptResolution,
             this.currentActiveAppContext,
           )
-          addRuntimeEvent('warn', 'recorder', 'Provider finished without any result; saving audio to history', {
+          addRuntimeEvent('warn', 'recorder', 'Provider finished without any result', {
             runId,
             mode: this.provider.mode,
             audioSec: audioDur,
@@ -1299,9 +1180,6 @@ export class RecorderOrchestrator {
           this.currentPromptResolution,
           this.currentActiveAppContext,
         )
-        if (audioDur >= 0.5 && this.recordedChunks.length > 0) {
-          this.ensureAudioArchive(runId, this.recordedChunks.slice())
-        }
         void (async () => {
           if (audioDur >= 0.5) {
             //
@@ -1607,7 +1485,6 @@ export class RecorderOrchestrator {
     this.lateResultRunId = 0
     this.audioSentSamples = 0
     this.wallTimeAtStopSec = 0
-    this.recordedChunks = []
     // Reset audio stats
     this.audioStatsRmsSum = 0
     this.audioStatsPeakRms = 0
@@ -1696,7 +1573,6 @@ export class RecorderOrchestrator {
                 samples: buffer.byteLength / 2,
               })
             }
-            this.recordedChunks.push(buffer.slice(0))
             this.provider.sendAudio(buffer)
           },
           undefined,
@@ -1974,8 +1850,6 @@ export class RecorderOrchestrator {
         wallTimeSec: wallTimeSec.toFixed(2),
         durationRatio: durationRatio.toFixed(3),
         audioSentSamples: this.audioSentSamples,
-        recordedChunksCount: this.recordedChunks.length,
-        recordedChunksTotalBytes: this.recordedChunks.reduce((s, c) => s + c.byteLength, 0),
       })
     }
     if (audioDur < 0.5) {
@@ -2026,7 +1900,6 @@ export class RecorderOrchestrator {
     }
     this.processingCancelable = true
 
-    this.beginAudioArchive(runId, this.recordedChunks.slice())
 
     if (!stopAccepted) {
       void this.failRunWithoutResult(runId, {
@@ -2077,7 +1950,6 @@ export class RecorderOrchestrator {
         wallTimeSec,
         promptResolution: this.currentPromptResolution ? { ...this.currentPromptResolution } : null,
         appContext: this.currentActiveAppContext ? { ...this.currentActiveAppContext } : null,
-        audioChunks: this.recordedChunks.slice(),
         probeResult: this.cachedProbeResult ? { ...this.cachedProbeResult } : null,
       }
       this.timedOutProcessingContext = timedOutCtx
@@ -2358,7 +2230,7 @@ export class RecorderOrchestrator {
     const wallSec = context.wallTimeSec > 0 ? context.wallTimeSec : audioDur
     const promptResolution = context.promptResolution
     const appContext = context.appContext
-    let historyArtifact: { runId: number; recordId: string; audioFilePath?: string } | null = null
+    let historyArtifact: { runId: number; recordId: string } | null = null
 
     addRuntimeEvent('info', 'recorder', 'Final result received', {
       runId,
@@ -2376,10 +2248,8 @@ export class RecorderOrchestrator {
       const historyEnabled = await getSetting('historyEnabled', true)
       if (!this.isRunCurrent(runId)) return
       if (historyEnabled) {
-        const archived = await this.takeArchivedAudio(runId)
-        const recordId = archived?.recordId
-          ?? (Date.now().toString(36) + Math.random().toString(36).slice(2, 6))
-        historyArtifact = { runId, recordId, audioFilePath: archived?.audioFilePath }
+        const recordId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+        historyArtifact = { runId, recordId }
 
         if (this.isRunCanceled(runId)) {
           await this.discardCanceledHistory(historyArtifact)
@@ -2414,7 +2284,6 @@ export class RecorderOrchestrator {
             : result.asrText?.trim()
               ? 'empty_after_processing'
               : 'no_transcript',
-          audioFilePath: historyArtifact.audioFilePath,
           ...this.buildHistoryMetadata(promptResolution, appContext),
           ...providerMeta,
         })
@@ -2457,7 +2326,7 @@ export class RecorderOrchestrator {
         this.overlayService.showFailure({
           title: t('recorder.emptyAfterProcessingTitle'),
           detail: t('recorder.emptyAfterProcessingDetail'),
-          recovery: historyArtifact?.audioFilePath ? 'history' : 'none',
+          recovery: 'none',
           token: runId,
         })
         this.activeFallbackToken = runId
