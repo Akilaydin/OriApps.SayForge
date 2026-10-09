@@ -11,6 +11,8 @@ mod context;
 mod inject;
 mod providers;
 mod identity;
+#[cfg(all(test, target_os = "windows"))]
+mod ipc_benchmark;
 
 use storage::Storage;
 use window::WindowState;

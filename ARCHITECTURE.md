@@ -110,6 +110,14 @@ Missing legacy codec settings and legacy chat remain WAV. New profile defaults a
 change to MP3; migrations preserve WAV. A 415 stops without another paid request.
 Users can explicitly select WAV for incompatible endpoints. LAME/LGPL notices remain.
 
+## PCM IPC
+
+PCM IPC remains the existing JSON/Base64 contract. The encoder assembles bounded 8192-byte
+strings instead of one character at a time, reducing temporary JS heap on long recordings.
+An isolated Windows/WebView2 test confirms raw `InvokeBody::Raw` support in the installed
+Tauri version. Adopting it would also require changing metadata and PCM adapter contracts;
+that broader change is deferred. Recording buffer copies/run isolation remain unchanged.
+
 ## Windows autostart
 
 Autostart initialization never enables an unregistered/disabled install. Migration

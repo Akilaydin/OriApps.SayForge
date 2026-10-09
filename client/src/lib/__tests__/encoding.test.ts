@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { uint8ArrayToBase64 } from '../encoding'
 
 describe('uint8ArrayToBase64', () => {
+  it('preserves every byte of five minutes of synthetic PCM', () => {
+    const bytes = new Uint8Array(300 * 32000)
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 256
+    expect(uint8ArrayToBase64(bytes)).toBe(Buffer.from(bytes).toString('base64'))
+  })
   it('encodes an empty array as an empty string', () => {
     expect(uint8ArrayToBase64(new Uint8Array(0))).toBe('')
   })

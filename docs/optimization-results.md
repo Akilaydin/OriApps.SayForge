@@ -143,6 +143,47 @@ Fresh/legacy/disabled flags, denied reads/writes and inconsistent readback are c
 Actual registry/Windows sign-in and tray startup smoke remain unverified; no user startup
 registration was changed during testing.
 
+## 10. PCM IPC measurements and limited optimization
+
+Measured real Windows WebView2/Tauri IPC in an isolated hidden window, inert embedded HTML,
+separate profile/identifier, identical protected browser arguments and synthetic PCM only.
+Installed API forwards typed arrays as raw bodies; native `Request`/`InvokeBody::Raw` was
+tested directly. No recording, cloud request, app settings or credentials are accessed.
+
+Decision: retain the current JSON/Base64 transport and buffer copies. Replace its inner
+per-byte string concatenation with bounded `String.fromCharCode(...chunk)` at 8192 bytes,
+reusing the former ASR test pattern. This is a four-line deletion and one-line replacement.
+Raw binary is faster, particularly at 300 seconds, but requires new metadata parsing and
+changing all native adapters that currently accept Base64. That larger refactor is deferred.
+
+Three trials per duration/mode; table shows medians. Stop starts after accumulated block
+copies; includes merge/encoding/IPC through native command entry. Native decode is separate.
+Cross-clock timestamps use JS timeOrigin + performance.now and Windows system time; allow
+about millisecond precision. Debug Rust, no HTTP/MP3/inference. This is a harness measurement,
+not observed PTT latency in the production app. Native length/checksum validate delivery.
+
+| PCM seconds | PCM bytes | Base64 bytes | Old/new/binary stop→Rust ms | Old/new encoding ms | Base64 decode ms (new) |
+| --- | --- | --- | --- | --- | --- |
+| 5 | 160000 | 213336 | 7.165 / 9.830 / 3.209 | 1.3 / 4.1 | 1.726 |
+| 30 | 960000 | 1280000 | 51.692 / 53.773 / 15.194 | 22.8 / 22.7 | 9.629 |
+| 60 | 1920000 | 2560000 | 112.268 / 103.753 / 27.642 | 58.8 / 44.7 | 17.975 |
+| 300 | 9600000 | 12800000 | 520.076 / 457.686 / 132.173 | 309.0 / 205.3 | 89.477 |
+
+Largest reported JS heap after a 300-second request: old 446.8 MB, new 128.6 MB,
+binary 68.1 MB. `performance.memory` is coarse and GC-dependent, not a peak/private-memory
+guarantee. Sampled total working sets for the harness process tree: 1056.1 / 757.6 / 647.0 MB;
+shared pages can be counted more than once. Whole cold-fixture CPU totals: 2640.625 /
+968.750 / 1812.500 ms; startup and observer timing make these unsuitable as per-request
+CPU comparisons. Small-duration timing differences are noisy; the defensible benefit of
+the small change is lower temporary heap and faster long-input encoding.
+
+Raw measurements: [audio-ipc-windows.json](benchmarks/audio-ipc-windows.json). Reproduce
+from repository root with `powershell -File docs/benchmarks/run-audio-ipc.ps1`; it compiles
+tests only, launches hidden fixtures and saves JSON/metrics under `.git`.
+Validation: 393 frontend tests (including exact bytes for five minutes), 117 Rust tests,
+TypeScript and `git diff --check` passed; Windows benchmark passed separately. Existing
+cancel/late-response/AI/fallback tests pass. No binary production command was introduced.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.
