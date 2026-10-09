@@ -41,12 +41,7 @@ export function subscribeModeStatus(listener: Listener): () => void {
 
 function cloudProviderShort(provider: string): string {
   switch (provider) {
-    case 'groq_whisper': return 'Groq'
-    case 'openai_transcribe': return 'OpenAI'
-    case 'openai_live_transcribe': return 'OpenAI Live'
-    case 'gemini_transcribe': return 'Gemini'
-    case 'gemini_live_transcribe': return 'Gemini Live'
-    case 'openrouter_transcribe': return 'OpenRouter'
+    case 'openai_compat': return 'OpenAI-compatible'
     default: return provider
   }
 }

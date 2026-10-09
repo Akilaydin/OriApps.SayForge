@@ -1,12 +1,5 @@
 
-const ASR_DISPLAY_MODEL_MAP: Record<string, string> = {
-  groq_whisper: 'whisper-large-v3-turbo',
-  openai_transcribe: 'gpt-transcribe',
-  openai_live_transcribe: 'gpt-live-transcribe',
-  gemini_transcribe: 'gemini-3.5-transcribe',
-  gemini_live_transcribe: 'gemini-3.5-transcribe-live',
-  openrouter_transcribe: 'openai/gpt-transcribe',
-}
+const ASR_DISPLAY_MODEL_MAP: Record<string, string> = { openai_compat: 'whisper-1' }
 
 export function resolveAsrDisplayModel(providerKey: string, selectedModel?: string): string {
   const picked = selectedModel?.trim()
@@ -52,10 +45,7 @@ export function buildAsrExtra(
   }
 }
 
-const STREAMING_CAPABLE = new Set([
-  'openai_live_transcribe',
-  'gemini_live_transcribe',
-])
+const STREAMING_CAPABLE = new Set<string>()
 
 export function isStreamingDisplayCapable(provider: string): boolean {
   return STREAMING_CAPABLE.has(provider)

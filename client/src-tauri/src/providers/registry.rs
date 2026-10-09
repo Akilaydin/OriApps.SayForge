@@ -1,9 +1,6 @@
 
 use super::types::*;
-use super::{
-    ai_ollama, ai_openai_compat, asr_gemini, asr_gemini_live, asr_groq,
-    asr_openai_chat_audio, asr_openai_compat, asr_openai_realtime, asr_openrouter,
-};
+use super::{ai_ollama, ai_openai_compat, asr_transcriptions, asr_openai_chat_audio, asr_openai_compat};
 use crate::error_protocol;
 
 #[tauri::command]
@@ -54,9 +51,8 @@ pub async fn test_ai_connection(config: AiProviderConfig) -> Result<TestResult, 
 pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResult, String> {
     let config = &request.asr_config;
     match config.provider.as_str() {
-        "groq_whisper" | "openai_transcribe" | "openai_live_transcribe"
-        | "openai_compat_transcribe" => {
-            asr_groq::transcribe(
+        "openai_compat_transcribe" => {
+            asr_transcriptions::transcribe(
                 &request.audio_b64,
                 request.sample_rate,
                 config,
@@ -82,24 +78,6 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
             )
             .await
         }
-        "gemini_transcribe" | "gemini_live_transcribe" => {
-            asr_gemini::transcribe(
-                &request.audio_b64,
-                request.sample_rate,
-                config,
-                &request.hotwords,
-            )
-            .await
-        }
-        "openrouter_transcribe" => {
-            asr_openrouter::transcribe(
-                &request.audio_b64,
-                request.sample_rate,
-                config,
-                &request.hotwords,
-            )
-            .await
-        }
         other => Err(error_protocol::encode(
             "connect_failed",
             format!("ASR provider \"{}\" is not implemented", other),
@@ -117,7 +95,7 @@ pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResu
 pub fn dispatch_keys_for_test() -> Vec<&'static str> {
     let keys = match_arm_keys(fn_body(include_str!("registry.rs"), CLOUD_TRANSCRIBE_SIGNATURE));
     assert!(
-        keys.len() >= 10,
+        !keys.is_empty(),
         "从 cloud_transcribe 源码里只抓到 {} 个分发 key，扫描逻辑多半已经失效：{:?}",
         keys.len(),
         keys,
@@ -189,17 +167,13 @@ fn quoted_literals<'a>(text: &'a str) -> Vec<&'a str> {
 #[tauri::command]
 pub async fn test_asr_connection(config: AsrProviderConfig) -> Result<TestResult, String> {
     match config.provider.as_str() {
-        "groq_whisper" | "openai_transcribe" | "openai_compat_transcribe" => {
-            Ok(asr_groq::test_connection(&config).await)
+        "openai_compat_transcribe" => {
+            Ok(asr_transcriptions::test_connection(&config).await)
         }
         "openai_chat_audio" | "openai_chat_audio_standard" => {
             Ok(asr_openai_chat_audio::test_connection(&config).await)
         }
         "openai_compat" => Ok(asr_openai_compat::test_connection(&config).await),
-        "gemini_transcribe" => Ok(asr_gemini::test_connection(&config).await),
-        "openrouter_transcribe" => Ok(asr_openrouter::test_connection(&config).await),
-        "openai_live_transcribe" => Ok(asr_openai_realtime::test_connection(&config).await),
-        "gemini_live_transcribe" => Ok(asr_gemini_live::test_connection(&config).await),
         other => Err(error_protocol::encode(
             "connect_failed",
             format!("ASR provider \"{}\" is not implemented", other),

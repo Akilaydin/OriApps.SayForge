@@ -119,7 +119,7 @@ export abstract class BufferedProvider implements TranscriptionProvider {
       if (!this.isRunCurrent(runId)) return
       addRuntimeEvent('error', this.mode, 'Processing failed', { error: String(err) })
       this.callbacks.onError?.(String(err))
-      this.callbacks.onDone?.()
+      if (this.isRunCurrent(runId)) this.callbacks.onDone?.()
       if (this.isRunCurrent(runId)) this.activeRunId = 0
     }
   }

@@ -8,8 +8,8 @@ import {
 
 describe('supported international ASR providers', () => {
   it('has human-readable default model names for major providers', () => {
-    expect(resolveAsrDisplayModel('groq_whisper')).toBe('whisper-large-v3-turbo')
-    expect(resolveAsrDisplayModel('openai_transcribe')).toBe('gpt-transcribe')
+    expect(resolveAsrDisplayModel('groq_whisper')).toBe('groq_whisper')
+    expect(resolveAsrDisplayModel('openai_transcribe')).toBe('openai_transcribe')
     expect(resolveAsrDisplayModel('custom_provider')).toBe('custom_provider')
     expect(resolveAsrDisplayModel('')).toBe('unknown')
   })
@@ -17,13 +17,13 @@ describe('supported international ASR providers', () => {
     expect(resolveAsrDisplayModel('groq_whisper', 'whisper-large-v3')).toBe('whisper-large-v3')
     expect(resolveAsrDisplayModel('openai_transcribe', 'gpt-4o-mini-transcribe'))
       .toBe('gpt-4o-mini-transcribe')
-    expect(resolveAsrDisplayModel('groq_whisper', '')).toBe('whisper-large-v3-turbo')
-    expect(resolveAsrDisplayModel('groq_whisper', '  ')).toBe('whisper-large-v3-turbo')
+    expect(resolveAsrDisplayModel('groq_whisper', '')).toBe('groq_whisper')
+    expect(resolveAsrDisplayModel('groq_whisper', '  ')).toBe('groq_whisper')
   })
-  it('limits realtime streaming to OpenAI and Gemini and preserves their readiness', () => {
+  it('disables cloud streaming including retired providers', () => {
     for (const provider of ['openai_live_transcribe', 'gemini_live_transcribe']) {
-      expect(isStreamingDisplayCapable(provider)).toBe(true)
-      expect(isStreamingDisplayReady(provider)).toBe(true)
+      expect(isStreamingDisplayCapable(provider)).toBe(false)
+      expect(isStreamingDisplayReady(provider)).toBe(false)
     }
     for (const provider of ['groq_whisper', 'openai_transcribe', 'gemini_transcribe', 'doubao_v2', 'qwen_audio_stream', '']) {
       expect(isStreamingDisplayCapable(provider)).toBe(false)

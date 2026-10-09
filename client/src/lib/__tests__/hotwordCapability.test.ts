@@ -58,7 +58,7 @@ describe('expectedHotwordDelivery', () => {
     })).toBe('not_wired_up')
   })
 
-  it('OpenAI live：开着字幕发送，关掉字幕不发送', () => {
+  it('retired OpenAI streaming always uses buffered hotword delivery', () => {
     const cap = capability({
       streaming: 'vocabulary',
       buffered: 'not_wired_up',
@@ -69,14 +69,14 @@ describe('expectedHotwordDelivery', () => {
     expect(expectedHotwordDelivery(cap, {
       streamingDisplayEnabled: true,
       provider: 'openai_live_transcribe',
-    })).toBe('vocabulary')
+    })).toBe('not_wired_up')
     expect(expectedHotwordDelivery(cap, {
       streamingDisplayEnabled: false,
       provider: 'openai_live_transcribe',
     })).toBe('not_wired_up')
   })
 
-  it('Gemini live：开着字幕不发送，关掉字幕反而发送', () => {
+  it('retired Gemini streaming always uses buffered hotword delivery', () => {
     const cap = capability({
       streaming: 'protocol_has_no_slot',
       buffered: 'instruction',
@@ -85,7 +85,7 @@ describe('expectedHotwordDelivery', () => {
     expect(expectedHotwordDelivery(cap, {
       streamingDisplayEnabled: true,
       provider: 'gemini_live_transcribe',
-    })).toBe('protocol_has_no_slot')
+    })).toBe('instruction')
     expect(expectedHotwordDelivery(cap, {
       streamingDisplayEnabled: false,
       provider: 'gemini_live_transcribe',
@@ -105,7 +105,7 @@ describe('expectedHotwordDelivery', () => {
     expect(expectedHotwordDelivery(inverted, {
       streamingDisplayEnabled: true,
       provider: 'openai_live_transcribe',
-    })).toBe('vocabulary')
+    })).toBe('not_wired_up')
   })
 })
 
@@ -176,7 +176,7 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
   const DECLARED_IN_RUST = declaredProvidersInRust()
 
   it('读到的声明清单是真实的、非空的', () => {
-    expect(DECLARED_IN_RUST.size).toBeGreaterThanOrEqual(10)
+    expect(DECLARED_IN_RUST.size).toBe(4)
     expect(DECLARED_IN_RUST.has('openai_chat_audio')).toBe(true)
   })
 
@@ -200,8 +200,8 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
     const modelProviders = new Set(
       ASR_PROVIDERS.flatMap((entry) => asrModelsOf(entry).map((model) => model.provider)),
     )
-    expect(modelProviders.has('openai_transcribe')).toBe(true)
-    expect(modelProviders.has('openai_live_transcribe')).toBe(true)
+    expect(modelProviders.has('openai_compat')).toBe(true)
+    expect(modelProviders.has('openai_live_transcribe')).toBe(false)
     expect(cardIds.has('openai_transcribe')).toBe(false)
   })
 
@@ -226,18 +226,18 @@ describe('expectedClientCap', () => {
     bufferedClientCap: null,
   })
 
-  it('OpenAI live：开着字幕有上限，关掉字幕不该报上限', () => {
+  it('retired OpenAI streaming does not expose its streaming cap', () => {
     expect(expectedClientCap(openaiLive, {
       streamingDisplayEnabled: true,
       provider: 'openai_live_transcribe',
-    })).toBe(100)
+    })).toBeNull()
     expect(expectedClientCap(openaiLive, {
       streamingDisplayEnabled: false,
       provider: 'openai_live_transcribe',
     })).toBeNull()
   })
 
-  it('Gemini live：开着字幕没有上限，关掉字幕才有', () => {
+  it('retired Gemini streaming selects the buffered cap', () => {
     const geminiLive = capability({
       streaming: 'protocol_has_no_slot',
       buffered: 'instruction',
@@ -248,7 +248,7 @@ describe('expectedClientCap', () => {
     expect(expectedClientCap(geminiLive, {
       streamingDisplayEnabled: true,
       provider: 'gemini_live_transcribe',
-    })).toBeNull()
+    })).toBe(100)
     expect(expectedClientCap(geminiLive, {
       streamingDisplayEnabled: false,
       provider: 'gemini_live_transcribe',
@@ -263,7 +263,7 @@ describe('expectedClientCap', () => {
       if (delivery === 'not_wired_up' || delivery === 'protocol_has_no_slot') {
         expect(cap).toBeNull()
       }
-      expect(willUseStreamingPath(openaiLive, opts)).toBe(streamingDisplayEnabled)
+      expect(willUseStreamingPath(openaiLive, opts)).toBe(false)
     }
   })
 

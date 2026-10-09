@@ -9,7 +9,7 @@ SayForge is an open-source Windows dictation app by OriApps. Press a global shor
 ## Current capabilities
 
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
-- Cloud and local speech recognition, including supported realtime transcript feedback.
+- Cloud and local speech recognition; cloud audio is uploaded after recording stops.
 - Optional AI cleanup, custom prompts, presets and per-application prompt rules.
 - Hotwords, text replacements, formatting and context-aware editing of selected text.
 - Searchable local history, favorites, audio playback and text export.
@@ -26,7 +26,7 @@ Cancellation must not insert late results. Empty/silent recordings can produce n
 
 ## Speech engines
 
-**Cloud API:** sends recorded audio directly to the configured provider. Supported integrations include OpenAI, Groq, Gemini, OpenRouter and custom OpenAI-compatible endpoints. Protocol/model support determines streaming and hotwords. OpenAI-compatible chat audio supports WAV or optional MP3 input. Users provide API credentials and pay any provider charges directly.
+**Cloud API:** sends recorded audio directly to the configured provider. Only OpenAI-compatible HTTP endpoints are supported: multipart audio/transcriptions or chat audio. Protocol/model support determines hotwords. OpenAI-compatible chat audio supports WAV or optional MP3 input. Users provide endpoint, model and optional API credentials and pay any provider charges directly. Existing OpenAI/Groq file profiles migrate to this interface; incompatible vendor/realtime profiles remain stored and require compatible endpoint setup.
 
 **Local:** runs a downloaded GGUF model on the user's device. The catalog includes NVIDIA Parakeet Unified EN (English) and Nemotron 3.5 ASR (multilingual, including Russian). Performance and compatibility depend on available hardware and drivers.
 

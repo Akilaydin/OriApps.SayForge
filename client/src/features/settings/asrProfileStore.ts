@@ -114,8 +114,32 @@ export async function loadAsrProfiles(): Promise<AsrProfileState> {
   }
   let profiles = parsed.profiles
   let activeId = storedActiveId
-  let needsWrite = false
+  let needsWrite = parsed.profiles.some((profile) => {
+    const old = Array.isArray(rawProfiles) ? rawProfiles.find((p) => p?.id === profile.id) : undefined
+    return old && (old.provider !== profile.provider || old.model !== profile.model
+      || old.apiUrl !== profile.apiUrl || old.protocol !== profile.protocol)
+  })
   const alreadyAuto = Array.isArray(rawAuto) ? rawAuto.filter((x): x is string => typeof x === 'string') : []
+
+  if (profiles.length === 0 && orphanProfiles.length === 0) {
+    const [provider, model, apiKey, apiUrl, protocol, audioEncoding, systemInstruction, userPrompt] = await Promise.all([
+      getSetting('cloudAsr.provider', 'openai_compat'), getSetting('cloudAsr.model', ''),
+      getSetting('cloudAsr.apiKey', ''), getSetting('cloudAsr.baseUrl', ''),
+      getSetting('cloudAsr.protocol', 'auto'), getSetting('cloudAsr.audioEncoding', 'wav'),
+      getSetting('cloudAsr.systemInstruction', ''), getSetting('cloudAsr.userPrompt', ''),
+    ])
+    if (apiKey || apiUrl) {
+      const migrated = parseAsrProfilesDetailed([{
+        id: emptyAsrProfile().id, provider, model, apiKey, apiUrl, protocol,
+        audioEncoding, systemInstruction, userPrompt,
+      }]).profiles[0]
+      if (migrated) {
+        profiles = [migrated]
+        activeId = migrated.id
+        needsWrite = true
+      }
+    }
+  }
 
   const credsByPlatform: Partial<Record<AsrPlatform, PlatformCreds>> = {}
   for (const platform of Object.keys(ASR_PLATFORMS) as AsrPlatform[]) {
@@ -156,5 +180,5 @@ export async function saveAsrProfiles(state: AsrProfileState): Promise<void> {
     setSetting(ASR_PROFILES_KEY, [...state.profiles, ...orphanProfiles]),
     setSetting(ASR_ACTIVE_PROFILE_KEY, active?.id ?? ''),
   ])
-  await syncRuntimeActive(active)
+  if (active) await syncRuntimeActive(active)
 }

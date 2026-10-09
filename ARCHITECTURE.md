@@ -6,7 +6,7 @@ Technical reference for the current SayForge implementation. Product behavior be
 
 - One Windows desktop application: **Tauri 2 + Rust + React + TypeScript + Vite**.
 - React manages the UI, microphone capture, recording lifecycle and text processing.
-- Rust handles Win32 integration, persistence, local inference and cloud HTTP/WebSocket calls.
+- Rust handles Win32 integration, persistence, local inference and cloud HTTP calls.
 - Speech modes: `cloud_api` (user-configured remote ASR) and `local` (downloaded on-device GGUF model).
 - Optional AI refinement is independent of the speech engine.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
@@ -35,7 +35,7 @@ Paths below are relative to `client/`.
 
 - `services/recorder/RecorderOrchestrator.ts` — state, PTT/hands-free events, session IDs, cancellation, timeouts and final results.
 - `services/audio.ts` — `getUserMedia`, AudioWorklet with fallback, resampling and PCM frames.
-- `services/transcription/` — provider interface, mode selection, buffered/realtime cloud delivery, local provider and AI execution policy.
+- `services/transcription/` — provider interface, mode selection, buffered cloud delivery, local provider and AI execution policy.
 - `services/personalization/` and `services/contextAware.ts` — presets, application-aware prompts and bounded editor context.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
@@ -46,7 +46,7 @@ Paths below are relative to `client/`.
 
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
-- `providers/` — cloud ASR, realtime transport, optional AI cleanup and capability reporting.
+- `providers/` — OpenAI-compatible HTTP ASR, optional AI cleanup and capability reporting.
 - `models/` — local GGUF model catalog, downloads, integrity checks and inference via `transcribe-cpp`/Vulkan.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
 - `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.

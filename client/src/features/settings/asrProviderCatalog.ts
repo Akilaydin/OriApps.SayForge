@@ -4,9 +4,7 @@
 
 import { t } from '@/i18n'
 
-export type AsrPlatform =
-  | 'groq' | 'openai' | 'google' | 'openrouter'
-  | 'openai_compat'
+export type AsrPlatform = 'openai_compat'
 
 export interface AsrPlatformInfo {
   label: string
@@ -14,10 +12,6 @@ export interface AsrPlatformInfo {
 }
 
 export const ASR_PLATFORMS: Record<AsrPlatform, AsrPlatformInfo> = {
-  groq: { label: 'Groq', consoleUrl: 'https://console.groq.com/keys' },
-  openai: { label: 'OpenAI', consoleUrl: 'https://platform.openai.com/api-keys' },
-  google: { label: 'Google Gemini', consoleUrl: 'https://aistudio.google.com/apikey' },
-  openrouter: { label: 'OpenRouter', consoleUrl: 'https://openrouter.ai/keys' },
   openai_compat: {
     get label() { return t('asrPlatform.openaiCompat') },
     consoleUrl: 'https://platform.openai.com/docs/api-reference/audio/createTranscription',
@@ -63,98 +57,7 @@ export interface AsrProviderEntry {
   urlPlaceholder?: string
 }
 
-const OPENROUTER_SLUGS = [
-  'openai/gpt-transcribe',
-  'microsoft/mai-transcribe-2',
-  'google/chirp-3',
-  'microsoft/mai-transcribe-1.5',
-  'openai/gpt-4o-transcribe',
-  'openai/gpt-4o-mini-transcribe',
-  'openai/whisper-large-v3-turbo',
-  'openai/whisper-large-v3',
-  'openai/whisper-1',
-  'deepgram/nova-3',
-  'meta/muse-voice-transcribe-1.0',
-  'x-ai/grok-stt-1.0',
-  'mistralai/voxtral-mini-transcribe',
-  'mistralai/voxtral-small-24b-2507-stt',
-  'mistralai/voxtral-mini-3b-2507',
-  'nvidia/parakeet-tdt-0.6b-v3',
-  'nvidia/nemotron-3.5-asr-streaming-multilingual-0.6b',
-  'fish-audio/transcribe-1',
-]
-
-const OPENROUTER_MODELS: AsrModelOption[] = OPENROUTER_SLUGS.map((id) => ({
-  id,
-  provider: 'openrouter_transcribe',
-  supportsCustomUrl: true,
-}))
-
 export const ASR_PROVIDERS: AsrProviderEntry[] = [
-  {
-    id: 'groq',
-    get label() { return t('asrProvider.groq') },
-    platform: 'groq',
-    availability: 'global',
-    get blurb() { return t('asrProvider.groqBlurb') },
-    models: [
-      { id: 'whisper-large-v3-turbo', provider: 'groq_whisper', supportsCustomUrl: true },
-      { id: 'whisper-large-v3', provider: 'groq_whisper', supportsCustomUrl: true },
-    ],
-  },
-  {
-    id: 'openai',
-    get label() { return t('asrProvider.openai') },
-    platform: 'openai',
-    availability: 'global',
-    get blurb() { return t('asrProvider.openaiBlurb') },
-    models: [
-      {
-        id: 'gpt-transcribe',
-        provider: 'openai_transcribe',
-        get blurb() { return t('asrProvider.openaiFileBlurb') },
-        supportsCustomUrl: true,
-      },
-      { id: 'gpt-4o-transcribe', provider: 'openai_transcribe', supportsCustomUrl: true },
-      { id: 'gpt-4o-mini-transcribe', provider: 'openai_transcribe', supportsCustomUrl: true },
-      { id: 'whisper-1', provider: 'openai_transcribe', supportsCustomUrl: true },
-      {
-        id: 'gpt-live-transcribe',
-        provider: 'openai_live_transcribe',
-        get blurb() { return t('asrProvider.openaiLiveBlurb') },
-        streaming: true,
-      },
-    ],
-  },
-  {
-    id: 'google',
-    get label() { return t('asrProvider.gemini') },
-    platform: 'google',
-    availability: 'global',
-    get blurb() { return t('asrProvider.geminiBlurb') },
-    models: [
-      {
-        id: 'gemini-3.5-transcribe',
-        provider: 'gemini_transcribe',
-        get blurb() { return t('asrProvider.geminiFileBlurb') },
-        supportsCustomUrl: true,
-      },
-      {
-        id: 'gemini-3.5-transcribe-live',
-        provider: 'gemini_live_transcribe',
-        get blurb() { return t('asrProvider.geminiLiveBlurb') },
-        streaming: true,
-      },
-    ],
-  },
-  {
-    id: 'openrouter',
-    get label() { return t('asrProvider.openrouter') },
-    platform: 'openrouter',
-    availability: 'global',
-    get blurb() { return t('asrProvider.openrouterBlurb') },
-    models: OPENROUTER_MODELS,
-  },
   {
     id: 'openai_compat',
     get label() { return t('asrProvider.openaiCompat') },
@@ -178,17 +81,27 @@ export function asrModelsOf(entry: AsrProviderEntry): AsrModelOption[] {
 
 
 const LEGACY_PROVIDERS: Record<string, { provider: string; model: string }> = {
-  groq_whisper: { provider: 'groq', model: 'whisper-large-v3-turbo' },
-  openai_transcribe: { provider: 'openai', model: 'gpt-transcribe' },
-  openai_live_transcribe: { provider: 'openai', model: 'gpt-live-transcribe' },
-  gemini_transcribe: { provider: 'google', model: 'gemini-3.5-transcribe' },
-  gemini_live_transcribe: { provider: 'google', model: 'gemini-3.5-transcribe-live' },
-  openrouter_transcribe: { provider: 'openrouter', model: 'openai/gpt-transcribe' },
+  groq: { provider: 'openai_compat', model: 'whisper-large-v3-turbo' },
+  groq_whisper: { provider: 'openai_compat', model: 'whisper-large-v3-turbo' },
+  openai: { provider: 'openai_compat', model: 'gpt-transcribe' },
+  openai_transcribe: { provider: 'openai_compat', model: 'gpt-transcribe' },
   openai_compat_transcribe: { provider: 'openai_compat', model: 'whisper-1' },
   openai_chat_audio: { provider: 'openai_compat', model: 'whisper-1' },
+  openai_chat_audio_standard: { provider: 'openai_compat', model: 'whisper-1' },
 }
 
-const RETIRED_MODELS: Record<string, string> = {}
+const LEGACY_PROTOCOLS: Record<string, AsrCompatProtocol> = {
+  openai_compat_transcribe: 'transcriptions',
+  openai_chat_audio: 'chat',
+  openai_chat_audio_standard: 'chat_standard',
+}
+
+const LEGACY_URLS: Record<string, string> = {
+  groq: 'https://api.groq.com/openai/v1',
+  groq_whisper: 'https://api.groq.com/openai/v1',
+  openai: 'https://api.openai.com/v1',
+  openai_transcribe: 'https://api.openai.com/v1',
+}
 
 /** Normalize stored provider keys to the supported catalog. */
 function migrateLegacyProvider(
@@ -197,7 +110,7 @@ function migrateLegacyProvider(
 ): { provider: string; model: string } | null {
   //
   //
-  const trimmed = RETIRED_MODELS[model.trim()] ?? model.trim()
+  const trimmed = model.trim()
   const direct = findAsrProvider(provider)
   const belongsTo = (entry: AsrProviderEntry) =>
     trimmed !== '' && asrModelsOf(entry).some((m) => m.id === trimmed)
@@ -372,6 +285,10 @@ export function parseAsrProfilesDetailed(
       continue
     }
     const v = item as Record<string, unknown>
+    if (str(v.model) === 'gpt-live-transcribe') {
+      orphans.push(item)
+      continue
+    }
     const migrated = migrateLegacyProvider(str(v.provider), str(v.model))
     if (!migrated || !findAsrProvider(migrated.provider)) {
       orphans.push(item)
@@ -389,8 +306,10 @@ export function parseAsrProfilesDetailed(
       id,
       provider,
       name: str(v.name),
-      apiUrl: str(v.apiUrl),
-      protocol: parseAsrCompatProtocol(v.protocol),
+      apiUrl: str(v.apiUrl) || LEGACY_URLS[str(v.provider)] || '',
+      protocol: LEGACY_URLS[str(v.provider)] && (!v.protocol || v.protocol === 'auto')
+        ? 'transcriptions' : (!v.protocol || v.protocol === 'auto')
+          ? LEGACY_PROTOCOLS[str(v.provider)] ?? 'auto' : parseAsrCompatProtocol(v.protocol),
       audioEncoding: parseAsrAudioEncoding(v.audioEncoding),
       systemInstruction: str(v.systemInstruction),
       userPrompt: str(v.userPrompt),
@@ -445,7 +364,6 @@ export function effectiveAsrCredentials(profile: AsrProfile): { apiKey: string; 
 
 /** Return which required credentials or endpoint are missing. */
 export function describeAsrMissing(profile: AsrProfile): string {
-  const entry = findAsrProvider(profile.provider)
   if (resolveAsrModelOption(profile)?.requiresCustomUrl) {
     if (!profile.apiUrl.trim()) return t('asrProvider.missingUrl')
     return ''

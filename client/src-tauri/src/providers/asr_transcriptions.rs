@@ -1,9 +1,3 @@
-//   · Groq（whisper-large-v3-turbo / whisper-large-v3）
-//
-//
-//
-//
-
 use super::diag;
 use super::types::{AsrProviderConfig, AsrResult, TestResult};
 use std::time::Instant;
@@ -21,36 +15,6 @@ struct Endpoint {
             retry_without_prompt: bool,
 }
 
-const GROQ: Endpoint = Endpoint {
-    url: "https://api.groq.com/openai/v1/audio/transcriptions",
-    default_model: "whisper-large-v3-turbo",
-    scope: "groq/asr",
-    honors_selected_model: true,
-    allows_custom_url: true,
-    requires_custom_url: false,
-    retry_without_prompt: false,
-};
-
-const OPENAI: Endpoint = Endpoint {
-    url: "https://api.openai.com/v1/audio/transcriptions",
-    default_model: "gpt-transcribe",
-    scope: "openai/asr",
-    honors_selected_model: true,
-    allows_custom_url: true,
-    requires_custom_url: false,
-    retry_without_prompt: false,
-};
-
-const OPENAI_FILE_FALLBACK: Endpoint = Endpoint {
-    url: OPENAI.url,
-    default_model: "gpt-transcribe",
-    scope: "openai/asr-fallback",
-    honors_selected_model: false,
-    allows_custom_url: false,
-    requires_custom_url: false,
-    retry_without_prompt: false,
-};
-
 ///
 const OPENAI_COMPAT: Endpoint = Endpoint {
     url: "",
@@ -62,13 +26,8 @@ const OPENAI_COMPAT: Endpoint = Endpoint {
     retry_without_prompt: true,
 };
 
-fn endpoint_for(provider: &str) -> &'static Endpoint {
-    match provider {
-        "openai_transcribe" => &OPENAI,
-        "openai_live_transcribe" => &OPENAI_FILE_FALLBACK,
-        "openai_compat_transcribe" => &OPENAI_COMPAT,
-        _ => &GROQ,
-    }
+fn endpoint_for(_provider: &str) -> &'static Endpoint {
+    &OPENAI_COMPAT
 }
 
 ///
@@ -443,7 +402,7 @@ mod tests {
     use super::*;
 
     fn config_with_language(value: serde_json::Value) -> AsrProviderConfig {
-        config_for("groq_whisper", value)
+        config_for("openai_compat_transcribe", value)
     }
 
     fn config_for(provider: &str, extra: serde_json::Value) -> AsrProviderConfig {
@@ -484,42 +443,6 @@ mod tests {
     }
 
         ///
-                #[test]
-    fn builtin_endpoints_default_to_official_and_honor_an_override() {
-        for (provider, official) in [
-            ("groq_whisper", "api.groq.com"),
-            ("openai_transcribe", "api.openai.com"),
-        ] {
-            let endpoint = endpoint_for(provider);
-
-            let bare = config_for(provider, serde_json::json!({}));
-            assert!(resolve_url(&bare, endpoint).unwrap().contains(official));
-            let blank = config_for(provider, serde_json::json!({ "baseUrl": "   " }));
-            assert!(resolve_url(&blank, endpoint).unwrap().contains(official));
-
-            let relayed = config_for(
-                provider,
-                serde_json::json!({ "baseUrl": "https://relay.example/v1" }),
-            );
-            assert_eq!(
-                resolve_url(&relayed, endpoint).unwrap(),
-                "https://relay.example/v1/audio/transcriptions",
-            );
-        }
-    }
-
-        ///
-            #[test]
-    fn the_live_card_fallback_never_uses_a_custom_url() {
-        let config = config_for(
-            "openai_live_transcribe",
-            serde_json::json!({ "baseUrl": "https://relay.example/v1" }),
-        );
-        let url = resolve_url(&config, endpoint_for("openai_live_transcribe")).unwrap();
-        assert!(url.contains("api.openai.com"), "got {url}");
-    }
-
-        ///
         #[test]
     fn prompt_retry_only_triggers_on_complaints_about_prompt() {
         assert!(complains_about_prompt(
@@ -540,76 +463,20 @@ mod tests {
                 #[test]
     fn only_the_protocol_card_tolerates_a_plain_text_body() {
         assert!(endpoint_for("openai_compat_transcribe").requires_custom_url);
-        assert!(!endpoint_for("groq_whisper").requires_custom_url);
-        assert!(!endpoint_for("openai_transcribe").requires_custom_url);
-        assert!(!endpoint_for("openai_live_transcribe").requires_custom_url);
 
         assert_eq!(extract_text_or_plain(r#"{"text":"From JSON"}"#), "From JSON");
         assert_eq!(extract_text_or_plain("  Plain response  "), "Plain response");
     }
 
-            #[test]
-    fn provider_id_picks_the_right_endpoint() {
-        let groq = endpoint_for("groq_whisper");
-        assert!(groq.url.contains("api.groq.com"));
-        assert_eq!(groq.default_model, "whisper-large-v3-turbo");
-
-        let openai = endpoint_for("openai_transcribe");
-        assert!(openai.url.contains("api.openai.com"));
-        assert_eq!(openai.default_model, "gpt-transcribe");
-
-        assert_ne!(groq.scope, openai.scope);
+    #[test]
+    fn selected_model_and_default_are_preserved() {
+        let config = config_for("openai_compat_transcribe", serde_json::json!({"model":"my-model"}));
+        assert_eq!(resolve_model(&config, &OPENAI_COMPAT), "my-model");
+        let empty = config_for("openai_compat_transcribe", serde_json::json!({}));
+        assert_eq!(resolve_model(&empty, &OPENAI_COMPAT), "whisper-1");
     }
 
-                #[test]
-    fn live_card_falling_back_ignores_the_streaming_model() {
-        let endpoint = endpoint_for("openai_live_transcribe");
-        assert!(endpoint.url.contains("api.openai.com"));
-        assert!(!endpoint.honors_selected_model);
-        assert_eq!(
-            resolve_model(
-                &config_for(
-                    "openai_live_transcribe",
-                    serde_json::json!({ "model": "gpt-live-transcribe" })
-                ),
-                endpoint
-            ),
-            "gpt-transcribe"
-        );
-    }
-
-            #[test]
-    fn selected_model_overrides_the_default() {
-        let groq = endpoint_for("groq_whisper");
-        assert_eq!(
-            resolve_model(&config_for("groq_whisper", serde_json::json!({"model": "whisper-large-v3"})), groq),
-            "whisper-large-v3"
-        );
-        let openai = endpoint_for("openai_transcribe");
-        assert_eq!(
-            resolve_model(&config_for("openai_transcribe", serde_json::json!({"model": "gpt-4o-mini-transcribe"})), openai),
-            "gpt-4o-mini-transcribe"
-        );
-    }
-
-            #[test]
-    fn blank_model_falls_back_to_default() {
-        let groq = endpoint_for("groq_whisper");
-        assert_eq!(
-            resolve_model(&config_for("groq_whisper", serde_json::json!({})), groq),
-            "whisper-large-v3-turbo"
-        );
-        assert_eq!(
-            resolve_model(&config_for("groq_whisper", serde_json::json!({"model": "   "})), groq),
-            "whisper-large-v3-turbo"
-        );
-        assert_eq!(
-            resolve_model(&config_for("openai_transcribe", serde_json::json!({"model": ""})), endpoint_for("openai_transcribe")),
-            "gpt-transcribe"
-        );
-    }
-
-        #[test]
+    #[test]
     fn auto_language_is_omitted() {
         assert_eq!(resolve_language(&config_with_language(serde_json::json!({}))), None);
         assert_eq!(

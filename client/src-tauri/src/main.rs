@@ -599,15 +599,6 @@ fn main() {
             providers::capabilities::asr_hotword_capability,
             providers::capabilities::asr_hotword_capability_matrix,
             // OpenAI realtime transcription (gpt-live-transcribe)
-            providers::asr_openai_realtime::openai_live_open,
-            providers::asr_openai_realtime::openai_live_send,
-            providers::asr_openai_realtime::openai_live_finish,
-            providers::asr_openai_realtime::openai_live_close,
-            // Gemini Live API transcription (gemini-3.5-transcribe-live)
-            providers::asr_gemini_live::gemini_live_open,
-            providers::asr_gemini_live::gemini_live_send,
-            providers::asr_gemini_live::gemini_live_finish,
-            providers::asr_gemini_live::gemini_live_close,
             // Models (local model management)
             models::registry::list_available_models,
             models::registry::list_downloaded_models,

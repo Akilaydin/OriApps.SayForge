@@ -93,7 +93,7 @@ async fn run(
     if provider == AS_CHAT || provider == AS_CHAT_STANDARD {
         super::asr_openai_chat_audio::transcribe(audio_pcm_b64, sample_rate, &scoped, hotwords).await
     } else {
-        super::asr_groq::transcribe(audio_pcm_b64, sample_rate, &scoped, hotwords).await
+        super::asr_transcriptions::transcribe(audio_pcm_b64, sample_rate, &scoped, hotwords).await
     }
 }
 
@@ -205,7 +205,7 @@ async fn run_test(provider: &str, config: &AsrProviderConfig) -> TestResult {
     if provider == AS_CHAT || provider == AS_CHAT_STANDARD {
         super::asr_openai_chat_audio::test_connection(&scoped).await
     } else {
-        super::asr_groq::test_connection(&scoped).await
+        super::asr_transcriptions::test_connection(&scoped).await
     }
 }
 

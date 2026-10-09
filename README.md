@@ -21,7 +21,7 @@ own cloud API, optionally polish the text, and paste it into another application
 
 - Global press-to-talk and hands-free shortcuts, with insertion into the active Windows app.
 - Audio and text history, hotwords, optional AI cleanup and app-specific prompts.
-- Cloud providers including custom OpenAI-compatible chat/audio endpoints.
+- OpenAI-compatible HTTP transcription and chat/audio endpoints with configurable URL, model and API key.
 - **Standard OpenAI input_audio** with **WAV or optional MP3** (64 kbps mono), and
   separate **System Instruction** and **User Prompt** for transcription.
 - Local ASR via NVIDIA Parakeet (English) or Nemotron (multilingual, including Russian),

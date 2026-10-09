@@ -49,7 +49,7 @@ describe('independent SayForge distribution', () => {
     const about = text('src/pages/About.tsx')
     expect(about).toContain('v{__APP_VERSION__}')
     expect(about).toContain('shellOpen(RELEASES_URL)')
-    expect(text('src-tauri/src/providers/asr_openrouter.rs')).toContain('https://github.com/Akilaydin/OriApps.SayForge')
+    expect(existsSync(resolve(process.cwd(), 'src-tauri/src/providers/asr_openrouter.rs'))).toBe(false)
   })
 
   it('keeps explicit credit and licensing for the original project', () => {
