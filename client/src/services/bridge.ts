@@ -297,13 +297,6 @@ export function onAiCleanupToggleRequested(cb: () => void) {
   return () => { unlisten.then((fn) => fn()) }
 }
 
-export function setPTTLabConfig(data: unknown) {
-  console.log('[bridge] setPTTLabConfig called', data)
-  invoke('set_ptt_lab_config', { data }).catch((err) => {
-    console.error('[bridge] setPTTLabConfig failed:', err)
-  })
-}
-
 // ─── Audio Files ───
 
 export function saveAudioFile(id: string, wavBase64: string) {
@@ -419,11 +412,6 @@ export function onCardDismissed(cb: (data: { reason: string; token: number }) =>
 
 export function onMouseShortcutCaptured(cb: (data: { setting: string; vk: number }) => void) {
   const unlisten = listen<{ setting: string; vk: number }>('mouse-shortcut-captured', (event) => cb(event.payload))
-  return () => { unlisten.then((fn) => fn()) }
-}
-
-export function onPTTLabEvent(cb: (data?: unknown) => void) {
-  const unlisten = listen<unknown>('ptt-lab-event', (event) => cb(event.payload))
   return () => { unlisten.then((fn) => fn()) }
 }
 

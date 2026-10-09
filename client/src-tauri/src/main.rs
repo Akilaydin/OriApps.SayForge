@@ -570,7 +570,6 @@ fn main() {
             commands::shortcuts::get_ptt_physical_key_states,
             commands::shortcuts::set_escape_action_mode,
             commands::shortcuts::set_card_hotkeys,
-            commands::shortcuts::set_ptt_lab_config,
             commands::shortcuts::begin_shortcut_capture,
             commands::shortcuts::end_shortcut_capture,
             // Export

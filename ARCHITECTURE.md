@@ -40,6 +40,7 @@ Paths below are relative to `client/`.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
+- `services/debugLog.ts` — bounded runtime diagnostics mirrored to native logs; no experimental session/audio viewer or separate PTT laboratory hook.
 
 ### Rust (`src-tauri/src/`)
 

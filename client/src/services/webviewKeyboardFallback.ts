@@ -13,8 +13,6 @@ import {
   settingToCode,
 } from '@/lib/shortcutKeys'
 
-const PTT_LAB_CODE = 'ControlRight'
-const PTT_LAB_VK = 0xa3
 
 let pttCodes: string[] = []
 let pttSetting = ''
@@ -26,8 +24,6 @@ let pttStartCheckPending = false
 let hfCode = ''
 let hfSetting = ''
 let hfKeyDown = false
-let labKeyDown = false
-let labEnabled = false
 let started = false
 let captureActive = false
 
@@ -174,18 +170,6 @@ function handleKeyDown(event: KeyboardEvent) {
     if (isModifierSetting(hfSetting)) event.preventDefault()
     return
   }
-
-  if (labEnabled && event.code === PTT_LAB_CODE && !labKeyDown) {
-    if (pttCodes.includes(PTT_LAB_CODE)) return
-    labKeyDown = true
-    event.preventDefault()
-    console.log('[webview-kb] ptt-lab-event down (webview fallback)')
-    void emit('ptt-lab-event', {
-      phase: 'down',
-      vk: PTT_LAB_VK,
-      timestamp: Date.now(),
-    })
-  }
 }
 
 function handleKeyUp(event: KeyboardEvent) {
@@ -209,24 +193,11 @@ function handleKeyUp(event: KeyboardEvent) {
     if (isModifierSetting(hfSetting)) event.preventDefault()
     return
   }
-
-  if (labEnabled && event.code === PTT_LAB_CODE && labKeyDown) {
-    if (pttCodes.includes(PTT_LAB_CODE)) return
-    labKeyDown = false
-    event.preventDefault()
-    console.log('[webview-kb] ptt-lab-event up (webview fallback)')
-    void emit('ptt-lab-event', {
-      phase: 'up',
-      vk: PTT_LAB_VK,
-      timestamp: Date.now(),
-    })
-  }
 }
 
 function handleWindowBlur() {
   releasePTT('window_blur')
   hfKeyDown = false
-  labKeyDown = false
 }
 
 export async function refreshPTTSetting() {
@@ -271,12 +242,6 @@ export function setShortcutCaptureActive(active: boolean) {
   captureActive = active
   pttPressed.clear()
   hfKeyDown = false
-  labKeyDown = false
-}
-
-export function setLabEnabled(enabled: boolean) {
-  labEnabled = enabled
-  if (!enabled) labKeyDown = false
 }
 
 export async function startWebviewKeyboardFallback() {
@@ -296,7 +261,6 @@ export function stopWebviewKeyboardFallback() {
   started = false
   releasePTT('fallback_stopped')
   hfKeyDown = false
-  labKeyDown = false
   document.removeEventListener('keydown', handleKeyDown, { capture: true })
   document.removeEventListener('keyup', handleKeyUp, { capture: true })
   window.removeEventListener('blur', handleWindowBlur)

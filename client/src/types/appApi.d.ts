@@ -157,7 +157,6 @@ export interface AppAPI {
   testShortcut: (accelerator: string) => Promise<{ valid: boolean }>
   getAutoLaunch: () => Promise<boolean>
   setAutoLaunch: (enable: boolean) => Promise<void>
-  setPTTLabConfig: (data: unknown) => void
   collectSettings: () => Promise<Record<string, unknown>>
   getDiagnosticsPreview: (data: {
     settings: Record<string, unknown>
@@ -182,5 +181,4 @@ export interface AppAPI {
   onPTTToggle: (cb: (data?: unknown) => void) => void
   onPTTTimeoutWarning: (cb: (data?: unknown) => void) => void
   onToggleHandsFree: (cb: (data?: unknown) => void) => void
-  onPTTLabEvent: (cb: (data?: unknown) => void) => () => void
 }
