@@ -104,22 +104,28 @@ try {
     $msi = "$fixture/SayForge_0.2.3_x64_en-US.msi"
     'Synthetic EXE' | Set-Content $exe
     'Synthetic MSI' | Set-Content $msi
-    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe)
+    $env:TAURI_ARTIFACT_PATHS = '[]'
     Assert-Fails { Run-Stage Prepare } 'Exactly one'
-    [System.IO.File]::WriteAllBytes($msi, [byte[]] @())
+    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($msi)
+    Assert-Fails { Run-Stage Prepare } 'Exactly one'
     $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe, $msi)
+    Assert-Fails { Run-Stage Prepare } 'Exactly one'
+    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe, $exe)
+    Assert-Fails { Run-Stage Prepare } 'Exactly one'
+    [System.IO.File]::WriteAllBytes($exe, [byte[]] @())
+    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe)
     Assert-Fails { Run-Stage Prepare } 'Empty installer'
-    'Synthetic MSI' | Set-Content $msi
+    'Synthetic EXE' | Set-Content $exe
     $wrongVersion = "$fixture/SayForge_0.2.2_x64-setup.exe"
     'Synthetic EXE' | Set-Content $wrongVersion
-    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($wrongVersion, $msi)
-    Assert-Fails { Run-Stage Prepare } 'Installer names'
-    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe, $msi)
+    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($wrongVersion)
+    Assert-Fails { Run-Stage Prepare } 'Installer name'
+    $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($exe)
     $env:TAURI_APP_VERSION = '0.2.2'
     Assert-Fails { Run-Stage Prepare } 'Tauri build version'
     $env:TAURI_APP_VERSION = '0.2.3'
     Run-Stage Prepare
-    if (@(Get-ChildItem "$fixture/release-assets" -File).Count -ne 5) { throw 'Missing prepared assets.' }
+    if (@(Get-ChildItem "$fixture/release-assets" -File).Count -ne 4) { throw 'Missing prepared assets.' }
     'Tampered synthetic EXE' | Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe"
     Assert-Fails { Run-Stage Publish } 'checksum verification failed'
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Guard tests wrote to GitHub.' }

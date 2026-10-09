@@ -75,19 +75,19 @@ jobs:
         run: cargo test --locked --target x86_64-pc-windows-msvc
 
       # beforeBuildCommand runs tsc + Vite once. No release is created by this action.
-      - name: Build NSIS and MSI
+      - name: Build NSIS installer
         id: tauri
         if: steps.preflight.outputs.release_needed == 'true'
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         with:
           projectPath: client
-          args: --target x86_64-pc-windows-msvc --bundles nsis,msi -- --locked
+          args: --target x86_64-pc-windows-msvc --bundles nsis -- --locked
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
 
-      - name: Verify installers and prepare checksums and notices
+      - name: Verify installer and prepare checksums and notices
         if: steps.preflight.outputs.release_needed == 'true'
         env:
           TAURI_ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}

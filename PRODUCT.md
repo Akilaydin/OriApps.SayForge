@@ -55,6 +55,10 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 - No hosted SayForge account, subscription or managed cloud storage.
 - Meeting recording, system-audio capture and speaker diarization are outside the current scope.
 - Application installation and updates are manual through GitHub Releases. About shows the current version and release link; no update checks, downloads or automatic installer run in the app.
+- One Windows NSIS `.exe` installer offers current-user or all-users installation.
+  The built-in selection requires administrator access in either mode. Installing
+  for all users shares application binaries; settings, API keys and history remain
+  separate for each Windows user.
 
 ## Open questions
 
