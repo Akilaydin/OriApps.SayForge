@@ -82,6 +82,19 @@ not measured WebView/SQLite or live stop-to-HTTP timings. Those remain unverifie
 Validation: 384 permanent frontend tests passed across full/focused checks, plus the temporary benchmark;
 116 Rust tests passed; TypeScript and `git diff --check` passed.
 
+## 6. Shared ASR testing
+
+Both settings test paths share WAV validation, PCM encoding and native request logic.
+RIFF chunks are parsed rather than dropping 44 bytes blindly; invalid rate/channels,
+sample format, empty/odd/truncated data fail before submission. Configuration construction
+is shared with recording. Explicit draft tests never read/overwrite saved credentials or
+availability checks; active tests read the saved snapshot. Playback/resource are retained.
+Synchronous locks prevent duplicate Test calls; generation/mount guards discard stale UI
+results and avoid starting requests after a late fixture load on an unmounted UI.
+Validation: 388 frontend tests passed across full/focused checks; TypeScript/i18n and
+`git diff --check` passed. Fixture/parser/payload/error tests use synthetic data.
+React click/unmount interaction and live-provider smoke checks remain manual/unverified.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

@@ -5,9 +5,10 @@ import { Play, Pause } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Feedback } from '@/components/ui/feedback'
-import { getSetting } from '@/services/store'
+import { loadAsrConfig } from '@/services/transcription/asrConfig'
+import { prepareTestPcm, testCloudAsr } from '@/services/transcription/asrTest'
 import { getEngineDraftDirty, subscribeEngineDraft } from '@/stores/engineDraft'
-import { buildAsrExtra, resolveAsrDisplayModel } from '@/lib/asrModels'
+import { resolveAsrDisplayModel } from '@/lib/asrModels'
 import { describeProviderError } from '@/lib/errorMessages'
 import type { WorkMode } from '@/services/transcription'
 import { useT } from '@/i18n/useT'
@@ -33,9 +34,19 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
   const [error, setError] = useState<TestError | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
+  const mounted = useRef(false)
+  const testBusy = useRef(false)
+  const generation = useRef(0)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false; generation.current++; audioRef.current?.pause() }
+  }, [])
+
   const draftDirty = useSyncExternalStore(subscribeEngineDraft, getEngineDraftDirty)
 
   useEffect(() => {
+    generation.current++
     setResult(null)
     setError(null)
   }, [workMode])
@@ -49,85 +60,46 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
     }
     try {
       const b64 = await invoke<string>('get_test_audio_b64')
+      if (!mounted.current) return
       const audio = new Audio(`data:audio/wav;base64,${b64}`)
       audioRef.current = audio
-      audio.onended = () => setPlaying(false)
+      audio.onended = () => { if (mounted.current) setPlaying(false) }
       setPlaying(true)
       await audio.play()
     } catch {
-      setPlaying(false)
+      if (mounted.current) setPlaying(false)
     }
   }
 
   async function handleTest() {
+    if (testBusy.current || draftDirty) return
+    testBusy.current = true
+    const run = ++generation.current
+    const current = () => mounted.current && generation.current === run
     setTesting(true)
     setResult(null)
     setError(null)
 
     try {
-      const wavB64 = await invoke<string>('get_test_audio_b64')
-      const wavBytes = Uint8Array.from(atob(wavB64), (c) => c.charCodeAt(0))
-      const pcmBytes = wavBytes.slice(44)
-      const audioDurationSec = pcmBytes.length / 2 / 16000
-
       if (workMode === 'cloud_api') {
-        let pcmB64 = ''
-        const chunk = 8192
-        for (let i = 0; i < pcmBytes.length; i += chunk) {
-          const slice = pcmBytes.subarray(i, Math.min(i + chunk, pcmBytes.length))
-          pcmB64 += String.fromCharCode(...slice)
-        }
-        pcmB64 = btoa(pcmB64)
-
-        const asrProvider = await getSetting('cloudAsr.provider', 'openai_compat') as string
-        const asrApiKey = await getSetting('cloudAsr.apiKey', '') as string
-        const asrAppId = await getSetting('cloudAsr.appId', '') as string
-        const asrModel = await getSetting('cloudAsr.model', '') as string
-
-        const baseUrl = await getSetting('cloudAsr.baseUrl', '') as string
-        const protocol = await getSetting('cloudAsr.protocol', 'auto') as string
-        const systemInstruction = asrProvider === 'openai_compat'
-          ? await getSetting('cloudAsr.systemInstruction', '') as string : ''
-        const userPrompt = asrProvider === 'openai_compat'
-          ? await getSetting('cloudAsr.userPrompt', '') as string : ''
-        const audioEncoding = asrProvider === 'openai_compat'
-          ? await getSetting('cloudAsr.audioEncoding', 'wav') as string : 'wav'
-        const extra = buildAsrExtra(asrProvider, {
-          model: asrModel,
-          instructions: systemInstruction,
-          userPrompt,
-          audioEncoding,
-          baseUrl,
-          protocol,
-        })
-
-        const start = performance.now()
-        const r = await invoke<{ text: string; elapsed_ms: number }>('cloud_transcribe', {
-          request: {
-            audio_b64: pcmB64,
-            sample_rate: 16000,
-            asr_config: {
-              provider: asrProvider,
-              api_key: asrApiKey,
-              app_id: asrAppId,
-              ...(extra && { extra }),
-            },
-          },
-        })
-        const totalMs = Math.round(performance.now() - start)
+        const config = await loadAsrConfig()
+        const audio = await prepareTestPcm()
+        if (!current()) return
+        const r = await testCloudAsr(config, audio)
+        if (!current()) return
         setResult({
-          text: r.text,
-          asrMs: totalMs,
-          mode: 'cloud_api',
-          model: extra?.model || resolveAsrDisplayModel(asrProvider),
-          audioDurationSec,
+          text: r.text, asrMs: r.latencyMs, mode: 'cloud_api',
+          model: String(config.extra?.model || resolveAsrDisplayModel(config.provider)),
+          audioDurationSec: r.audioSec,
         })
       }
     } catch (err) {
+      if (!current()) return
       const friendly = describeProviderError(err)
       setError({ message: friendly.message, detail: friendly.detail })
     } finally {
-      setTesting(false)
+      testBusy.current = false
+      if (mounted.current) setTesting(false)
     }
   }
 

@@ -2,8 +2,7 @@
 //
 //
 
-import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { useEffect, useRef, useState } from 'react'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { CheckCircle2, ExternalLink, Info, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,7 +15,8 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { refreshModeStatus } from '@/stores/modeStatus'
 import { setEngineDraftDirty } from '@/stores/engineDraft'
-import { buildAsrExtra } from '@/lib/asrModels'
+import { asrConfigFromProfile } from '@/services/transcription/asrConfig'
+import { prepareTestPcm, testCloudAsr } from '@/services/transcription/asrTest'
 import { describeProviderError } from '@/lib/errorMessages'
 import {
   ASR_PLATFORMS,
@@ -32,13 +32,10 @@ import {
   ASR_COMPAT_PROTOCOLS,
   asrCardTitle,
   asrEndpointHost,
-  asrEndpointUrl,
   parseAsrCompatProtocol,
   parseAsrAudioEncoding,
-  resolveAsrApiModel,
   resolveAsrModel,
   resolveAsrModelOption,
-  resolveAsrRuntimeProvider,
   type AsrCheck,
   type AsrProfile,
 } from './asrProviderCatalog'
@@ -63,19 +60,6 @@ type AsrTestOutcome =
   | { ok: true; check: AsrCheck; text: string; latencyMs: number; audioSec: number }
   | { ok: false; check: AsrCheck; message: string; detail?: string }
 
-async function prepareTestPcm(): Promise<{ pcmB64: string; audioSec: number }> {
-  const wavB64 = await invoke<string>('get_test_audio_b64')
-  const wavBytes = Uint8Array.from(atob(wavB64), (c) => c.charCodeAt(0))
-  const pcmBytes = wavBytes.slice(44)
-  const audioSec = pcmBytes.length / 2 / 16000
-  let pcmB64 = ''
-  const chunk = 8192
-  for (let i = 0; i < pcmBytes.length; i += chunk) {
-    pcmB64 += String.fromCharCode(...pcmBytes.subarray(i, Math.min(i + chunk, pcmBytes.length)))
-  }
-  return { pcmB64: btoa(pcmB64), audioSec }
-}
-
 async function runAsrTest(
   profile: AsrProfile,
   audio: { pcmB64: string; audioSec: number },
@@ -85,31 +69,7 @@ async function runAsrTest(
     return { ok: false, check: { ok: false, at: Date.now(), reason: t('asr.err.unknownProvider') }, message: t('asr.err.unknownProvider') }
   }
   try {
-    const creds = effectiveAsrCredentials(profile)
-    const runtimeProvider = resolveAsrRuntimeProvider(profile)
-    const extra = buildAsrExtra(runtimeProvider, {
-      model: resolveAsrApiModel(profile),
-      instructions: profile.provider === 'openai_compat' ? profile.systemInstruction : '',
-      userPrompt: profile.provider === 'openai_compat' ? profile.userPrompt : '',
-      audioEncoding: profile.provider === 'openai_compat' ? profile.audioEncoding : 'wav',
-      baseUrl: asrEndpointUrl(profile),
-      protocol: profile.protocol,
-    })
-    const start = performance.now()
-    const r = await invoke<{ text: string; elapsed_ms: number }>('cloud_transcribe', {
-      request: {
-        audio_b64: audio.pcmB64,
-        sample_rate: 16000,
-        asr_config: {
-          provider: runtimeProvider,
-          api_key: creds.apiKey,
-          app_id: creds.appId,
-          ...(extra && { extra }),
-        },
-      },
-    })
-    const latencyMs = Math.round(performance.now() - start)
-    const text = r.text.trim()
+    const { text, latencyMs } = await testCloudAsr(asrConfigFromProfile(profile), audio)
     if (!text) {
       return {
         ok: false,
@@ -138,6 +98,9 @@ async function runAsrTest(
 
 export default function CloudAPISection() {
   useT()
+  const mounted = useRef(false)
+  const testBusy = useRef(false)
+  const testGeneration = useRef(0)
   const [profiles, setProfiles] = useState<AsrProfile[]>([])
   const [activeId, setActiveId] = useState('')
   const [loaded, setLoaded] = useState(false)
@@ -163,12 +126,14 @@ export default function CloudAPISection() {
     && lastProfileOfPlatform(draft.provider, draft.id)?.apiKey === draft.apiKey
 
   useEffect(() => {
+    mounted.current = true
     void load()
-    return () => setEngineDraftDirty(false)
+    return () => { mounted.current = false; testGeneration.current++; setEngineDraftDirty(false) }
   }, [])
 
   async function load() {
     const state = await loadAsrProfiles()
+    if (!mounted.current) return
     setProfiles(state.profiles)
     setActiveId(state.activeId)
     setLoaded(true)
@@ -196,8 +161,8 @@ export default function CloudAPISection() {
   }
 
 
-  async function handleTest(profile: AsrProfile) {
-    if (busy) return
+  async function handleTest(profile: AsrProfile, isDraft = false) {
+    if (busy || testBusy.current) return
     const entry = findAsrProvider(profile.provider)
     if (!entry) return
     const missing = describeAsrMissing(profile)
@@ -205,14 +170,21 @@ export default function CloudAPISection() {
       setNotice({ tone: 'warning', message: t('asr.msg.missingBeforeTest', { label: entry.label, missing }) })
       return
     }
+    testBusy.current = true
+    const generation = ++testGeneration.current
+    const current = () => mounted.current && generation === testGeneration.current
     setTestingId(profile.id)
     setNotice(null)
     try {
-      const outcome = await runAsrTest(profile, await prepareTestPcm())
-      await persist(
+      const audio = await prepareTestPcm()
+      if (!current()) return
+      const outcome = await runAsrTest(profile, audio)
+      if (!current()) return
+      if (!isDraft) await persist(
         profiles.map((p) => (p.id === profile.id ? { ...p, check: outcome.check } : p)),
         activeId,
       )
+      if (!current()) return
       if (!outcome.ok) {
         setNotice({ tone: 'error', message: `${entry.label} ${outcome.message}`, detail: outcome.detail })
         return
@@ -225,14 +197,16 @@ export default function CloudAPISection() {
       })
     } catch (err) {
       const friendly = describeProviderError(err)
+      if (!current()) return
       setNotice({ tone: 'error', message: t('asr.msg.testCrashed', { label: entry.label, message: friendly.message }), detail: friendly.detail })
     } finally {
-      setTestingId('')
+      testBusy.current = false
+      if (mounted.current) setTestingId('')
     }
   }
 
   async function handleTestAll() {
-    if (busy) return
+    if (busy || testBusy.current) return
     const targets = profiles.filter((p) => !describeAsrMissing(p))
     const skipped = profiles.length - targets.length
     if (targets.length === 0) {
@@ -243,21 +217,27 @@ export default function CloudAPISection() {
       return
     }
 
+    testBusy.current = true
+    const generation = ++testGeneration.current
+    const current = () => mounted.current && generation === testGeneration.current
     setNotice(null)
     setBatch({ done: 0, total: targets.length })
     setTestingIds(targets.map((p) => p.id))
 
     try {
       const audio = await prepareTestPcm()
+      if (!current()) return
       let done = 0
       const results = await Promise.all(targets.map(async (target) => {
         const outcome = await runAsrTest(target, audio)
         done += 1
+        if (!current()) return { target, outcome }
         setBatch({ done, total: targets.length })
         setTestingIds((prev) => prev.filter((id) => id !== target.id))
         return { target, outcome }
       }))
 
+      if (!current()) return
       const checks = new Map(results.map((r) => [r.target.id, r.outcome.check]))
       await persist(
         profiles.map((p) => {
@@ -267,6 +247,7 @@ export default function CloudAPISection() {
         activeId,
       )
 
+      if (!current()) return
       let okCount = 0
       let failCount = 0
       const lines = results.map(({ target, outcome }) => {
@@ -293,10 +274,11 @@ export default function CloudAPISection() {
       })
     } catch (err) {
       const friendly = describeProviderError(err)
+      if (!current()) return
       setNotice({ tone: 'error', message: t('asr.msg.batchCrashed', { message: friendly.message }), detail: friendly.detail })
     } finally {
-      setTestingIds([])
-      setBatch(null)
+      testBusy.current = false
+      if (mounted.current) { setTestingIds([]); setBatch(null) }
     }
   }
 
@@ -319,12 +301,16 @@ export default function CloudAPISection() {
 
   function closeEditor() {
     if (saving) return
+    testGeneration.current++
+    setNotice(null)
     setDraft(null)
     setEngineDraftDirty(false)
   }
 
   function patchDraft(next: Partial<AsrProfile>) {
     if (!draft) return
+    testGeneration.current++
+    setNotice(null)
     const merged = { ...draft, ...next }
     setDraft(merged)
     setEngineDraftDirty(JSON.stringify(merged) !== draftBaseline)
@@ -348,7 +334,7 @@ export default function CloudAPISection() {
   }
 
   async function handleSaveDraft() {
-    if (!draft || saving) return
+    if (!draft || saving || testBusy.current) return
     setSaving(true)
     try {
       const before = profiles.find((p) => p.id === draft.id)
@@ -750,9 +736,11 @@ export default function CloudAPISection() {
             </div>
           </div>
 
+          {notice && <Feedback tone={notice.tone} message={notice.message} detail={notice.detail} />}
           <div className="flex items-center justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleTest(draft, true)}>{testingId === draft.id ? t('asrTest.testing') : t('asrTest.start')}</Button>
             <Button variant="outline" size="sm" onClick={closeEditor} disabled={saving}>{t('common.cancel')}</Button>
-            <Button size="sm" onClick={() => void handleSaveDraft()} disabled={saving || !draftDirty}>
+            <Button size="sm" onClick={() => void handleSaveDraft()} disabled={busy || !draftDirty}>
               {saving ? t('common.saving') : t('common.save')}
             </Button>
           </div>

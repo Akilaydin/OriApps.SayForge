@@ -8,6 +8,9 @@ SayForge is an open-source Windows dictation app by OriApps. Press a global shor
 
 ## Current capabilities
 
+Cloud ASR profile editors can test unsaved fields without changing the active saved
+profile. The active-profile test uses saved settings and the bundled audio sample.
+
 Cloud ASR settings are captured when recording starts. Changing the active profile,
 API key, upload format or prompts during recording applies to the next recording.
 

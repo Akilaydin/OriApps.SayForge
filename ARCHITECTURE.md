@@ -92,6 +92,11 @@ browser default. Global browser flags, including `--ignore-certificate-errors`, 
 
 ## Cloud audio encoding
 
+Saved-active and explicit-draft ASR tests share `asrTest.ts` for RIFF chunk validation,
+PCM Base64 and the native request. Draft tests use `asrConfigFromProfile` directly;
+saved tests use the same transaction snapshot as recording. The bundled English fixture
+and its playback remain. UI guards suppress duplicate tests and updates after unmount.
+
 Each cloud recording starts one asynchronous settings snapshot without delaying audio
 capture. `store_get_settings` reads requested settings in one SQLite read transaction.
 The complete selected profile is authoritative; flat settings are a legacy fallback only.
