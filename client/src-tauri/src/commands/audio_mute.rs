@@ -144,18 +144,18 @@ fn normalize_mic_label(label: &str) -> String {
         .to_lowercase()
 }
 
-/// Chromium may prefix a device name with the localized default/communications
-/// route. Match the unmodified endpoint name after a separator without keeping
-/// a per-language list of browser strings.
-fn mic_labels_match(browser_label: &str, endpoint_label: &str) -> bool {
+/// Prefer exact endpoint identity over a browser route prefix: a name such as
+/// "USB: Studio Mic" may itself be the name of another physical endpoint.
+/// Rank: 2 = exact, 1 = suffix after route separator, 0 = unrelated.
+fn mic_label_match_rank(browser_label: &str, endpoint_label: &str) -> u8 {
     let browser = normalize_mic_label(browser_label);
     let endpoint = normalize_mic_label(endpoint_label);
-    if endpoint.is_empty() { return false; }
-    if browser == endpoint { return true; }
-    browser.strip_suffix(&endpoint).is_some_and(|prefix| {
+    if endpoint.is_empty() { return 0; }
+    if browser == endpoint { return 2; }
+    if browser.strip_suffix(&endpoint).is_some_and(|prefix| {
         prefix.trim_end().chars().last()
             .is_some_and(|c| matches!(c, '-' | '–' | '—' | ':' | '：'))
-    })
+    }) { 1 } else { 0 }
 }
 
 #[cfg(windows)]
@@ -221,6 +221,8 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
                 .GetCount()
                 .map_err(|e| format!("IMMDeviceCollection.GetCount: {}", e))?;
             let mut matched: Option<IMMDevice> = None;
+            let mut best_rank = 0;
+            let mut ambiguous = false;
 
             for index in 0..count {
                 let candidate = devices
@@ -230,19 +232,20 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
                     Ok(name) => name,
                     Err(_) => continue,
                 };
-                if !mic_labels_match(target_label, &friendly_name) {
+                let rank = mic_label_match_rank(target_label, &friendly_name);
+                if rank == 0 || rank < best_rank {
                     continue;
                 }
-                if matched.is_some() {
-                    return Ok(MicMuteState {
-                        matched: false,
-                        muted: false,
-                    });
+                if rank == best_rank {
+                    ambiguous = true;
+                } else {
+                    matched = Some(candidate);
+                    best_rank = rank;
+                    ambiguous = false;
                 }
-                matched = Some(candidate);
             }
 
-            match matched {
+            match if ambiguous { None } else { matched } {
                 Some(device) => device,
                 None => {
                     return Ok(MicMuteState {
@@ -298,7 +301,7 @@ pub fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
 
 #[cfg(test)]
 mod tests {
-    use super::{mic_labels_match, normalize_mic_label};
+    use super::{mic_label_match_rank, normalize_mic_label};
 
     #[test]
     fn browser_route_prefix_does_not_change_endpoint_identity() {
@@ -319,11 +322,17 @@ mod tests {
 
     #[test]
     fn localized_browser_route_prefixes_do_not_require_ui_translations() {
-        assert!(mic_labels_match("默认值 - USB 麦克风", "USB 麦克风"));
-        assert!(mic_labels_match("По умолчанию - USB Microphone", "USB Microphone"));
-        assert!(mic_labels_match("Communications: Studio Mic", "Studio Mic"));
-        assert!(!mic_labels_match("Another Studio Mic", "Studio Mic"));
-        assert!(!mic_labels_match("USB Microphone", "Microphone"));
-        assert!(!mic_labels_match("USB Microphone", ""));
+        assert_eq!(mic_label_match_rank("默认值 - USB 麦克风", "USB 麦克风"), 1);
+        assert_eq!(mic_label_match_rank("По умолчанию - USB Microphone", "USB Microphone"), 1);
+        assert_eq!(mic_label_match_rank("Communications: Studio Mic", "Studio Mic"), 2);
+        assert_eq!(mic_label_match_rank("Another Studio Mic", "Studio Mic"), 0);
+        assert_eq!(mic_label_match_rank("USB Microphone", "Microphone"), 0);
+        assert_eq!(mic_label_match_rank("USB Microphone", ""), 0);
+    }
+
+    #[test]
+    fn exact_endpoint_outweighs_another_devices_suffix_match() {
+        assert_eq!(mic_label_match_rank("USB: Studio Mic", "USB: Studio Mic"), 2);
+        assert_eq!(mic_label_match_rank("USB: Studio Mic", "Studio Mic"), 1);
     }
 }
