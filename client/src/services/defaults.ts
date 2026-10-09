@@ -46,8 +46,6 @@ export const DEFAULTS: Record<string, unknown> = {
   overlayShowDuration: true,
   overlayWidth: 'short',
 
-  streamingDisplayEnabled: false,
-
   injectHotwordsToPrompt: false,
 
   readySoundEnabled: true,

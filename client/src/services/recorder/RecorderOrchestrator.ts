@@ -2,7 +2,7 @@ import * as bridge from '../bridge'
 import { startCapture, stopCapture } from '../audio'
 import { getProvider, type TranscriptionProvider, type TranscriptionCallbacks, type FinalResult } from '../transcription'
 import { resolveAiPolicy, type AiConfigSnapshot } from '../transcription/aiPolicy'
-import { isStreamingDisplayReady, resolveAsrDisplayModel } from '@/lib/asrModels'
+import { resolveAsrDisplayModel } from '@/lib/asrModels'
 import {
   addHistory,
   deleteHistory,
@@ -188,7 +188,6 @@ export class RecorderOrchestrator {
   private cachedHotwords: string[] = []
   private cachedInjectHotwords = false
   private cachedLanguage: string = ''
-  private cachedStreamingDisplay = false
   private currentActiveAppContext: ActiveAppContext | null = null
   private currentPromptResolution: PromptResolution | null = null
   /** Probe result captured at startRecording time (before audio capture begins).
@@ -625,25 +624,6 @@ export class RecorderOrchestrator {
     this.cachedHotwords = Array.from(new Set(words.map((word) => word.trim()).filter(Boolean)))
   }
 
-  setStreamingDisplayCache(next: boolean) {
-    this.cachedStreamingDisplay = next
-  }
-
-  private async applyStreamingActive(): Promise<void> {
-    try {
-      const [streamOn, provider] = await Promise.all([
-        getSetting('streamingDisplayEnabled', false),
-        getSetting('cloudAsr.provider', 'openai_compat'),
-      ])
-      if (this.state !== 'recording') return
-      const active = Boolean(streamOn)
-        && this.provider.mode === 'cloud_api'
-        && isStreamingDisplayReady(String(provider || ''))
-      this.overlayService.setStreamingActive(active)
-    } catch {
-    }
-  }
-
   async refreshRuntimeSettings() {
     const [
       micId,
@@ -654,7 +634,6 @@ export class RecorderOrchestrator {
       aiMinDurationSec,
       contextAwareWriting,
       contextSelectionEditPrompt,
-      streamingDisplay,
       injectHotwords,
       noiseSuppression,
     ] = await Promise.all([
@@ -666,7 +645,6 @@ export class RecorderOrchestrator {
       getSetting('aiMinDurationSec', 0),
       getSetting('contextAwareWritingEnabled', false),
       getSetting(CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY, CONTEXT_SELECTION_EDIT_PROMPT),
-      getSetting('streamingDisplayEnabled', false),
       getSetting('injectHotwordsToPrompt', false),
       getSetting('micNoiseSuppression', true),
     ])
@@ -681,7 +659,6 @@ export class RecorderOrchestrator {
     this.cachedAiMinDurationSec = Math.max(0, Math.min(MAX_RECORDING_SEC, Number(aiMinDurationSec) || 0))
     this.cachedContextAwareWriting = Boolean(contextAwareWriting)
     this.cachedContextSelectionEditPrompt = normalizeContextSelectionEditPrompt(contextSelectionEditPrompt)
-    this.cachedStreamingDisplay = Boolean(streamingDisplay)
     await this.overlayService.refreshSettings()
 
     const [hotwordsResult, languageResult] = await Promise.allSettled([
@@ -855,7 +832,6 @@ export class RecorderOrchestrator {
     }
     this.overlayService.stopListeningTicker()
     this.overlayService.resetWarnings()
-    this.overlayService.resetStreamingText()
     this.restoreSystemMuteIfNeeded()
     this.startRecordingLock = false
     this.pendingStopWhileStarting = false
@@ -992,11 +968,6 @@ export class RecorderOrchestrator {
 
   private buildProviderCallbacks(): TranscriptionCallbacks {
     return {
-      onPartialASR: (text) => {
-        if (this.state !== 'recording') return
-        this.overlayService.setStreamingText(text)
-      },
-
       onASR: (result) => {
         if (this.state !== 'processing') return
         if (this.finalHandledInCurrentRun) return
@@ -1539,7 +1510,6 @@ export class RecorderOrchestrator {
         textContext,
         hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
         language: this.cachedLanguage || undefined,
-        streamingDisplay: this.cachedStreamingDisplay,
       }
       : {
         runId,
@@ -1552,7 +1522,6 @@ export class RecorderOrchestrator {
         textContext,
         hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
         language: this.cachedLanguage || undefined,
-        streamingDisplay: this.cachedStreamingDisplay,
       }
 
     // Wrap the async setup so stopRecording can wait for it
@@ -1633,7 +1602,6 @@ export class RecorderOrchestrator {
         return
       }
       this.startRecordingLock = false
-      void this.applyStreamingActive()
       this.overlayService.startListeningTicker(runId)
       const micSource = describeMicSource(
         captureResult,

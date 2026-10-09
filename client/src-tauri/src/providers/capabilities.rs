@@ -41,11 +41,7 @@ impl HotwordDelivery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AsrHotwordCapability {
-            pub streaming: HotwordDelivery,
             pub buffered: HotwordDelivery,
-        pub has_streaming_path: bool,
-        ///
-                    pub streaming_client_cap: Option<usize>,
         ///
                         pub buffered_client_cap: Option<usize>,
 }
@@ -77,10 +73,7 @@ fn buffered_delivery(provider: &str, extra: &Value) -> HotwordDelivery {
 pub fn hotword_capability(provider: &str, extra: &Value) -> AsrHotwordCapability {
     let buffered = buffered_delivery(provider, extra);
     AsrHotwordCapability {
-        streaming: buffered,
         buffered,
-        has_streaming_path: false,
-        streaming_client_cap: None,
         buffered_client_cap: None,
     }
 }
@@ -122,9 +115,6 @@ mod tests {
         for key in keys {
             let cap = matrix.get(key).expect("missing capability");
             assert_ne!(cap.buffered, HotwordDelivery::UnknownProvider);
-            assert!(!cap.has_streaming_path);
-            assert_eq!(cap.streaming, cap.buffered);
-            assert_eq!(cap.streaming_client_cap, None);
             assert_eq!(cap.buffered_client_cap, None);
         }
     }
@@ -140,11 +130,10 @@ mod tests {
     }
 
     #[test]
-    fn retains_serialized_capability_contract() {
+    fn serializes_only_buffered_capabilities() {
         let value = serde_json::to_value(hotword_capability("openai_chat_audio", &Value::Null)).unwrap();
         assert_eq!(value, json!({
-            "streaming": "instruction", "buffered": "instruction",
-            "hasStreamingPath": false, "streamingClientCap": null, "bufferedClientCap": null,
+            "buffered": "instruction", "bufferedClientCap": null,
         }));
     }
 }

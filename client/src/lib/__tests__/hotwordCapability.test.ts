@@ -3,28 +3,12 @@ import { describe, expect, it } from 'vitest'
 import capabilitiesSource from '../../../src-tauri/src/providers/capabilities.rs?raw'
 
 import {
-  expectedClientCap,
-  expectedHotwordDelivery,
   foldHotwordDelivery,
-  hotwordDependsOnStreamingPath,
   hotwordUndecidedReason,
-  willUseStreamingPath,
-  type AsrHotwordCapability,
   type HotwordDelivery,
 } from '../asrModels'
 import { ASR_PROVIDERS, asrModelsOf } from '@/features/settings/asrProviderCatalog'
 
-
-function capability(over: Partial<AsrHotwordCapability> = {}): AsrHotwordCapability {
-  return {
-    streaming: 'context',
-    buffered: 'context',
-    hasStreamingPath: false,
-    streamingClientCap: null,
-    bufferedClientCap: null,
-    ...over,
-  }
-}
 
 describe('foldHotwordDelivery', () => {
   it('三种会进请求的传递方式都折成「已发送」', () => {
@@ -46,102 +30,6 @@ describe('foldHotwordDelivery', () => {
 
   it('auto 协议在探测出来之前也是「未确定」，不能猜', () => {
     expect(foldHotwordDelivery('undecided_protocol')).toBe('undecided')
-  })
-})
-
-describe('expectedHotwordDelivery', () => {
-  it('没有流式实现的服务只看一次性路径', () => {
-    const cap = capability({ buffered: 'not_wired_up', streaming: 'not_wired_up' })
-    expect(expectedHotwordDelivery(cap, {
-      streamingDisplayEnabled: true,
-      provider: 'groq_whisper',
-    })).toBe('not_wired_up')
-  })
-
-  it('retired OpenAI streaming always uses buffered hotword delivery', () => {
-    const cap = capability({
-      streaming: 'vocabulary',
-      buffered: 'not_wired_up',
-      hasStreamingPath: true,
-      streamingClientCap: 100,
-      bufferedClientCap: null,
-    })
-    expect(expectedHotwordDelivery(cap, {
-      streamingDisplayEnabled: true,
-      provider: 'openai_live_transcribe',
-    })).toBe('not_wired_up')
-    expect(expectedHotwordDelivery(cap, {
-      streamingDisplayEnabled: false,
-      provider: 'openai_live_transcribe',
-    })).toBe('not_wired_up')
-  })
-
-  it('retired Gemini streaming always uses buffered hotword delivery', () => {
-    const cap = capability({
-      streaming: 'protocol_has_no_slot',
-      buffered: 'instruction',
-      hasStreamingPath: true,
-    })
-    expect(expectedHotwordDelivery(cap, {
-      streamingDisplayEnabled: true,
-      provider: 'gemini_live_transcribe',
-    })).toBe('instruction')
-    expect(expectedHotwordDelivery(cap, {
-      streamingDisplayEnabled: false,
-      provider: 'gemini_live_transcribe',
-    })).toBe('instruction')
-  })
-
-  it('uses the buffered path when a removed provider has no streaming implementation', () => {
-    const inverted = capability({
-      streaming: 'vocabulary',
-      buffered: 'not_wired_up',
-      hasStreamingPath: true,
-    })
-    expect(expectedHotwordDelivery(inverted, {
-      streamingDisplayEnabled: true,
-      provider: 'qwen_realtime',
-    })).toBe('not_wired_up')
-    expect(expectedHotwordDelivery(inverted, {
-      streamingDisplayEnabled: true,
-      provider: 'openai_live_transcribe',
-    })).toBe('not_wired_up')
-  })
-})
-
-describe('hotwordDependsOnStreamingPath', () => {
-  it('两条路径结论相同时不提醒（提醒了是噪音）', () => {
-    expect(hotwordDependsOnStreamingPath(capability({
-      streaming: 'context',
-      buffered: 'context',
-      hasStreamingPath: true,
-    }))).toBe(false)
-    expect(hotwordDependsOnStreamingPath(capability({
-      streaming: 'vocabulary',
-      buffered: 'instruction',
-      hasStreamingPath: true,
-    }))).toBe(false)
-  })
-
-  it('结论会被回落翻转时必须提醒', () => {
-    expect(hotwordDependsOnStreamingPath(capability({
-      streaming: 'vocabulary',
-      buffered: 'not_wired_up',
-      hasStreamingPath: true,
-    }))).toBe(true)
-    expect(hotwordDependsOnStreamingPath(capability({
-      streaming: 'protocol_has_no_slot',
-      buffered: 'instruction',
-      hasStreamingPath: true,
-    }))).toBe(true)
-  })
-
-  it('没有流式路径的服务不会有这个不确定性', () => {
-    expect(hotwordDependsOnStreamingPath(capability({
-      streaming: 'not_wired_up',
-      buffered: 'not_wired_up',
-      hasStreamingPath: false,
-    }))).toBe(false)
   })
 })
 
@@ -214,75 +102,6 @@ describe('目录里每个模型的运行时 provider 都在 Rust 声明过热词
         ).toBe(true)
       }
     }
-  })
-})
-
-describe('expectedClientCap', () => {
-  const openaiLive = capability({
-    streaming: 'vocabulary',
-    buffered: 'not_wired_up',
-    hasStreamingPath: true,
-    streamingClientCap: 100,
-    bufferedClientCap: null,
-  })
-
-  it('retired OpenAI streaming does not expose its streaming cap', () => {
-    expect(expectedClientCap(openaiLive, {
-      streamingDisplayEnabled: true,
-      provider: 'openai_live_transcribe',
-    })).toBeNull()
-    expect(expectedClientCap(openaiLive, {
-      streamingDisplayEnabled: false,
-      provider: 'openai_live_transcribe',
-    })).toBeNull()
-  })
-
-  it('retired Gemini streaming selects the buffered cap', () => {
-    const geminiLive = capability({
-      streaming: 'protocol_has_no_slot',
-      buffered: 'instruction',
-      hasStreamingPath: true,
-      streamingClientCap: null,
-      bufferedClientCap: 100,
-    })
-    expect(expectedClientCap(geminiLive, {
-      streamingDisplayEnabled: true,
-      provider: 'gemini_live_transcribe',
-    })).toBe(100)
-    expect(expectedClientCap(geminiLive, {
-      streamingDisplayEnabled: false,
-      provider: 'gemini_live_transcribe',
-    })).toBe(100)
-  })
-
-  it('上限和 delivery 永远来自同一条路径', () => {
-    for (const streamingDisplayEnabled of [true, false]) {
-      const opts = { streamingDisplayEnabled, provider: 'openai_live_transcribe' }
-      const delivery = expectedHotwordDelivery(openaiLive, opts)
-      const cap = expectedClientCap(openaiLive, opts)
-      if (delivery === 'not_wired_up' || delivery === 'protocol_has_no_slot') {
-        expect(cap).toBeNull()
-      }
-      expect(willUseStreamingPath(openaiLive, opts)).toBe(false)
-    }
-  })
-
-  it('没有流式实现的服务永远取一次性路径那份', () => {
-    const gemini = capability({
-      streaming: 'instruction',
-      buffered: 'instruction',
-      hasStreamingPath: false,
-      streamingClientCap: 100,
-      bufferedClientCap: 100,
-    })
-    expect(willUseStreamingPath(gemini, {
-      streamingDisplayEnabled: true,
-      provider: 'gemini_transcribe',
-    })).toBe(false)
-    expect(expectedClientCap(gemini, {
-      streamingDisplayEnabled: true,
-      provider: 'gemini_transcribe',
-    })).toBe(100)
   })
 })
 

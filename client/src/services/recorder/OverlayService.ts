@@ -57,8 +57,6 @@ export class OverlayService {
   /** Persistent warning text — included in every overlay update until cleared */
   private activeWarning = ''
   private timeoutWarningHideId: ReturnType<typeof setTimeout> | null = null
-  private streamingText = ''
-  private streamingActive = false
   private currentState: OverlayVisualState = 'waiting'
   private activeFailureCard: { title: string; detail: string } | null = null
 
@@ -159,8 +157,6 @@ export class OverlayService {
       state: 'listening',
       elapsedSec: clampSec(this.getElapsedSec()),
       ...(this.activeWarning ? { warning: this.activeWarning } : {}),
-      ...(this.streamingActive ? { streaming: true } : {}),
-      ...(this.streamingText ? { streamingText: this.streamingText } : {}),
       ...this.getMicSourceHintPayload(),
       ...this.getCommonPayload(),
       ...overrides,
@@ -221,19 +217,6 @@ export class OverlayService {
     this.tickerId = setInterval(() => {
       void bridge.updateOverlay(this.listeningPayload())
     }, 33)
-  }
-
-  setStreamingActive(on: boolean) {
-    this.streamingActive = on
-  }
-
-  setStreamingText(text: string) {
-    this.streamingText = text || ''
-  }
-
-  resetStreamingText() {
-    this.streamingText = ''
-    this.streamingActive = false
   }
 
   stopListeningTicker() {
@@ -535,7 +518,6 @@ export class OverlayService {
 
   dispose() {
     this.stopListeningTicker()
-    this.resetStreamingText()
     this.hide()
   }
 }

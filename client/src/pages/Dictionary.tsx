@@ -12,10 +12,7 @@ import {
   type AsrPlatform,
 } from '@/features/settings/asrProviderCatalog'
 import {
-  expectedClientCap,
-  expectedHotwordDelivery,
   foldHotwordDelivery,
-  hotwordDependsOnStreamingPath,
   hotwordUndecidedReason,
   type HotwordUiState,
   type HotwordUndecidedReason,
@@ -100,7 +97,6 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
   const [tableOpen, setTableOpen] = useState(false)
   const [state, setState] = useState<{
     ui: HotwordUiState
-    pathDependent: boolean
     clientCap: number | null
     hasSpacingRestore: boolean
     undecidedReason: HotwordUndecidedReason | null
@@ -110,10 +106,9 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
     let disposed = false
 
     const load = async () => {
-      const [provider, protocol, streamingOn] = await Promise.all([
+      const [provider, protocol] = await Promise.all([
         getSetting('cloudAsr.provider', '') as Promise<string>,
         getSetting('cloudAsr.protocol', 'auto') as Promise<string>,
-        getSetting('streamingDisplayEnabled', false) as Promise<boolean>,
       ])
       const [baseUrl, model] = await Promise.all([
         getSetting('cloudAsr.baseUrl', '') as Promise<string>,
@@ -128,24 +123,17 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
       if (!capability) {
         setState({
           ui: 'undecided',
-          pathDependent: false,
           clientCap: null,
           hasSpacingRestore: true,
           undecidedReason: 'query_failed',
         })
         return
       }
-      const pathOpts = {
-        streamingDisplayEnabled: Boolean(streamingOn),
-        provider,
-      }
-      const delivery = expectedHotwordDelivery(capability, pathOpts)
       setState({
-        ui: foldHotwordDelivery(delivery),
-        pathDependent: hotwordDependsOnStreamingPath(capability),
-        clientCap: expectedClientCap(capability, pathOpts),
+        ui: foldHotwordDelivery(capability.buffered),
+        clientCap: capability.bufferedClientCap,
         hasSpacingRestore: true,
-        undecidedReason: hotwordUndecidedReason(delivery),
+        undecidedReason: hotwordUndecidedReason(capability.buffered),
       })
     }
 
@@ -178,9 +166,6 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
           {t('dict.delivery.openTable')}
         </button>
       </p>
-      {state.pathDependent && (
-        <p><RichText text={t('dict.delivery.pathDependent')} /></p>
-      )}
       {state.clientCap !== null && hotwordCount > state.clientCap && (
         <p className="text-amber-500">
           <RichText text={t('dict.delivery.clientCap', { cap: state.clientCap, count: hotwordCount })} />
@@ -201,10 +186,7 @@ interface SupportRow {
   platform: AsrPlatform
   model: string
   provider: string
-  hasStreamingPath: boolean
-  streaming: HotwordUiState
   buffered: HotwordUiState
-  streamingCap: number | null
   bufferedCap: number | null
 }
 
@@ -230,16 +212,12 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
       setCurrentProvider(mode === 'cloud_api' ? provider : '')
       setRows(ASR_PROVIDERS.flatMap((entry) => asrModelsOf(entry).map((model) => {
         const capability = matrix[model.provider]
-        const streaming = capability ? foldHotwordDelivery(capability.streaming) : 'undecided'
         const buffered = capability ? foldHotwordDelivery(capability.buffered) : 'undecided'
         return {
           platform: entry.platform,
           model: model.id,
           provider: model.provider,
-          hasStreamingPath: capability?.hasStreamingPath ?? false,
-          streaming,
           buffered,
-          streamingCap: capability?.streamingClientCap ?? null,
           bufferedCap: capability?.bufferedClientCap ?? null,
         }
       })))
@@ -256,25 +234,8 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
     ? 'text-foreground'
     : state === 'not_sent' ? 'text-amber-500' : 'text-muted-foreground'
 
-  const renderState = (row: SupportRow) => {
-    if (!row.hasStreamingPath || row.streaming === row.buffered) {
-      return <span className={stateClass(row.buffered)}>{label(row.buffered)}</span>
-    }
-    return (
-      <span className="flex flex-col gap-0.5">
-        <span className={stateClass(row.streaming)}>
-          {t('dict.table.whenStreaming', { state: label(row.streaming) })}
-        </span>
-        <span className={stateClass(row.buffered)}>
-          {t('dict.table.whenBuffered', { state: label(row.buffered) })}
-        </span>
-      </span>
-    )
-  }
-
   const renderNote = (row: SupportRow) => {
     const caps = new Set<number>()
-    if (row.streaming === 'sent' && row.streamingCap !== null) caps.add(row.streamingCap)
     if (row.buffered === 'sent' && row.bufferedCap !== null) caps.add(row.bufferedCap)
     if (caps.size === 0) return null
     return t('dict.table.capNote', { cap: Array.from(caps).join(' / ') })
@@ -329,7 +290,7 @@ function HotwordSupportTable({ onClose }: { onClose: () => void }) {
                         </span>
                       )}
                     </td>
-                    <td className="py-1 pr-3">{renderState(row)}</td>
+                    <td className="py-1 pr-3"><span className={stateClass(row.buffered)}>{label(row.buffered)}</span></td>
                     <td className="py-1 text-muted-foreground">{renderNote(row)}</td>
                   </tr>
                 </Fragment>

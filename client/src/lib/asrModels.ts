@@ -45,18 +45,6 @@ export function buildAsrExtra(
   }
 }
 
-const STREAMING_CAPABLE = new Set<string>()
-
-export function isStreamingDisplayCapable(provider: string): boolean {
-  return STREAMING_CAPABLE.has(provider)
-}
-
-export function isStreamingDisplayReady(provider: string): boolean {
-  return isStreamingDisplayCapable(provider)
-}
-
-//
-
 export type HotwordDelivery =
   | 'vocabulary'
   | 'context'
@@ -67,10 +55,7 @@ export type HotwordDelivery =
   | 'unknown_provider'
 
 export interface AsrHotwordCapability {
-  streaming: HotwordDelivery
   buffered: HotwordDelivery
-  hasStreamingPath: boolean
-  streamingClientCap: number | null
   bufferedClientCap: number | null
 }
 
@@ -103,39 +88,4 @@ export function hotwordUndecidedReason(delivery: HotwordDelivery): HotwordUndeci
     default:
       return null
   }
-}
-
-export interface HotwordPathOptions {
-  streamingDisplayEnabled: boolean
-  provider: string
-}
-
-export function willUseStreamingPath(
-  capability: AsrHotwordCapability,
-  opts: HotwordPathOptions,
-): boolean {
-  if (!capability.hasStreamingPath) return false
-  return opts.streamingDisplayEnabled
-    && isStreamingDisplayReady(opts.provider)
-}
-
-export function expectedHotwordDelivery(
-  capability: AsrHotwordCapability,
-  opts: HotwordPathOptions,
-): HotwordDelivery {
-  return willUseStreamingPath(capability, opts) ? capability.streaming : capability.buffered
-}
-
-export function expectedClientCap(
-  capability: AsrHotwordCapability,
-  opts: HotwordPathOptions,
-): number | null {
-  return willUseStreamingPath(capability, opts)
-    ? capability.streamingClientCap
-    : capability.bufferedClientCap
-}
-
-export function hotwordDependsOnStreamingPath(capability: AsrHotwordCapability): boolean {
-  return capability.hasStreamingPath
-    && foldHotwordDelivery(capability.streaming) !== foldHotwordDelivery(capability.buffered)
 }

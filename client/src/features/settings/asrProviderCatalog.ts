@@ -39,7 +39,6 @@ export interface AsrModelOption {
   //
   //
   blurb?: string
-  streaming?: boolean
   omni?: boolean
   needsWorkspaceId?: boolean
   supportsCustomUrl?: boolean

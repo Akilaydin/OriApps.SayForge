@@ -61,7 +61,7 @@ Paths below are relative to `client/`.
 - Run IDs and cancellation must prevent late results from updating another recording or editor field.
 - Probe and preserve the original edit target; provide fallback text when native insertion fails or is unconfirmed.
 - Treat editor context as bounded, untrusted data. Do not replace selected text unless an AI edit was applied.
-- Keep ASR UI capabilities, protocol selection and Rust provider dispatch consistent.
+- Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
 - Cloud ASR sends recorded audio; optional cloud AI refinement may transmit text/context. Retired model files/settings remain untouched.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.

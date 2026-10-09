@@ -45,10 +45,6 @@ export function setHotwordsCache(words: string[]) {
   orchestrator.setHotwordsCache(words)
 }
 
-export function setStreamingDisplayCache(next: boolean) {
-  orchestrator.setStreamingDisplayCache(next)
-}
-
 export async function refreshOverlaySettings() {
   await orchestrator.refreshOverlaySettings()
 }

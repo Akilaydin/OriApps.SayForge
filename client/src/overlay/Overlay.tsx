@@ -38,8 +38,6 @@ interface OverlayPayload {
   warningTone?: 'warn' | 'error'
   toastText?: string
   toastTone?: 'info' | 'warn'
-  streaming?: boolean
-  streamingText?: string
   micSourceMode?: 'auto' | 'fixed' | null
   micSourceLabel?: string
   locale?: string
@@ -110,8 +108,6 @@ export default function Overlay() {
   const [errorMessage, setErrorMessage] = useState('')
   const [toastText, setToastText] = useState('')
   const [toastTone, setToastTone] = useState<'info' | 'warn'>('info')
-  const [streamingText, setStreamingText] = useState('')
-  const [streamingOn, setStreamingOn] = useState(false)
   const [copied, setCopied] = useState(false)
   const [thinkingDuration, setThinkingDuration] = useState(0)
   const [warning, setWarning] = useState('')
@@ -195,8 +191,6 @@ export default function Overlay() {
         setState(payload.state)
         if (payload.state !== 'listening') {
           setBars((prev) => Array(prev.length).fill(3))
-          setStreamingText('')
-          setStreamingOn(false)
         }
         setCopied(false)
         setCopyError(false)
@@ -240,8 +234,6 @@ export default function Overlay() {
       if (payload.toastTone === 'info' || payload.toastTone === 'warn') setToastTone(payload.toastTone)
       if (typeof payload.warning === 'string') setWarning(payload.warning)
       if (payload.warningTone === 'warn' || payload.warningTone === 'error') setWarningTone(payload.warningTone)
-      if (typeof payload.streamingText === 'string') setStreamingText(payload.streamingText)
-      if (typeof payload.streaming === 'boolean') setStreamingOn(payload.streaming)
       if (payload.micSourceMode === 'auto' || payload.micSourceMode === 'fixed' || payload.micSourceMode === null) {
         setMicSourceMode(payload.micSourceMode)
       }
@@ -250,8 +242,6 @@ export default function Overlay() {
         setElapsedSec(0)
         setWarning('')
         setWarningTone('warn')
-        setStreamingText('')
-        setStreamingOn(false)
         setMicSourceMode(null)
         setMicSourceLabel('')
         setBars((prev) => Array(prev.length).fill(3))
@@ -347,8 +337,6 @@ export default function Overlay() {
 
   const recordingPhase = state === 'waiting' || state === 'listening'
   const visuallyListening = state === 'listening' && recordingVisualPhase === 'listening'
-  const showStreamingBubble = visuallyListening && (streamingOn || streamingText.trim().length > 0)
-  const hasStreamingText = streamingText.trim().length > 0
   const showMicSourceHint = Boolean(
     micSourceMode
     && micSourceLabel.trim()
@@ -550,49 +538,6 @@ export default function Overlay() {
               <span className="min-w-0 truncate text-xs font-normal" style={{ color: '#ffffff' }}>
                 {micSourceLabel}
               </span>
-            </div>
-          )}
-          {showStreamingBubble && (
-            <div
-              className="pointer-events-none relative flex max-w-[440px] flex-col rounded-2xl border px-4 py-2.5"
-              style={{
-                background: 'var(--overlay-bg)',
-                color: 'var(--overlay-text)',
-                borderColor: 'var(--overlay-border)',
-              }}
-            >
-              <span
-                className="mb-1 text-[10px] font-medium tracking-[0.18em]"
-                style={{ color: 'var(--overlay-text-muted)' }}
-              >
-                {t('overlay.liveCaption')}
-              </span>
-              <div
-                className="flex max-h-[72px] flex-col justify-end overflow-hidden text-left text-sm leading-6"
-                style={{ color: hasStreamingText ? 'var(--overlay-text)' : 'var(--overlay-text-dim)' }}
-              >
-                <div>
-                  {hasStreamingText ? streamingText : t('overlay.listening')}
-                  {hasStreamingText && (
-                    <span
-                      className="ml-0.5 inline-block h-[1.05em] w-[2px] rounded-full align-middle"
-                      style={{
-                        backgroundColor: 'var(--overlay-text)',
-                        animation: 'caret-blink 1.1s ease-in-out infinite',
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-              <span
-                className="absolute left-1/2 h-0 w-0 -translate-x-1/2"
-                style={{
-                  bottom: '-7px',
-                  borderLeft: '7px solid transparent',
-                  borderRight: '7px solid transparent',
-                  borderTop: '7px solid var(--overlay-bg)',
-                }}
-              />
             </div>
           )}
           <div

@@ -9,7 +9,7 @@ SayForge is an open-source Windows dictation app by OriApps. Press a global shor
 ## Current capabilities
 
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
-- Cloud speech recognition; cloud audio is uploaded after recording stops.
+- Cloud speech recognition; cloud audio is uploaded after recording stops; live captions are not supported.
 - Optional AI cleanup with one editable prompt and an OpenAI-compatible endpoint.
 - Hotwords, text replacements, formatting and context-aware editing of selected text.
 - Searchable local text history with copying and TXT export.

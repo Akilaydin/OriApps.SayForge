@@ -44,33 +44,16 @@ describe('listening 更新必须始终携带布局判据', () => {
     mocks.presentOverlay.mockClear()
   })
 
-  it.each(emitters)('%s 带上 streaming 与 streamingText', (_name, emit) => {
-    const service = new OverlayService(() => 7)
-    service.setStreamingActive(true)
-    service.setStreamingText('实时字幕中')
-
-    emit(service)
-
-    const payloads = payloadsFrom()
-    expect(payloads.length).toBeGreaterThan(0)
-    for (const payload of payloads) {
-      expect(payload).toMatchObject({
-        state: 'listening',
-        streaming: true,
-        streamingText: '实时字幕中',
-      })
-    }
-  })
-
   it.each(emitters)('%s 在未开启流式时不硬塞 streaming 字段', (_name, emit) => {
     const service = new OverlayService(() => 7)
-    service.setStreamingActive(false)
 
     emit(service)
 
     for (const payload of payloadsFrom()) {
       expect(payload.state).toBe('listening')
       expect('streaming' in payload).toBe(false)
+      expect('streamingText' in payload).toBe(false)
+      expect(payload.elapsedSec).toBe(7)
     }
   })
 
@@ -80,7 +63,6 @@ describe('listening 更新必须始终携带布局判据', () => {
       service as unknown as { listeningPayload: (overrides?: Record<string, unknown>) => unknown },
       'listeningPayload',
     )
-    service.setStreamingActive(true)
 
     for (const [name, emit] of emitters) {
       spy.mockClear()

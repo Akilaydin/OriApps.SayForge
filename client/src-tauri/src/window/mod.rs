@@ -18,11 +18,8 @@ const OVERLAY_FALLBACK_HEIGHT: f64 = 224.0;
 ///
 const OVERLAY_FAILURE_WIDTH: f64 = 480.0;
 const OVERLAY_FAILURE_HEIGHT: f64 = 176.0;
-const OVERLAY_STREAMING_WIDTH: f64 = 480.0;
-const OVERLAY_STREAMING_HEIGHT: f64 = 200.0;
 const OVERLAY_MIC_HINT_WIDTH: f64 = 480.0;
 const OVERLAY_MIC_HINT_HEIGHT: f64 = 104.0;
-const OVERLAY_STREAMING_MIC_HINT_HEIGHT: f64 = 244.0;
 const OVERLAY_SCREEN_MARGIN: f64 = 8.0;
 
 const OVERLAY_ROOT_PADDING_BOTTOM: f64 = 16.0;
@@ -53,8 +50,6 @@ enum OverlayLayout {
     BaseWithMicHint,
     Fallback,
         Failure,
-        Streaming,
-    StreamingWithMicHint,
 }
 
 impl OverlayLayout {
@@ -73,11 +68,6 @@ impl OverlayLayout {
             ),
             OverlayLayout::Fallback => (OVERLAY_FALLBACK_WIDTH, OVERLAY_FALLBACK_HEIGHT),
             OverlayLayout::Failure => (OVERLAY_FAILURE_WIDTH, OVERLAY_FAILURE_HEIGHT),
-            OverlayLayout::Streaming => (OVERLAY_STREAMING_WIDTH, OVERLAY_STREAMING_HEIGHT),
-            OverlayLayout::StreamingWithMicHint => (
-                OVERLAY_STREAMING_WIDTH,
-                OVERLAY_STREAMING_MIC_HINT_HEIGHT,
-            ),
         }
     }
 }
@@ -252,11 +242,10 @@ impl WindowState {
             let changed = previous.as_ref() != Some(&layout);
             if changed {
                 write_log_line(&format!(
-                    "[overlay-layout] {:?} -> {:?} state={} streaming={} mic_hint={}",
+                    "[overlay-layout] {:?} -> {:?} state={} mic_hint={}",
                     previous,
                     layout,
                     data.get("state").and_then(Value::as_str).unwrap_or("unknown"),
-                    data.get("streaming").and_then(Value::as_bool).unwrap_or(false),
                     data.get("micSourceLabel")
                         .and_then(Value::as_str)
                         .map(|s| !s.trim().is_empty())
@@ -490,12 +479,6 @@ impl WindowState {
         }
 
         let state = data.get("state").and_then(Value::as_str);
-        let streaming_on = data.get("streaming").and_then(Value::as_bool).unwrap_or(false)
-            || data
-                .get("streamingText")
-                .and_then(Value::as_str)
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
         let mic_hint_on = data
             .get("micSourceLabel")
             .and_then(Value::as_str)
@@ -505,10 +488,6 @@ impl WindowState {
             OverlayLayout::Fallback
         } else if state == Some("failure") {
             OverlayLayout::Failure
-        } else if state == Some("listening") && streaming_on && mic_hint_on {
-            OverlayLayout::StreamingWithMicHint
-        } else if state == Some("listening") && streaming_on {
-            OverlayLayout::Streaming
         } else if matches!(state, Some("listening") | Some("thinking")) && mic_hint_on {
             OverlayLayout::BaseWithMicHint
         } else {
@@ -524,11 +503,6 @@ impl WindowState {
             && matches!(
                 (&*current_layout, &candidate_layout),
                 (OverlayLayout::BaseWithMicHint, OverlayLayout::Base)
-                    | (OverlayLayout::StreamingWithMicHint, OverlayLayout::Streaming)
-                    | (OverlayLayout::StreamingWithMicHint, OverlayLayout::BaseWithMicHint)
-                    | (OverlayLayout::StreamingWithMicHint, OverlayLayout::Base)
-                    | (OverlayLayout::Streaming, OverlayLayout::Base)
-                    | (OverlayLayout::Streaming, OverlayLayout::BaseWithMicHint)
             );
 
         if !keep_expanded_bounds {
@@ -1076,12 +1050,6 @@ mod tests {
             ("fallback", OverlayLayout::Fallback, OVERLAY_ROOT_PADDING_BOTTOM + 149.0),
             //
             ("failure", OverlayLayout::Failure, OVERLAY_ROOT_PADDING_BOTTOM + 146.0),
-            ("streaming", OverlayLayout::Streaming, required_css_height() + 8.0 + 110.0),
-            (
-                "streaming_mic_hint",
-                OverlayLayout::StreamingWithMicHint,
-                required_css_height() + 8.0 + 110.0 + 8.0 + 30.0,
-            ),
         ];
         for (name, layout, required) in cases {
             let (_, _, _, height) = overlay_bounds_in_work_area(
@@ -1121,7 +1089,7 @@ mod tests {
         let (x, y, width, height) = overlay_bounds_in_work_area(
             WORK,
             SCALE,
-            OverlayLayout::StreamingWithMicHint.dimensions(OVERLAY_DEFAULT_BASE_WIDTH),
+            OverlayLayout::BaseWithMicHint.dimensions(OVERLAY_DEFAULT_BASE_WIDTH),
             4.0,
         );
         assert!(x >= 0, "x={}", x);
@@ -1147,17 +1115,13 @@ mod tests {
         let expected = |layout: &OverlayLayout| match layout {
             OverlayLayout::Fallback | OverlayLayout::Failure => true,
             OverlayLayout::Base
-            | OverlayLayout::BaseWithMicHint
-            | OverlayLayout::Streaming
-            | OverlayLayout::StreamingWithMicHint => false,
+            | OverlayLayout::BaseWithMicHint => false,
         };
         for layout in [
             OverlayLayout::Base,
             OverlayLayout::BaseWithMicHint,
             OverlayLayout::Fallback,
             OverlayLayout::Failure,
-            OverlayLayout::Streaming,
-            OverlayLayout::StreamingWithMicHint,
         ] {
             assert_eq!(
                 layout.is_interactive(),
@@ -1182,51 +1146,23 @@ mod tests {
     }
 
     #[test]
-    fn streaming_flag_expands_the_window_while_listening() {
+    fn retired_streaming_payload_does_not_expand_the_window() {
         assert_eq!(
-            layouts_after(&[json!({ "state": "listening", "streaming": true })]),
-            vec![OverlayLayout::Streaming],
+            layouts_after(&[json!({ "state": "listening", "streaming": true, "streamingText": "Synthetic" })]),
+            vec![OverlayLayout::Base],
         );
     }
 
-        ///
-                ///
-            #[test]
-    fn listening_update_without_streaming_flag_must_not_shrink_the_window() {
-        let layouts = layouts_after(&[
-            json!({ "state": "listening", "streaming": true }),
-            json!({ "state": "listening", "warning": "volume is low", "warningTone": "warn" }),
-            json!({ "state": "listening", "streaming": true }),
-        ]);
+    #[test]
+    fn mic_hint_bounds_survive_warning_updates_until_a_new_waiting_phase() {
         assert_eq!(
-            layouts,
-            vec![
-                OverlayLayout::Streaming,
-                OverlayLayout::Streaming,
-                OverlayLayout::Streaming,
-            ],
+            layouts_after(&[
+                json!({ "state": "listening", "micSourceLabel": "Synthetic microphone" }),
+                json!({ "state": "listening", "warning": "volume is low" }),
+                json!({ "state": "waiting", "elapsedSec": 0 }),
+            ]),
+            vec![OverlayLayout::BaseWithMicHint, OverlayLayout::BaseWithMicHint, OverlayLayout::Base],
         );
-    }
-
-        #[test]
-    fn streaming_window_survives_a_mic_hint_only_update() {
-        let layouts = layouts_after(&[
-            json!({ "state": "listening", "streaming": true }),
-            json!({ "state": "listening", "micSourceLabel": "Blackwire 5220" }),
-        ]);
-        assert_eq!(
-            layouts,
-            vec![OverlayLayout::Streaming, OverlayLayout::Streaming],
-        );
-    }
-
-            #[test]
-    fn a_new_waiting_phase_resets_to_the_base_layout() {
-        let layouts = layouts_after(&[
-            json!({ "state": "listening", "streaming": true }),
-            json!({ "state": "waiting", "elapsedSec": 0 }),
-        ]);
-        assert_eq!(layouts, vec![OverlayLayout::Streaming, OverlayLayout::Base]);
     }
 
     fn native_window() -> serde_json::Value {

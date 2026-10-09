@@ -39,7 +39,6 @@ export interface FinalResult {
 export interface TranscriptionCallbacks {
   onStateChange?: (state: ProviderState) => void
   onReady?: (info: { connectionId?: string; asr: boolean; llm: boolean }) => void
-  onPartialASR?: (text: string) => void
   onASR?: (result: ASRResult) => void
   onFinal?: (result: FinalResult) => void
   onDone?: () => void
@@ -60,7 +59,6 @@ export interface StartOptions {
   source?: 'live' | 'history_reprocess'
   hotwords?: string[]
   language?: string
-  streamingDisplay?: boolean
 }
 
 export interface StopOptions {

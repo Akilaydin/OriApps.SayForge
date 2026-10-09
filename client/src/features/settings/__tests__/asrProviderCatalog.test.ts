@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { isStreamingDisplayReady } from '@/lib/asrModels'
 import {
   ASR_PLATFORMS, ASR_PROVIDERS, ASR_COMPAT_PROTOCOLS,
   asrAvailabilityLabel, asrCardIdOfLegacyProvider, asrCardTitle,
@@ -19,13 +18,10 @@ function profile(over: Partial<AsrProfile> = {}): AsrProfile {
 }
 
 describe('compatible HTTP ASR catalog', () => {
-  it('exposes one configurable provider and no streaming path', () => {
+  it('exposes one configurable HTTP provider', () => {
     expect(ASR_PROVIDERS.map(p=>p.id)).toEqual(['openai_compat'])
     expect(Object.keys(ASR_PLATFORMS)).toEqual(['openai_compat'])
     expect(providersOfPlatform('openai_compat')).toEqual(ASR_PROVIDERS)
-    for (const key of ['openai_compat', 'openai_live_transcribe', 'gemini_live_transcribe']) {
-      expect(isStreamingDisplayReady(key)).toBe(false)
-    }
   })
   it('keeps arbitrary model IDs and endpoint URLs', () => {
     const custom=profile({model:'gateway-model',apiUrl:'https://relay.example/v1'})

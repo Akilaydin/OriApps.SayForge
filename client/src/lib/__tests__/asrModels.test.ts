@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAsrExtra,
-  isStreamingDisplayCapable,
-  isStreamingDisplayReady,
   resolveAsrDisplayModel,
 } from '../asrModels'
 
@@ -19,16 +17,6 @@ describe('supported international ASR providers', () => {
       .toBe('gpt-4o-mini-transcribe')
     expect(resolveAsrDisplayModel('groq_whisper', '')).toBe('groq_whisper')
     expect(resolveAsrDisplayModel('groq_whisper', '  ')).toBe('groq_whisper')
-  })
-  it('disables cloud streaming including retired providers', () => {
-    for (const provider of ['openai_live_transcribe', 'gemini_live_transcribe']) {
-      expect(isStreamingDisplayCapable(provider)).toBe(false)
-      expect(isStreamingDisplayReady(provider)).toBe(false)
-    }
-    for (const provider of ['groq_whisper', 'openai_transcribe', 'gemini_transcribe', 'doubao_v2', 'qwen_audio_stream', '']) {
-      expect(isStreamingDisplayCapable(provider)).toBe(false)
-      expect(isStreamingDisplayReady(provider)).toBe(false)
-    }
   })
 })
 

@@ -1,14 +1,11 @@
 
 import { useEffect, useRef, useState } from 'react'
-import { open as shellOpen } from '@tauri-apps/plugin-shell'
-import { ExternalLink, Info } from 'lucide-react'
-import { Tooltip } from '@/components/ui/tooltip'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { themeList } from '@/themes'
 import { switchTheme, getActiveThemeId } from '@/stores/theme'
 import { getSetting, setSetting } from '@/services/store'
-import { refreshOverlaySettings, setStreamingDisplayCache } from '@/services/recorder'
+import { refreshOverlaySettings } from '@/services/recorder'
 import { OVERLAY_WIDTH_PRESETS, type OverlayWidthPreset } from '@/services/recorder/types'
 import { type OverlayWaveTheme } from './utils'
 import { type TranslationKey } from '@/i18n'
@@ -51,31 +48,9 @@ function getTimerColor(theme: OverlayWaveTheme): string {
 
 
 
-function OverlayPreview({ theme, showDuration, barCount, streaming }: { theme: OverlayWaveTheme; showDuration: boolean; barCount: number; streaming: boolean }) {
+function OverlayPreview({ theme, showDuration, barCount }: { theme: OverlayWaveTheme; showDuration: boolean; barCount: number }) {
   const t = useT()
-  const previewText = t('appearance.streamingPreviewText')
   const barRefs = useRef<Array<HTMLDivElement | null>>([])
-  const [typed, setTyped] = useState('')
-
-  useEffect(() => {
-    if (!streaming) {
-      setTyped('')
-      return
-    }
-    let i = 0
-    let timer: ReturnType<typeof setTimeout>
-    const step = () => {
-      if (i <= previewText.length) {
-        setTyped(previewText.slice(0, i))
-        i += 1
-        timer = setTimeout(step, 130)
-      } else {
-        timer = setTimeout(() => { i = 0; step() }, 1600)
-      }
-    }
-    step()
-    return () => clearTimeout(timer)
-  }, [streaming, previewText])
 
   useEffect(() => {
     const heights = new Array(barCount).fill(3)
@@ -110,24 +85,6 @@ function OverlayPreview({ theme, showDuration, barCount, streaming }: { theme: O
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {streaming && (
-        <div className="relative w-[260px] rounded-2xl border border-slate-600 bg-black px-3.5 py-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.35)]">
-          <span className="mb-1 block text-[10px] font-medium tracking-[0.18em] text-slate-400">{t('appearance.streamingPreviewLabel')}</span>
-          <div className="flex max-h-[40px] flex-col justify-end overflow-hidden text-left text-[13px] leading-5 text-slate-100">
-            <div>
-              {typed}
-              <span
-                className="ml-0.5 inline-block h-[1.05em] w-[2px] rounded-full align-middle"
-                style={{ backgroundColor: '#f1f5f9', animation: 'caret-blink 1.1s ease-in-out infinite' }}
-              />
-            </div>
-          </div>
-          <span
-            className="absolute left-1/2 -translate-x-1/2"
-            style={{ bottom: '-7px', width: 0, height: 0, borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #000' }}
-          />
-        </div>
-      )}
       <div className="flex items-center rounded-full border border-slate-600 bg-black px-4 py-2 shadow-[0_6px_16px_rgba(0,0,0,0.35)]">
         <div className="flex items-center gap-[2px]" style={{ height: '20px' }}>
           {Array.from({ length: barCount }, (_, index) => {
@@ -167,7 +124,6 @@ export default function AppearancePage() {
   const [overlayWaveTheme, setOverlayWaveTheme] = useState<OverlayWaveTheme>('black-rainbow')
   const [overlayShowDuration, setOverlayShowDuration] = useState(true)
   const [overlayWidth, setOverlayWidth] = useState<OverlayWidthPreset>('medium')
-  const [streamingDisplay, setStreamingDisplay] = useState(false)
   const [ready, setReady] = useState(false)
   const [animate, setAnimate] = useState(false)
 
@@ -175,15 +131,13 @@ export default function AppearancePage() {
     //
     let cancelled = false
     void (async () => {
-      const [showDuration, streaming, waveTheme, width] = await Promise.all([
+      const [showDuration, waveTheme, width] = await Promise.all([
         getSetting('overlayShowDuration', true).catch(() => true),
-        getSetting('streamingDisplayEnabled', false).catch(() => false),
         getSetting('overlayWaveTheme', 'black-rainbow').catch(() => 'black-rainbow'),
         getSetting('overlayWidth', 'medium').catch(() => 'medium'),
       ])
       if (cancelled) return
       setOverlayShowDuration(Boolean(showDuration))
-      setStreamingDisplay(Boolean(streaming))
       const t = waveTheme as OverlayWaveTheme
       if (t === 'black-white' || t === 'black-blue' || t === 'black-rainbow') setOverlayWaveTheme(t)
       const w = width as OverlayWidthPreset
@@ -218,13 +172,6 @@ export default function AppearancePage() {
     setOverlayWidth(preset)
     await setSetting('overlayWidth', preset)
     await refreshOverlaySettings()
-  }
-
-  const handleToggleStreamingDisplay = () => {
-    const next = !streamingDisplay
-    setStreamingDisplay(next)
-    setStreamingDisplayCache(next)
-    void setSetting('streamingDisplayEnabled', next)
   }
 
   return (
@@ -325,38 +272,8 @@ export default function AppearancePage() {
                   <Switch checked={overlayShowDuration} onChange={handleToggleDuration} noAnimation={!animate} hidden={!ready} />
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="pr-3">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium">{t('appearance.streaming')}</p>
-                      <Tooltip
-                        variant="light"
-                        content={t('appearance.streamingHelp')}
-                      >
-                        <Info className="h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground/50 transition-colors hover:text-muted-foreground" />
-                      </Tooltip>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t('appearance.streamingDesc')}
-                      <span className="text-muted-foreground/70">
-                        {t('appearance.streamingNote')}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void shellOpen('https://console.volcengine.com/speech/new/setting/activate?projectName=default')}
-                        className="inline-flex items-center gap-0.5 text-primary underline underline-offset-2 decoration-primary/50 transition-colors hover:decoration-primary"
-                      >
-                        {t('appearance.streamingActivate')}
-                        <ExternalLink className="h-3 w-3" />
-                      </button>
-                      <span className="text-muted-foreground/70">{t('appearance.streamingNoteEnd')}</span>
-                    </p>
-                  </div>
-                  <Switch checked={streamingDisplay} onChange={handleToggleStreamingDisplay} noAnimation={!animate} hidden={!ready} />
-                </div>
-
                 <div className="mt-4 flex justify-center">
-                  <OverlayPreview theme={overlayWaveTheme} showDuration={overlayShowDuration} barCount={OVERLAY_WIDTH_PRESETS[overlayWidth].barCount} streaming={streamingDisplay} />
+                  <OverlayPreview theme={overlayWaveTheme} showDuration={overlayShowDuration} barCount={OVERLAY_WIDTH_PRESETS[overlayWidth].barCount} />
                 </div>
               </div>
             </div>
