@@ -4,11 +4,11 @@ import {
   isPseudoInputDevice,
   listMicrophones,
   matchRealEndpoint,
-  MIC_DIGITAL_GAIN,
   microphoneCaptureConstraints,
   normalizeSelectedMicId,
   realInputEndpoints,
 } from '../audio'
+import { microphoneGainMultiplier } from '../micGain'
 
 const HEADSET = 'Headset Microphone (Plantronics Blackwire 5220 Series) (047f:c053)'
 
@@ -52,13 +52,19 @@ describe('microphone device list', () => {
     })
   })
 
-  it('amplifies only the captured Web Audio stream', () => {
+  it('amplifies only the captured Web Audio stream at the selected boost level', () => {
     const gainNode = { gain: { value: 1 } }
     const ctx = { createGain: vi.fn(() => gainNode) }
     const source = { connect: vi.fn() }
 
-    expect(createMicrophoneDigitalGain(ctx as unknown as AudioContext, source as unknown as AudioNode)).toBe(gainNode)
-    expect(gainNode.gain.value).toBe(MIC_DIGITAL_GAIN)
+    const context = ctx as unknown as AudioContext
+    const input = source as unknown as AudioNode
+    expect(createMicrophoneDigitalGain(context, input, { enabled: true, db: 12 })).toBe(gainNode)
+    expect(gainNode.gain.value).toBeCloseTo(microphoneGainMultiplier({ enabled: true, db: 12 }))
+    expect(source.connect).toHaveBeenCalledWith(gainNode)
+
+    createMicrophoneDigitalGain(context, input, { enabled: false, db: 12 })
+    expect(gainNode.gain.value).toBe(1)
     expect(source.connect).toHaveBeenCalledWith(gainNode)
   })
 

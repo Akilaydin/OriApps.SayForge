@@ -15,11 +15,15 @@ Cloud ASR settings are captured when recording starts. Changing the active profi
 API key, upload format or prompts during recording applies to the next recording.
 
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
-- Microphone recording applies a fixed +6 dB digital gain only to SayForge's captured
-  audio, without changing the Windows microphone input level. WebRTC auto-gain is disabled.
-  The microphone test uses the same capture settings and gain as dictation.
-  Input warnings are limited to the period
-  before speech is detected, so normal pauses do not prompt the user to speak louder.
+- Microphone boost is optional and adjustable in Settings → Microphone from 0–18 dB in
+  1 dB steps. New installs and existing installs without these settings default to
+  enabled at +6 dB (approximately ×2); disabling boost gives 0 dB while retaining
+  the slider position. Settings persist locally and apply to the next dictation.
+  Only SayForge's captured audio is amplified; the Windows microphone input level
+  stays unchanged and WebRTC automatic gain control is disabled. The microphone
+  test uses the same capture settings and can adjust gain during the test.
+  High gain levels may increase noise or clip loud speech. Input warnings are
+  limited to before speech is detected, so normal pauses do not prompt the user.
 - Cloud speech recognition; cloud audio is uploaded after recording stops; live captions are not supported.
 - Optional AI cleanup with one editable prompt and an OpenAI-compatible endpoint.
 - Hotwords, text replacements, formatting and context-aware editing of selected text.

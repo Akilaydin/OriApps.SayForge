@@ -7,6 +7,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { createMicrophoneDigitalGain, listMicrophones, microphoneCaptureConstraints, normalizeSelectedMicId } from '@/services/audio'
+import {
+  DEFAULT_MIC_GAIN_DB,
+  DEFAULT_MIC_GAIN_ENABLED,
+  microphoneGainMultiplier,
+  normalizeMicGainDb,
+  type MicGainSettings,
+} from '@/services/micGain'
 import { refreshRecorderSettings } from '@/services/recorder'
 import { getSetting, setSetting } from '@/services/store'
 import { getDefault } from '@/services/defaults'
@@ -51,6 +58,10 @@ export default function GeneralSettingsPage() {
   const launchBusy = useRef(false)
   const [mics, setMics] = useState<MediaDeviceInfo[]>([])
   const [selectedMic, setSelectedMic] = useState('')
+  const [micGainEnabled, setMicGainEnabled] = useState(DEFAULT_MIC_GAIN_ENABLED)
+  const [micGainDb, setMicGainDb] = useState(DEFAULT_MIC_GAIN_DB)
+  const [micGainSaving, setMicGainSaving] = useState(false)
+  const [micGainError, setMicGainError] = useState('')
   const [testing, setTesting] = useState(false)
   const [volumeLevel, setVolumeLevel] = useState<MicVolumeLevel>('idle')
   const [micError, setMicError] = useState('')
@@ -72,11 +83,15 @@ export default function GeneralSettingsPage() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const animRef = useRef<number>(0)
+  const testMicGainNodeRef = useRef<GainNode | null>(null)
+  const liveMicGain = useRef<MicGainSettings>({ enabled: DEFAULT_MIC_GAIN_ENABLED, db: DEFAULT_MIC_GAIN_DB })
+  const micGainWriteBusy = useRef(false)
+  const savedMicGainDb = useRef(DEFAULT_MIC_GAIN_DB)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [launch, mute, clip, contextAware, history, readySound, logDays] = await Promise.all([
+      const [launch, mute, clip, contextAware, history, readySound, logDays, gainEnabled, gainDb] = await Promise.all([
         bridge.getAutoLaunch().catch(() => null),
         getSetting('muteSystemAudioWhileRecording', false).catch(() => false),
         getSetting('protectClipboard', true).catch(() => true),
@@ -84,6 +99,8 @@ export default function GeneralSettingsPage() {
         getSetting('historyEnabled', true).catch(() => true),
         getSetting('readySoundEnabled', true).catch(() => true),
         getSetting('logRetentionDays', 30).catch(() => 30),
+        getSetting('micGainEnabled', DEFAULT_MIC_GAIN_ENABLED).catch(() => DEFAULT_MIC_GAIN_ENABLED),
+        getSetting('micGainDb', DEFAULT_MIC_GAIN_DB).catch(() => DEFAULT_MIC_GAIN_DB),
       ])
       if (cancelled) return
       setAutoLaunch(Boolean(launch))
@@ -96,6 +113,11 @@ export default function GeneralSettingsPage() {
       setReadySoundEnabled(Boolean(readySound))
       const ld = Number(logDays)
       if (ld === 7 || ld === 15 || ld === 30 || ld === 90) setLogRetentionDays(ld)
+      setMicGainEnabled(gainEnabled === true)
+      const normalizedGainDb = normalizeMicGainDb(gainDb)
+      setMicGainDb(normalizedGainDb)
+      savedMicGainDb.current = normalizedGainDb
+      liveMicGain.current = { enabled: gainEnabled === true, db: normalizedGainDb }
       setReady(true)
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (!cancelled) setAnimate(true)
@@ -143,6 +165,65 @@ export default function GeneralSettingsPage() {
     } finally { launchBusy.current = false; setAutoLaunchBusy(false) }
   }
   const handleMicChange = async (deviceId: string) => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }
+  const updateTestMicGain = (enabled: boolean, db: number) => {
+    liveMicGain.current = { enabled, db }
+    if (testMicGainNodeRef.current) {
+      testMicGainNodeRef.current.gain.value = microphoneGainMultiplier(liveMicGain.current)
+    }
+  }
+  const toggleMicGain = async () => {
+    if (micGainWriteBusy.current || !ready) return
+    micGainWriteBusy.current = true
+    setMicGainSaving(true)
+    setMicGainError('')
+    const next = !micGainEnabled
+    setMicGainEnabled(next)
+    updateTestMicGain(next, micGainDb)
+    let persisted = false
+    try {
+      await setSetting('micGainEnabled', next)
+      persisted = true
+      await refreshRecorderSettings()
+    } catch {
+      if (!persisted) {
+        setMicGainEnabled(!next)
+        updateTestMicGain(!next, micGainDb)
+      }
+      setMicGainError(t(persisted ? 'mic.gain.applyFailed' : 'mic.gain.saveFailed'))
+    } finally {
+      micGainWriteBusy.current = false
+      setMicGainSaving(false)
+    }
+  }
+  const changeMicGainDb = (value: number) => {
+    const next = normalizeMicGainDb(value)
+    setMicGainDb(next)
+    updateTestMicGain(micGainEnabled, next)
+  }
+  const commitMicGainDb = async (value: number) => {
+    if (micGainWriteBusy.current || !ready) return
+    const next = normalizeMicGainDb(value)
+    if (next === savedMicGainDb.current) return
+    micGainWriteBusy.current = true
+    setMicGainSaving(true)
+    setMicGainError('')
+    let persisted = false
+    try {
+      await setSetting('micGainDb', next)
+      savedMicGainDb.current = next
+      persisted = true
+      await refreshRecorderSettings()
+    } catch {
+      if (!persisted) {
+        setMicGainDb(savedMicGainDb.current)
+        updateTestMicGain(micGainEnabled, savedMicGainDb.current)
+      }
+      setMicGainError(t(persisted ? 'mic.gain.applyFailed' : 'mic.gain.saveFailed'))
+    } finally {
+      micGainWriteBusy.current = false
+      setMicGainSaving(false)
+    }
+  }
   const toggleMuteSystemAudio = async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }
   const toggleProtectClipboard = async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }
   const toggleContextAwareWriting = async () => { const next = !contextAwareWriting; setContextAwareWriting(next); await setSetting('contextAwareWritingEnabled', next); await refreshRecorderSettings() }
@@ -216,7 +297,9 @@ export default function GeneralSettingsPage() {
       )
       const context = new AudioContext(); const source = context.createMediaStreamSource(stream)
       const analyser = context.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.7
-      createMicrophoneDigitalGain(context, source).connect(analyser)
+      const gainNode = createMicrophoneDigitalGain(context, source, liveMicGain.current)
+      testMicGainNodeRef.current = gainNode
+      gainNode.connect(analyser)
       resetWaveform(); drawWaveform(analyser)
 
       const dataArray = new Float32Array(analyser.frequencyBinCount)
@@ -240,9 +323,11 @@ export default function GeneralSettingsPage() {
       setTimeout(() => {
         clearInterval(volumeCheckId)
         cancelAnimationFrame(animRef.current)
+        if (testMicGainNodeRef.current === gainNode) testMicGainNodeRef.current = null
         stream.getTracks().forEach((t) => t.stop()); context.close(); setTesting(false)
       }, 5000)
     } catch (err) {
+      testMicGainNodeRef.current = null
       const msg = err instanceof DOMException && err.name === 'NotFoundError'
         ? t('mic.error.notFound')
         : err instanceof DOMException && err.name === 'NotAllowedError'
@@ -283,6 +368,9 @@ export default function GeneralSettingsPage() {
         </Card>
 
         <MicrophoneSection mics={mics} selectedMic={selectedMic} testing={testing} volumeLevel={volumeLevel}
+          gainEnabled={micGainEnabled} gainDb={micGainDb} gainReady={ready} gainSaving={micGainSaving}
+          gainSaveError={micGainError} onGainEnabledToggle={() => void toggleMicGain()}
+          onGainDbChange={changeMicGainDb} onGainDbCommit={(value) => void commitMicGainDb(value)}
           onCanvasRef={(node) => { canvasRef.current = node }} onMicChange={handleMicChange} onTestMic={testMic} errorMessage={micError} />
 
         <Card>

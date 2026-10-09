@@ -4,6 +4,12 @@
 // deprecated-but-reliable ScriptProcessorNode.
 
 import { addRuntimeEvent } from './debugLog'
+import {
+  DEFAULT_MIC_GAIN_DB,
+  DEFAULT_MIC_GAIN_ENABLED,
+  microphoneGainMultiplier,
+  type MicGainSettings,
+} from './micGain'
 
 let audioCtx: AudioContext | null = null
 let workletNode: AudioWorkletNode | null = null
@@ -20,7 +26,6 @@ let firstRmsLogged = false
 let usingFallback = false
 
 const TARGET_SAMPLE_RATE = 16000
-export const MIC_DIGITAL_GAIN = 2 // +6 dB, applied only to audio within SayForge
 
 export interface MicEndpoint {
   deviceId: string
@@ -55,9 +60,13 @@ export function microphoneCaptureConstraints(
 }
 
 /** Boost this Web Audio stream without modifying Windows device gain. */
-export function createMicrophoneDigitalGain(ctx: AudioContext, source: AudioNode): GainNode {
+export function createMicrophoneDigitalGain(
+  ctx: AudioContext,
+  source: AudioNode,
+  settings: MicGainSettings = { enabled: DEFAULT_MIC_GAIN_ENABLED, db: DEFAULT_MIC_GAIN_DB },
+): GainNode {
   const gainNode = ctx.createGain()
-  gainNode.gain.value = MIC_DIGITAL_GAIN
+  gainNode.gain.value = microphoneGainMultiplier(settings)
   source.connect(gainNode)
   return gainNode
 }
@@ -581,6 +590,7 @@ export async function startCapture(
   onVolume?: (volume: number) => void,
   onFrame?: (pcm: Int16Array) => void,
   noiseSuppression: boolean = true,
+  micGain: MicGainSettings = { enabled: DEFAULT_MIC_GAIN_ENABLED, db: DEFAULT_MIC_GAIN_DB },
 ) {
   // Always tear down previous capture to prevent stale state leaks
   const hadPriorCtx = audioCtx !== null
@@ -659,7 +669,7 @@ export async function startCapture(
     })
 
     sourceNode = audioCtx.createMediaStreamSource(mediaStream)
-    inputGainNode = createMicrophoneDigitalGain(audioCtx, sourceNode)
+    inputGainNode = createMicrophoneDigitalGain(audioCtx, sourceNode, micGain)
 
     // Try AudioWorklet, with ScriptProcessor fallback
     const fallbackCtx = audioCtx

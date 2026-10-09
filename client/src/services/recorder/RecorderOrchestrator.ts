@@ -1,5 +1,6 @@
 import * as bridge from '../bridge'
 import { startCapture, stopCapture } from '../audio'
+import { DEFAULT_MIC_GAIN_DB, DEFAULT_MIC_GAIN_ENABLED, normalizeMicGainDb } from '../micGain'
 import { getProvider, type TranscriptionProvider, type TranscriptionCallbacks, type FinalResult } from '../transcription'
 import { resolveAiPolicy, type AiConfigSnapshot } from '../transcription/aiPolicy'
 import { resolveAsrDisplayModel } from '@/lib/asrModels'
@@ -170,6 +171,8 @@ export class RecorderOrchestrator {
   /** Last successfully opened input route in this app process. Kept in memory on purpose. */
   private lastMicSourceIdentity: string | null = null
   private noiseSuppression = true
+  private micGainEnabled = DEFAULT_MIC_GAIN_ENABLED
+  private micGainDb = DEFAULT_MIC_GAIN_DB
   private cachedMuteSystemAudio = false
   private cachedProtectClipboard = true
   private systemMuteApplied = false
@@ -636,6 +639,8 @@ export class RecorderOrchestrator {
       contextSelectionEditPrompt,
       injectHotwords,
       noiseSuppression,
+      micGainEnabled,
+      micGainDb,
     ] = await Promise.all([
       getSetting('selectedMic', ''),
       getSetting('muteSystemAudioWhileRecording', false),
@@ -647,9 +652,13 @@ export class RecorderOrchestrator {
       getSetting(CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY, CONTEXT_SELECTION_EDIT_PROMPT),
       getSetting('injectHotwordsToPrompt', false),
       getSetting('micNoiseSuppression', true),
+      getSetting('micGainEnabled', DEFAULT_MIC_GAIN_ENABLED),
+      getSetting('micGainDb', DEFAULT_MIC_GAIN_DB),
     ])
 
     this.noiseSuppression = Boolean(noiseSuppression)
+    this.micGainEnabled = micGainEnabled === true
+    this.micGainDb = normalizeMicGainDb(micGainDb)
     this.cachedMicId = String(micId || '')
     this.cachedMuteSystemAudio = Boolean(muteSystemAudio)
     this.cachedProtectClipboard = Boolean(protectClipboard)
@@ -1576,6 +1585,7 @@ export class RecorderOrchestrator {
             this.updateVolumeWarning(classifyMicLevel(rms, framePeak), pcmFrame.length)
           },
           this.noiseSuppression,
+          { enabled: this.micGainEnabled, db: this.micGainDb },
         ),
       ])
       resolveCaptureReady!()
