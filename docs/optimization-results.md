@@ -18,6 +18,16 @@ and `git diff --check` passed. Regression tests cover ignored legacy streaming
 payloads, microphone-hint bounds across warning updates, and waiting-phase reset.
 Live Windows microphone/PTT/insertion checks remain unverified.
 
+## 2. CSP and camera permissions
+
+Added separate release/dev CSPs for bundled assets, PCM worklets, audio/image previews,
+existing Google Fonts and Tauri IPC. Only dev permits inline React refresh and loopback
+HMR. Cloud API calls remain native; no broad remote connect source was added.
+Camera is explicitly denied, microphone remains allowed. All global browser flags are unchanged.
+Rust: 109 tests passed, including actual Tauri config parsing, permission decisions and
+protected browser arguments. `git diff --check` passed. Runtime dev/release WebView,
+microphone and all-window CSP smoke checks remain unverified; no release build was run.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

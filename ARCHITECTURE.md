@@ -66,6 +66,19 @@ Paths below are relative to `client/`.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.
 
+## WebView content policy
+
+Release CSP permits bundled resources and Tauri IPC, data/blob PCM AudioWorklet modules,
+audio previews and diagnostic images. Inline styles are needed by React; Google Fonts
+hosts remain allowed for the existing main-page font. Remote API requests run in Rust,
+so the WebView has no general HTTP/HTTPS API permission. Objects, frames and forms are
+blocked. Dev CSP additionally allows Vite's inline React refresh script and loopback HMR
+on ports 1420/1421; custom `TAURI_DEV_HOST` needs an explicit matching dev CSP override.
+Tauri's automatic bundled-script/style hashes and nonces remain enabled, as described in
+[Tauri CSP guidance](https://v2.tauri.app/security/csp/).
+WebView2 automatically allows microphone and denies camera; other permissions use the
+browser default. Global browser flags, including `--ignore-certificate-errors`, are unchanged.
+
 ## Open questions
 
 - Verified minimum Windows version.

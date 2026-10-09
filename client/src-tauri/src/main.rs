@@ -29,6 +29,21 @@ const WEBVIEW2_BROWSER_ARGS: &str =
      --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
      --disable-background-timer-throttling";
 
+#[cfg(target_os = "windows")]
+fn media_permission_state(
+    kind: webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_KIND,
+) -> Option<webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_STATE> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+        COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DENY,
+    };
+    match kind {
+        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE => Some(COREWEBVIEW2_PERMISSION_STATE_ALLOW),
+        COREWEBVIEW2_PERMISSION_KIND_CAMERA => Some(COREWEBVIEW2_PERMISSION_STATE_DENY),
+        _ => None,
+    }
+}
+
 fn browser_args_fingerprint(value: &str) -> String {
     // Stable FNV-1a fingerprint: enough to compare field reports without logging a
     // potentially sensitive inherited proxy argument verbatim.
@@ -252,11 +267,6 @@ fn main() {
                 #[cfg(target_os = "windows")]
                 {
                     let _ = main_window.with_webview(|webview| {
-                        use webview2_com::Microsoft::Web::WebView2::Win32::{
-                            COREWEBVIEW2_PERMISSION_KIND_CAMERA,
-                            COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
-                            COREWEBVIEW2_PERMISSION_STATE_ALLOW,
-                        };
                         use webview2_com::PermissionRequestedEventHandler;
                         unsafe {
                             let controller = webview.controller();
@@ -266,13 +276,11 @@ fn main() {
                                         if let Some(args) = args {
                                             let mut kind = Default::default();
                                             args.PermissionKind(&mut kind)?;
-                                            if kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
-                                                || kind == COREWEBVIEW2_PERMISSION_KIND_CAMERA
-                                            {
-                                                args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                                            if let Some(state) = media_permission_state(kind) {
+                                                args.SetState(state)?;
                                                 log::info!(
-                                                    "WebView2 permission allowed: kind={:?}",
-                                                    kind
+                                                    "WebView2 media permission: kind={:?} state={:?}",
+                                                    kind, state
                                                 );
                                             }
                                         }
@@ -510,6 +518,42 @@ fn main() {
 #[cfg(test)]
 mod config_tests {
     use serde_json::Value;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn media_permissions_allow_microphone_and_deny_camera() {
+        use webview2_com::Microsoft::Web::WebView2::Win32::*;
+        assert_eq!(super::media_permission_state(COREWEBVIEW2_PERMISSION_KIND_MICROPHONE), Some(COREWEBVIEW2_PERMISSION_STATE_ALLOW));
+        assert_eq!(super::media_permission_state(COREWEBVIEW2_PERMISSION_KIND_CAMERA), Some(COREWEBVIEW2_PERMISSION_STATE_DENY));
+        assert_eq!(super::media_permission_state(COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION), None);
+    }
+
+    #[test]
+    fn csp_allows_required_local_resources_without_remote_api_access() {
+        let source = include_str!("../tauri.conf.json");
+        let _: tauri::Config = serde_json::from_str(source).expect("valid Tauri config");
+        let config: Value = serde_json::from_str(source).unwrap();
+        for name in ["csp", "devCsp"] {
+            let policy = &config["app"]["security"][name];
+            assert!(policy.is_object());
+            assert_eq!(policy["default-src"], "'self'");
+            assert_eq!(policy["object-src"], "'none'");
+            assert_eq!(policy["frame-src"], "'none'");
+            let scripts = policy["script-src"].as_str().unwrap();
+            assert!(scripts.contains("blob:") && scripts.contains("data:"));
+            assert!(!scripts.contains("unsafe-eval"));
+            let connections = policy["connect-src"].as_str().unwrap();
+            assert!(connections.contains("http://ipc.localhost"));
+            assert!(!connections.contains('*') && !connections.contains("https:"));
+        }
+        assert!(!config["app"]["security"]["csp"]["script-src"].as_str().unwrap().contains("unsafe-inline"));
+        assert!(!config["app"]["security"]["csp"]["connect-src"].as_str().unwrap().contains("ws:"));
+        assert!(config["app"]["security"]["devCsp"]["connect-src"].as_str().unwrap().contains("ws://localhost:1420"));
+        assert_eq!(super::WEBVIEW2_BROWSER_ARGS.split_whitespace().collect::<Vec<_>>(), vec![
+            "--ignore-certificate-errors", "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
+        ]);
+    }
 
     #[test]
     fn configured_windows_do_not_override_webview2_browser_args() {
