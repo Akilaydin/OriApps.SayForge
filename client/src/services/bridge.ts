@@ -187,6 +187,10 @@ export function storeSet(key: string, value: unknown) {
   return invoke('store_set', { key, value })
 }
 
+export function storeGetSettings(keys: string[]) {
+  return invoke<Record<string, unknown>>('store_get_settings', { keys })
+}
+
 export function storeDelete(key: string) {
   return invoke('store_delete', { key })
 }

@@ -67,6 +67,8 @@ mod compatibility_tests {
             assert_eq!(storage.history_list(Some("Synthetic"), true, None, None), vec![history.clone()]);
             assert_eq!(storage.get("workMode", None), json!("local"));
             assert_eq!(storage.get("cloudAsr.apiUrl", None), json!("https://synthetic.invalid/v1"));
+            assert_eq!(storage.get_settings(&["cloudAsr.apiUrl".to_string(), "missing".to_string()]).unwrap(),
+                json!({"cloudAsr.apiUrl":"https://synthetic.invalid/v1", "missing":null}));
             assert_eq!(storage.get("audioRetentionDays", None), json!(7));
             assert_eq!(storage.get("promptPresets", None)[0]["systemPrompt"], json!("Synthetic prompt"));
             storage.history_add(&json!({ "id": "new", "timestamp": 2, "asrText": "Synthetic new", "charCount": 13, "durationSec": 1 })).unwrap();
@@ -204,6 +206,25 @@ impl Storage {
                 fallback.cloned().unwrap_or(Value::Null)
             }
         }
+    }
+
+    pub fn get_settings(&self, keys: &[String]) -> SqlResult<Value> {
+        let db = self.db.lock().unwrap();
+        let transaction = db.unchecked_transaction()?;
+        let mut values = serde_json::Map::new();
+        {
+            let mut statement = transaction.prepare("SELECT value_json FROM app_settings WHERE key = ?1")?;
+            for key in keys {
+                let mut rows = statement.query(params![key])?;
+                let value = match rows.next()? {
+                    Some(row) => serde_json::from_str::<Value>(&row.get::<_, String>(0)?).unwrap_or(Value::Null),
+                    None => Value::Null,
+                };
+                values.insert(key.clone(), value);
+            }
+        }
+        transaction.commit()?;
+        Ok(Value::Object(values))
     }
 
     pub fn set(&self, key: &str, value: &Value) -> SqlResult<()> {

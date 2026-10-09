@@ -65,6 +65,23 @@ No saved endpoint/profiles were configured locally; Russian ASR quality remains 
 Validation: 379 frontend and 116 Rust tests passed (benchmark ignored by default and
 passed separately); ffprobe verified MP3 decoding, TypeScript/i18n/diff checks passed.
 
+## 5. ASR configuration before stop
+
+One asynchronous settings read starts with each recording. SQLite reads a consistent
+transaction; typed catalog parsing builds all fields from the selected profile together.
+Flat legacy settings remain a fallback. No startup await, extra network call, schema or
+stored setting is added. Current-run settings failures are sanitized; stale settings/API
+completions cannot submit or insert text. Hotwords/editor context remain start snapshots.
+
+Controlled Vitest comparison against task-4 code used synthetic PCM, nine sequential
+settings reads before vs one prepared snapshot after, a requested 2 ms mock delay per
+read, and an immediate synthetic cloud reply. Windows timer scheduling amplified the
+mock delay. Measured stop-to-completion: 8 s audio 155.066 → 32.410 ms; 30 s audio
+165.663 → 69.353 ms. These include PCM merging/Base64 and callback overhead; they are
+not measured WebView/SQLite or live stop-to-HTTP timings. Those remain unverified.
+Validation: 384 permanent frontend tests passed across full/focused checks, plus the temporary benchmark;
+116 Rust tests passed; TypeScript and `git diff --check` passed.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

@@ -1,76 +1,58 @@
-import { buildAsrExtra } from '@/lib/asrModels'
 import { invoke } from '@tauri-apps/api/core'
-import { getSetting } from '../store'
+import { loadAsrConfig, type AsrProviderConfig } from './asrConfig'
 import { restoreHotwordSpacing } from '../textPostProcess'
 import { addRuntimeEvent } from '../debugLog'
 import { notifyAsrCapabilityMaybeChanged } from '../bridge'
 import { BufferedProvider } from './BufferedProvider'
 import { polishWithClientAi } from './clientAiPolish'
 import { policyFromSnapshot, resolveAndLogAiOutcome, type AiOutcomeContext } from './aiPolicy'
-import type { TranscriptionCallbacks, StartOptions, WorkMode } from './types'
-
-interface AsrProviderConfig {
-  provider: string
-  api_key: string
-  app_id: string
-  extra?: Record<string, unknown>
-}
+import type { TranscriptionCallbacks, StartOptions, StopOptions, WorkMode } from './types'
 
 interface AsrResult { text: string; elapsed_ms: number }
 
 export class CloudAPIProvider extends BufferedProvider {
   readonly mode: WorkMode = 'cloud_api'
+  private config: Promise<{ value: AsrProviderConfig } | { error: Error }> | undefined
 
   protected async onConnect(callbacks: TranscriptionCallbacks): Promise<void> {
     callbacks.onReady?.({ asr: true, llm: true })
   }
 
   start(opts: StartOptions): boolean {
-    return super.start({
+    const started = super.start({
       ...opts,
       hotwords: opts.hotwords ? [...opts.hotwords] : undefined,
       textContext: opts.textContext ? { ...opts.textContext } : undefined,
     })
+    if (started) this.config = loadAsrConfig().then(value => ({ value }), error => ({ error }))
+    return started
+  }
+
+  cancel(): void {
+    super.cancel()
+    this.config = undefined
+  }
+
+  stop(opts?: StopOptions): boolean {
+    const pending = this.config
+    const stopped = super.stop(opts)
+    if (stopped && this.config === pending) this.config = undefined
+    return stopped
   }
 
   protected async processAudio(audioB64: string, durationSec: number, runId: number): Promise<void> {
     const startOpts = this.startOpts
     if (!startOpts || !this.isRunCurrent(runId)) return
-    const asrProvider = await getSetting('cloudAsr.provider', 'openai_compat') as string
+    const pending = this.config
+    if (!pending) return
+    const snapshot = await pending
     if (!this.isRunCurrent(runId)) return
-    const asrApiKey = await getSetting('cloudAsr.apiKey', '') as string
-    const asrAppId = await getSetting('cloudAsr.appId', '') as string
-    const asrModel = await getSetting('cloudAsr.model', '') as string
-    if (!this.isRunCurrent(runId)) return
-
-    const asrBaseUrl = await getSetting('cloudAsr.baseUrl', '') as string
-    const asrProtocol = await getSetting('cloudAsr.protocol', 'auto') as string
-    const asrSystemInstruction = asrProvider === 'openai_compat'
-      ? await getSetting('cloudAsr.systemInstruction', '') as string : ''
-    const asrUserPrompt = asrProvider === 'openai_compat'
-      ? await getSetting('cloudAsr.userPrompt', '') as string : ''
-    const asrAudioEncoding = asrProvider === 'openai_compat'
-      ? await getSetting('cloudAsr.audioEncoding', 'wav') as string : 'wav'
-    if (!this.isRunCurrent(runId)) return
-
-    const extra = buildAsrExtra(asrProvider, {
-      model: asrModel,
-      instructions: asrSystemInstruction,
-      userPrompt: asrUserPrompt,
-      audioEncoding: asrAudioEncoding,
-      baseUrl: asrBaseUrl,
-      protocol: asrProtocol,
-    })
-    const asrConfig: AsrProviderConfig = {
-      provider: asrProvider,
-      api_key: asrApiKey,
-      app_id: asrAppId,
-      ...(extra && { extra }),
-    }
+    this.config = undefined
+    if ('error' in snapshot) throw snapshot.error
+    const asrConfig = snapshot.value
 
     addRuntimeEvent('info', 'cloud_api', 'ASR started', {
-      provider: asrProvider,
-      model: extra?.model ?? '(provider default)',
+      provider: asrConfig.provider,
       durationSec,
     })
     const asrResult = await invoke<AsrResult>('cloud_transcribe', {

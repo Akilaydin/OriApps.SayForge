@@ -8,6 +8,11 @@ pub fn store_get(key: String, storage: State<Storage>) -> Result<Value, String> 
 }
 
 #[tauri::command]
+pub fn store_get_settings(keys: Vec<String>, storage: State<Storage>) -> Result<Value, String> {
+    storage.get_settings(&keys).map_err(|_| "Could not read settings".to_string())
+}
+
+#[tauri::command]
 pub fn store_set(key: String, value: Value, storage: State<Storage>) -> Result<(), String> {
     storage.set(&key, &value).map_err(|e| e.to_string())
 }

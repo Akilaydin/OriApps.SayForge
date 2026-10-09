@@ -425,6 +425,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Store
             commands::storage::store_get,
+            commands::storage::store_get_settings,
             commands::storage::store_set,
             commands::storage::store_delete,
             // History

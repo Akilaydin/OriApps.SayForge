@@ -92,6 +92,13 @@ browser default. Global browser flags, including `--ignore-certificate-errors`, 
 
 ## Cloud audio encoding
 
+Each cloud recording starts one asynchronous settings snapshot without delaying audio
+capture. `store_get_settings` reads requested settings in one SQLite read transaction.
+The complete selected profile is authoritative; flat settings are a legacy fallback only.
+Mid-recording profile/key edits affect the next recording. Pending config belongs to its
+run, is released at stop/cancel, and cannot submit or deliver results for a stale run.
+Settings errors omit private IPC detail; existing schema/settings keys remain unchanged.
+
 Multipart and standard chat reuse the existing mono 64 kbps LAME encoder on a blocking
 worker. Multipart sends `audio.mp3`/`audio/mpeg` or `audio.wav`/`audio/wav`.
 Missing legacy codec settings and legacy chat remain WAV. New profile defaults alone
