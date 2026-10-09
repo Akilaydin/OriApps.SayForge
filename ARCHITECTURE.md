@@ -39,11 +39,19 @@ Paths below are relative to `client/`.
 ### React / TypeScript (`src/`)
 
 - `services/recorder/RecorderOrchestrator.ts` — state, PTT/hands-free events, session IDs, cancellation, timeouts and final results.
-- `services/audio.ts` — `getUserMedia`, AudioWorklet with fallback, resampling and PCM frames.
+- `services/audio.ts` — `getUserMedia`, per-stream Web Audio `GainNode` (+6 dB),
+  AudioWorklet with fallback, resampling and PCM frames. `autoGainControl: false`
+  prevents WebRTC from adjusting the shared Windows microphone input level.
+  Both recording and microphone test use the same constraints and digital gain,
+  including the persisted noise-suppression preference. Device enumeration probes
+  also explicitly disable WebRTC AGC.
 - `services/transcription/` — provider interface, mode selection, buffered cloud delivery and AI execution policy.
 - `services/aiPrompt.ts` — a single editable AI prompt and legacy custom-prompt migration. `services/contextAware.ts` preserves bounded editor context.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
+- Low/no-signal warnings use PCM RMS before speech detection. Once enough speech is
+  detected, subsequent quiet gaps do not raise volume warnings; OS-mute confirmation
+  remains independent.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
 - `stores/language.ts` — fixed English UI locale without stored language preferences; `stores/providerDefaults.ts` — provider startup defaults independent of UI language.
 - AI cleanup adopts custom presets when migrating to the single-prompt setting, without special treatment of retired localized defaults. Speech recognition languages remain provider-controlled.

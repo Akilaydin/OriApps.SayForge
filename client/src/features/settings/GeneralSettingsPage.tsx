@@ -6,7 +6,7 @@ import { Info, Pencil, RotateCcw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
-import { listMicrophones, normalizeSelectedMicId } from '@/services/audio'
+import { createMicrophoneDigitalGain, listMicrophones, microphoneCaptureConstraints, normalizeSelectedMicId } from '@/services/audio'
 import { refreshRecorderSettings } from '@/services/recorder'
 import { getSetting, setSetting } from '@/services/store'
 import { getDefault } from '@/services/defaults'
@@ -21,6 +21,7 @@ import { ComboShortcutInput, PTTShortcutInput } from './ShortcutInputs'
 import { pttShortcutConflictsWithAccelerator } from '@/lib/shortcutKeys'
 import { t, type TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { MIC_LOW_RMS_THRESHOLD } from '@/services/recorder/helpers'
 import {
   CONTEXT_SELECTION_EDIT_PROMPT,
   CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY,
@@ -209,10 +210,14 @@ export default function GeneralSettingsPage() {
   const testMic = async () => {
     if (testing) return; setTesting(true); setVolumeLevel('idle'); setMicError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: selectedMic ? { deviceId: { exact: selectedMic } } : true })
+      const noiseSuppression = await getSetting('micNoiseSuppression', true).catch(() => true)
+      const stream = await navigator.mediaDevices.getUserMedia(
+        microphoneCaptureConstraints(selectedMic || undefined, Boolean(noiseSuppression)),
+      )
       const context = new AudioContext(); const source = context.createMediaStreamSource(stream)
       const analyser = context.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.7
-      source.connect(analyser); resetWaveform(); drawWaveform(analyser)
+      createMicrophoneDigitalGain(context, source).connect(analyser)
+      resetWaveform(); drawWaveform(analyser)
 
       const dataArray = new Float32Array(analyser.frequencyBinCount)
       let peakRms = 0
@@ -228,7 +233,7 @@ export default function GeneralSettingsPage() {
         const rms = Math.sqrt(sum / dataArray.length)
         if (rms > peakRms) peakRms = rms
         if (!sawNonZeroSignal) setVolumeLevel('silent')
-        else if (peakRms < 0.02) setVolumeLevel('low')
+        else if (peakRms < MIC_LOW_RMS_THRESHOLD) setVolumeLevel('low')
         else setVolumeLevel('normal')
       }, 500)
 

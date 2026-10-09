@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMicrophoneDigitalGain,
   isPseudoInputDevice,
   listMicrophones,
   matchRealEndpoint,
+  MIC_DIGITAL_GAIN,
+  microphoneCaptureConstraints,
   normalizeSelectedMicId,
   realInputEndpoints,
 } from '../audio'
@@ -29,6 +32,36 @@ afterEach(() => {
 })
 
 describe('microphone device list', () => {
+  it('disables WebRTC gain changes for default and selected microphones', () => {
+    expect(microphoneCaptureConstraints(undefined)).toEqual({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: true,
+        autoGainControl: false,
+      },
+    })
+    expect(microphoneCaptureConstraints('headset', false)).toEqual({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        deviceId: { exact: 'headset' },
+      },
+    })
+  })
+
+  it('amplifies only the captured Web Audio stream', () => {
+    const gainNode = { gain: { value: 1 } }
+    const ctx = { createGain: vi.fn(() => gainNode) }
+    const source = { connect: vi.fn() }
+
+    expect(createMicrophoneDigitalGain(ctx as unknown as AudioContext, source as unknown as AudioNode)).toBe(gainNode)
+    expect(gainNode.gain.value).toBe(MIC_DIGITAL_GAIN)
+    expect(source.connect).toHaveBeenCalledWith(gainNode)
+  })
+
   it('recognizes the two pseudo devices Chromium adds, and nothing else', () => {
     expect(isPseudoInputDevice('default')).toBe(true)
     expect(isPseudoInputDevice('communications')).toBe(true)
@@ -85,5 +118,6 @@ describe('microphone device list', () => {
     await listMicrophones()
 
     expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(getUserMedia).toHaveBeenCalledWith(microphoneCaptureConstraints(undefined))
   })
 })

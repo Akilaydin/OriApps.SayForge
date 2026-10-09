@@ -1658,7 +1658,7 @@ export class RecorderOrchestrator {
     const REWARN_MS = 5000
     const CLEAR_VOICED = 8000
     const VOICED_GAP_TOLERANCE = 4800
-    const firstWarn = this.hasDetectedVoiceThisSession ? 80000 : 32000 // 5s / 2s @16kHz
+    const firstWarn = 32000 // 2s @16kHz, only before speech has been detected
 
     if (this.pendingOsMicMuted) {
       const decision = judgeOsMicMute(this.pendingOsMicMutedSamples, level, sampleCount)
@@ -1702,6 +1702,7 @@ export class RecorderOrchestrator {
 
     if (level === 'voiced') {
       this.quietRunSawSignal = true
+      this.consecutiveSilentSamples = 0
       this.consecutiveVoicedSamples += sampleCount
       this.consecutiveNonVoicedSamples = 0
       if (this.consecutiveVoicedSamples >= CLEAR_VOICED) {
@@ -1715,6 +1716,9 @@ export class RecorderOrchestrator {
       }
       return
     }
+
+    // Once speech has been heard, quiet intervals are ordinary pauses, not mic failures.
+    if (this.hasDetectedVoiceThisSession) return
 
     this.consecutiveSilentSamples += sampleCount
     this.consecutiveNonVoicedSamples += sampleCount
