@@ -65,8 +65,9 @@ Choose global shortcuts that do not conflict with other applications.
 Client stack: **Rust + Tauri 2 + React + TypeScript**. No separate SayForge
 backend is required.
 
-Requirements: Node.js 18+, Rust toolchain, Visual Studio C++ Build Tools,
-CMake for the retained MP3 encoder. No Vulkan SDK or model download is required.
+Requirements: Node.js 22.13+ (validated with 22.22), Rust toolchain and
+Visual Studio C++ Build Tools, including the Windows SDK. The retained LAME encoder
+compiles with the C/C++ toolchain; CMake and Vulkan SDK are not required.
 The release packages contain the app and bundled synthetic Cloud API test audio;
 no local ASR DLLs or model downloads are packaged. Tray WebView and overlay prewarm remain enabled.
 
