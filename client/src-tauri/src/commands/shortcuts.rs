@@ -71,31 +71,6 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
             log::info!("Registered AI cleanup shortcut: {}", ai_toggle_for_log);
         }
     }
-
-    let preset_map = storage.get("presetShortcuts", None);
-    if let Some(obj) = preset_map.as_object() {
-        for (preset_id, val) in obj {
-            let accel = match val.as_str() {
-                Some(s) if !s.is_empty() && s.contains('+') => s.to_string(),
-                _ => continue,
-            };
-            let pid = preset_id.clone();
-            let accel_for_log = accel.clone();
-            if let Err(e) = gs.on_shortcut(accel.as_str(), move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    let _ = app.emit(
-                        "switch-preset",
-                        serde_json::json!({ "presetId": pid.clone() }),
-                    );
-                }
-            }) {
-                log::warn!(
-                    "Failed to register preset shortcut '{}' for '{}': {}",
-                    accel_for_log, preset_id, e
-                );
-            }
-        }
-    }
 }
 
 ///

@@ -13,24 +13,10 @@ export interface AiProvider {
 
 export const AI_PROVIDERS: AiProvider[] = [
   {
-    value: 'groq',
-    label: 'Groq',
-    defaultUrl: 'https://api.groq.com/openai/v1',
-    defaultModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile'],
-    consoleUrl: 'https://console.groq.com/keys',
-  },
-  {
     value: 'openai_compat',
     get label() { return t('aiProvider.openaiCompat') },
     defaultUrl: 'https://api.openai.com',
     defaultModels: ['gpt-4o-mini'],
-  },
-  {
-    value: 'ollama',
-    get label() { return t('aiProvider.ollama') },
-    defaultUrl: 'http://127.0.0.1:11434',
-    defaultModels: ['llama3.2:3b'],
-    keyless: true,
   },
 ]
 
@@ -139,7 +125,7 @@ export function parseProfiles(raw: unknown): AiProfile[] {
 
     out.push({
       id,
-      provider: text(source.provider) || AI_PROVIDERS[0].value,
+      provider: text(source.provider) === 'groq' ? 'openai_compat' : text(source.provider) || AI_PROVIDERS[0].value,
       apiUrl: text(source.apiUrl),
       apiKey: text(source.apiKey),
       model: text(source.model),
@@ -166,7 +152,7 @@ export function parseProfilesDetailed(raw: unknown): {
       continue
     }
     const provider = (item as Record<string, unknown>).provider
-    if (typeof provider === 'string' && provider && !AI_PROVIDERS.some((p) => p.value === provider)) {
+    if (typeof provider === 'string' && provider && provider !== 'groq' && !AI_PROVIDERS.some((p) => p.value === provider)) {
       orphans.push(item)
     } else {
       supported.push(item)
@@ -300,9 +286,10 @@ export function migrateLegacyProfiles(
   const profiles: AiProfile[] = []
 
   for (const entry of legacy) {
-    const meta = AI_PROVIDERS.find((p) => p.value === entry.provider)
+    const provider = entry.provider === 'groq' ? 'openai_compat' : entry.provider
+    const meta = AI_PROVIDERS.find((p) => p.value === provider)
     if (!meta) continue
-    const url = entry.apiUrl.trim() || meta.defaultUrl
+    const url = entry.apiUrl.trim() || (entry.provider === 'groq' ? 'https://api.groq.com/openai/v1' : meta.defaultUrl)
     if (!url) continue
     if (!meta.keyless && !entry.apiKey.trim()) continue
 
@@ -315,7 +302,7 @@ export function migrateLegacyProfiles(
       const latencyMs = entry.latencies[model]
       profiles.push({
         id: `legacy-${entry.provider}-${model}`,
-        provider: entry.provider,
+        provider,
         apiUrl: url,
         apiKey: entry.apiKey,
         model,
@@ -324,7 +311,7 @@ export function migrateLegacyProfiles(
     }
   }
 
-  const matched = profiles.find((p) => p.provider === activeProvider && p.model === activeModel)
+  const matched = profiles.find((p) => p.provider === (activeProvider === 'groq' ? 'openai_compat' : activeProvider) && p.model === activeModel)
     ?? profiles.find((p) => p.provider === activeProvider)
     ?? profiles[0]
 

@@ -6,16 +6,11 @@ import { isStreamingDisplayReady, resolveAsrDisplayModel } from '@/lib/asrModels
 import {
   addHistory,
   deleteHistory,
-  getActivePresetId,
-  getPromptPresets,
   getSetting,
-  setActivePresetId,
   updateHistoryRecord,
   type HistoryFailReasonCode,
   type HistoryRecord,
-  type PromptPreset,
 } from '../store'
-import { setActivePresetKnown } from '../../stores/activePreset'
 import { addRuntimeEvent } from '../debugLog'
 import { saveRecordingAudio } from '../audioFileService'
 import {
@@ -43,19 +38,11 @@ import type { ActiveAppContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'
 import { OverlayService, type FailureRecovery } from './OverlayService'
 import { PasteService, type ProbeResult } from './PasteService'
-import { createDefaultUserStats } from '../personalization/defaults'
-import { resolvePromptRouting } from '../personalization/promptRouter'
-import {
-  getAppPromptRules,
-  getUserStats,
-  recordSessionStats,
-} from '../personalization/store'
-import type { AppPromptRule, PromptResolution, UserStats } from '../personalization/types'
+import { getAiPrompt, buildHotwordInjectionPart } from '../aiPrompt'
 import type { PTTEventPayload, RecorderState } from './types'
 import { MAX_RECORDING_SEC, RECORDING_COUNTDOWN_SEC } from './types'
 import {
   summarizeAppContext as _summarizeAppContext,
-  buildStatsAppId as _buildStatsAppId,
   isModifierPTTSetting as _isModifierPTTSetting,
   computeProcessingTimeoutMs as _computeProcessingTimeoutMs,
   classifyMicLevel,
@@ -111,6 +98,8 @@ function classifyHistoryProviderFailure(message: string): HistoryFailReasonCode 
       return 'provider_failed'
   }
 }
+
+interface PromptResolution { systemPrompt: string }
 
 interface TimedOutProcessingContext {
   runId: number
@@ -196,8 +185,7 @@ export class RecorderOrchestrator {
   private cachedProtectClipboard = true
   private systemMuteApplied = false
   private systemMuteTimerId: ReturnType<typeof setTimeout> | null = null
-  private cachedPresets: PromptPreset[] = []
-  private cachedActivePresetId = 'intent'
+  private cachedSystemPrompt = ''
   private cachedAiEnabled = true
   private cachedAiMinDurationSec = 0
   private currentAiConfig: AiConfigSnapshot | undefined
@@ -208,8 +196,6 @@ export class RecorderOrchestrator {
   private cachedContextSelectionEditPrompt = CONTEXT_SELECTION_EDIT_PROMPT
   private cachedClientRuntimeInfo: ClientRuntimeInfo | null = null
   private clientRuntimeInfoLoaded = false
-  private cachedAppPromptRules: AppPromptRule[] = []
-  private cachedUserStats: UserStats = createDefaultUserStats()
   private cachedHotwords: string[] = []
   private cachedInjectHotwords = false
   private cachedLanguage: string = ''
@@ -576,30 +562,6 @@ export class RecorderOrchestrator {
     return t('recorder.serviceNotReady')
   }
 
-  private async handlePresetSwitch(presetId: string) {
-    try {
-      let target = this.cachedPresets.find((p) => p.id === presetId)
-      if (!target) {
-        const presets = await getPromptPresets()
-        target = presets.find((p) => p.id === presetId)
-        this.cachedPresets = presets
-      }
-      if (!target) {
-        addRuntimeEvent('warn', 'recorder', 'Failed to switch cleanup preset: preset not found', { presetId })
-        return
-      }
-      this.cachedActivePresetId = presetId
-      setActivePresetKnown(presetId, target.name)
-      if (this.state === 'idle') {
-        this.overlayService.showPresetSwitched(target.name)
-      }
-      addRuntimeEvent('info', 'recorder', 'Cleanup preset switched by shortcut', { presetId, name: target.name })
-      void setActivePresetId(presetId)
-    } catch (error) {
-      addRuntimeEvent('error', 'recorder', 'Cleanup preset switch failed', { error: String(error) })
-    }
-  }
-
   setPttSuppressed(suppressed: boolean) {
     this.pttSuppressed = suppressed
   }
@@ -612,12 +574,6 @@ export class RecorderOrchestrator {
     await this.refreshRuntimeSettings()
     void this.ensureClientRuntimeInfo()
     this.ensureConnection()
-
-    void bridge.listen('switch-preset', (event: unknown) => {
-      const payload = (event as { payload?: { presetId?: string } })?.payload
-      const presetId = payload?.presetId
-      if (presetId) void this.handlePresetSwitch(presetId)
-    })
 
     bridge.onEscapeAction(({ mode, token }) => {
       if (mode === 'cancel_recording') {
@@ -775,14 +731,6 @@ export class RecorderOrchestrator {
     if (this.state === 'idle') this.overlayService.showAiCleanupToggled(enabled)
   }
 
-  setActivePresetCache(id: string) {
-    this.cachedActivePresetId = id
-  }
-
-  setPromptPresetsCache(presets: PromptPreset[]) {
-    this.cachedPresets = presets.map((preset) => ({ ...preset }))
-  }
-
   setHotwordsCache(words: string[]) {
     this.cachedHotwords = Array.from(new Set(words.map((word) => word.trim()).filter(Boolean)))
   }
@@ -811,14 +759,11 @@ export class RecorderOrchestrator {
       micId,
       muteSystemAudio,
       protectClipboard,
-      presets,
-      activePresetId,
+      systemPrompt,
       aiEnabled,
       aiMinDurationSec,
       contextAwareWriting,
       contextSelectionEditPrompt,
-      appPromptRules,
-      userStats,
       streamingDisplay,
       injectHotwords,
       noiseSuppression,
@@ -826,14 +771,11 @@ export class RecorderOrchestrator {
       getSetting('selectedMic', ''),
       getSetting('muteSystemAudioWhileRecording', false),
       getSetting('protectClipboard', true),
-      getPromptPresets(),
-      getActivePresetId(),
+      getAiPrompt(),
       getSetting('aiEnabled', false),
       getSetting('aiMinDurationSec', 0),
       getSetting('contextAwareWritingEnabled', false),
       getSetting(CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY, CONTEXT_SELECTION_EDIT_PROMPT),
-      getAppPromptRules(),
-      getUserStats(),
       getSetting('streamingDisplayEnabled', false),
       getSetting('injectHotwordsToPrompt', false),
       getSetting('micNoiseSuppression', true),
@@ -844,14 +786,11 @@ export class RecorderOrchestrator {
     this.cachedMuteSystemAudio = Boolean(muteSystemAudio)
     this.cachedProtectClipboard = Boolean(protectClipboard)
     this.cachedInjectHotwords = Boolean(injectHotwords)
-    this.cachedPresets = presets
-    this.cachedActivePresetId = activePresetId
+    this.cachedSystemPrompt = systemPrompt
     this.cachedAiEnabled = Boolean(aiEnabled)
     this.cachedAiMinDurationSec = Math.max(0, Math.min(MAX_RECORDING_SEC, Number(aiMinDurationSec) || 0))
     this.cachedContextAwareWriting = Boolean(contextAwareWriting)
     this.cachedContextSelectionEditPrompt = normalizeContextSelectionEditPrompt(contextSelectionEditPrompt)
-    this.cachedAppPromptRules = appPromptRules
-    this.cachedUserStats = userStats
     this.cachedStreamingDisplay = Boolean(streamingDisplay)
     await this.overlayService.refreshSettings()
 
@@ -1644,25 +1583,12 @@ export class RecorderOrchestrator {
     }
     this.currentActiveAppContext = activeAppContext
 
-    this.currentPromptResolution = resolvePromptRouting({
-      appContext: activeAppContext,
-      presets: this.cachedPresets,
-      activePresetId: this.cachedActivePresetId,
-      appRules: this.cachedAppPromptRules,
-      userStats: this.cachedUserStats,
-      hotwords: this.cachedHotwords,
-      injectHotwords: this.cachedInjectHotwords,
-    })
+    const hotwordPart = this.cachedInjectHotwords ? buildHotwordInjectionPart(this.cachedHotwords) : null
+    this.currentPromptResolution = { systemPrompt: [this.cachedSystemPrompt, hotwordPart].filter(Boolean).join('\n\n') }
     if (textContext) {
-      this.currentPromptResolution = {
-        ...this.currentPromptResolution,
-        systemPrompt: withContextAwareInstructions(
-          this.currentPromptResolution.systemPrompt,
-          textContext,
-          this.cachedContextSelectionEditPrompt,
-        ),
-        summary: `${this.currentPromptResolution.summary} | Text context: ${textContext.selectedText ? 'selection' : 'caret'}`,
-      }
+      this.currentPromptResolution.systemPrompt = withContextAwareInstructions(
+        this.currentPromptResolution.systemPrompt, textContext, this.cachedContextSelectionEditPrompt,
+      )
       addRuntimeEvent('info', 'recorder', 'Text context captured', {
         source: textContext.source,
         beforeLen: textContext.textBefore.length,
@@ -1672,27 +1598,8 @@ export class RecorderOrchestrator {
     }
 
     addRuntimeEvent('info', 'recorder', 'Recording started', {
-      micId: this.cachedMicId || 'default',
-      preset: this.currentPromptResolution.preset.id || this.currentPromptResolution.preset.name || 'none',
-      targetCapture,
+      micId: this.cachedMicId || 'default', targetCapture,
       appContext: this.summarizeAppContext(activeAppContext || null),
-      promptRouting: {
-        appId: this.currentPromptResolution.appId,
-        appName: this.currentPromptResolution.appName,
-        presetId: this.currentPromptResolution.preset.id,
-        presetName: this.currentPromptResolution.preset.name,
-        promptRuleId: this.currentPromptResolution.matchedRule?.id,
-        summary: this.currentPromptResolution.summary,
-      },
-    })
-    addRuntimeEvent('info', 'personalization', 'Prompt routing resolved', {
-      appContext: this.summarizeAppContext(activeAppContext || null),
-      appId: this.currentPromptResolution.appId,
-      appName: this.currentPromptResolution.appName,
-      presetId: this.currentPromptResolution.preset.id,
-      presetName: this.currentPromptResolution.preset.name,
-      promptRuleId: this.currentPromptResolution.matchedRule?.id,
-      summary: this.currentPromptResolution.summary,
     })
 
     this.finalHandledInCurrentRun = false
@@ -2347,26 +2254,15 @@ export class RecorderOrchestrator {
     return _summarizeAppContext(context)
   }
 
-  private buildStatsAppId(appContext: ActiveAppContext | null, promptResolution: PromptResolution | null) {
-    return _buildStatsAppId(appContext, promptResolution?.appId)
-  }
-
   private buildHistoryMetadata(
-    promptResolution?: PromptResolution | null,
+    _promptResolution?: PromptResolution | null,
     appContext?: ActiveAppContext | null,
   ) {
-    const resolved = promptResolution || this.currentPromptResolution || undefined
     const ctx = appContext === undefined ? this.currentActiveAppContext : appContext
     return {
-      appId: resolved?.appId,
-      appName: resolved?.appName,
       windowTitle: ctx?.windowTitle || undefined,
       processName: ctx?.processName || undefined,
       windowClass: ctx?.windowClass || undefined,
-      promptPresetId: resolved?.preset.id,
-      promptPresetName: resolved?.preset.name,
-      promptRuleId: resolved?.matchedRule?.id,
-      promptSummary: resolved?.summary,
       workMode: this.provider.mode,
     }
   }
@@ -2575,8 +2471,6 @@ export class RecorderOrchestrator {
       return
     }
 
-    void this.updatePersonalizationFromFinal(runId, textToPaste, promptResolution, appContext)
-
     this.textInsertionInFlight = true
     this.textBeingInserted = textToPaste
     this.armInsertionTimeout(runId, textToPaste)
@@ -2594,36 +2488,6 @@ export class RecorderOrchestrator {
       this.clearInsertionTimeout()
       this.textInsertionInFlight = false
       this.textBeingInserted = ''
-    }
-  }
-
-  private async updatePersonalizationFromFinal(
-    runId: number,
-    finalText: string,
-    promptResolution: PromptResolution | null,
-    appContext: ActiveAppContext | null,
-  ) {
-    if (!finalText.trim() || !this.isRunCurrent(runId)) return
-
-    try {
-      const wordCount = finalText.length
-      const appId = this.buildStatsAppId(appContext, promptResolution)
-
-      const nextStats = await recordSessionStats(appId, wordCount)
-      if (!this.isRunCurrent(runId)) return
-      this.cachedUserStats = nextStats
-      addRuntimeEvent('info', 'personalization', 'session stats recorded', {
-        appId,
-        appName: promptResolution?.appName,
-        wordCount,
-        totalWords: this.cachedUserStats.totalWords,
-        totalSessions: this.cachedUserStats.totalSessions,
-      })
-    } catch (error) {
-      if (!this.isRunCurrent(runId)) return
-      addRuntimeEvent('warn', 'personalization', 'failed to record session stats', {
-        error: String(error),
-      })
     }
   }
 }

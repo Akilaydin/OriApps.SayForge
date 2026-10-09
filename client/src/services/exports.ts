@@ -7,10 +7,8 @@ import {
   CUSTOM_THEMES_KEY,
   LEGACY_MANUAL_WORDS_KEY,
 } from './hotwords/model'
-import { getAppPromptRules, getUserStats } from './personalization/store'
 import {
   countHistory,
-  getPromptPresets,
   getSetting,
   listHistory,
   type HistoryListQuery,
@@ -137,9 +135,9 @@ async function buildSettingsPayload() {
 
   const [autoLaunch, promptPresets, appPromptRules, userStats] = await Promise.all([
     bridge.getAutoLaunch() ?? false,
-    getPromptPresets(),
-    getAppPromptRules(),
-    getUserStats(),
+    getSetting('promptPresets', []),
+    getSetting('appPromptRules', []),
+    getSetting('userStats', null),
   ])
 
   return {

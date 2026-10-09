@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import en from '../locales/en.json'
 import { getLocale, isLocale, normalizePreference, resolveLocale, setLocale, t, LOCALES } from '..'
 import {
-  appPromptRuleDisplayName, historyFailureReasonDisplay,
+  historyFailureReasonDisplay,
   promptPresetDisplayName, recordedAppDisplayName, recordedPromptPresetDisplayName,
 } from '../displayNames'
 
@@ -30,8 +30,6 @@ describe('English-only UI locale', () => {
   it('keeps builtin and user-provided display names', () => {
     expect(promptPresetDisplayName({ id: 'intent', name: 'old', builtin: true }))
       .toBe(en['builtinPreset.intent'])
-    expect(appPromptRuleDisplayName({ id: 'notepad', appId: 'notepad', name: 'old', builtin: true }))
-      .toBe(en['builtinApp.notepad'])
     expect(recordedPromptPresetDisplayName('intent', 'old')).toBe(en['builtinPreset.intent'])
     expect(recordedAppDisplayName('notepad', 'old')).toBe(en['builtinApp.notepad'])
     expect(promptPresetDisplayName({ id: 'custom', name: 'My preset', builtin: false }))

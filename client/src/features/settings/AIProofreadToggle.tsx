@@ -6,7 +6,7 @@ import { toggleAiEnabled } from '@/stores/aiEnabled'
 import { useT } from '@/i18n/useT'
 import { ComboShortcutInput } from './ShortcutInputs'
 import { useEffect, useState } from 'react'
-import { getPresetShortcuts, getSetting, setSetting } from '@/services/store'
+import { getSetting, setSetting } from '@/services/store'
 import { refreshRecorderSettings } from '@/services/recorder'
 import { pttShortcutConflictsWithAccelerator } from '@/lib/shortcutKeys'
 import * as bridge from '@/services/bridge'
@@ -29,14 +29,12 @@ export default function AIProofreadToggle() {
   }, [])
 
   const validateShortcut = async (value: string) => {
-    const [ptt, handsFree, presetShortcuts] = await Promise.all([
+    const [ptt, handsFree] = await Promise.all([
       getSetting<string>('shortcutPTT', 'ControlRight'),
       getSetting<string>('shortcutHandsFree', 'AltRight'),
-      getPresetShortcuts(),
     ])
     if (pttShortcutConflictsWithAccelerator(ptt, value)) return t('aiProofread.shortcutConflictPtt')
     if (handsFree === value) return t('aiProofread.shortcutConflictHandsFree')
-    if (Object.values(presetShortcuts).includes(value)) return t('aiProofread.shortcutConflictPreset')
     return null
   }
 

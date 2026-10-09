@@ -8,7 +8,7 @@ Technical reference for the current SayForge implementation. Product behavior be
 - React manages the UI, microphone capture, recording lifecycle and text processing.
 - Rust handles Win32 integration, persistence and cloud HTTP calls.
 - Speech mode: `cloud_api`. Retired `local`/server values normalize and persist as `cloud_api` at frontend startup.
-- Optional AI refinement is independent of the speech engine.
+- Optional AI refinement uses an OpenAI-compatible endpoint and a single prompt; Ollama, preset shortcuts, per-app rules and personalization statistics are inactive.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - Updates are manual through GitHub Releases; no updater service, installer commands or notification window are bundled.
 
@@ -35,7 +35,7 @@ Paths below are relative to `client/`.
 - `services/recorder/RecorderOrchestrator.ts` — state, PTT/hands-free events, session IDs, cancellation, timeouts and final results.
 - `services/audio.ts` — `getUserMedia`, AudioWorklet with fallback, resampling and PCM frames.
 - `services/transcription/` — provider interface, mode selection, buffered cloud delivery and AI execution policy.
-- `services/personalization/` and `services/contextAware.ts` — presets, application-aware prompts and bounded editor context.
+- `services/aiPrompt.ts` — a single editable AI prompt and legacy custom-prompt migration. `services/contextAware.ts` preserves bounded editor context.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
@@ -52,7 +52,7 @@ Paths below are relative to `client/`.
 ## Storage
 
 - SQLite: `%LOCALAPPDATA%\com.oriapps.sayforge\sayforge.db`, using WAL and versioned migrations.
-- `app_settings` holds JSON settings; `history_records` stores transcription records. Prompt presets, app rules, corrections and feedback use dedicated tables.
+- `app_settings` holds JSON settings; `history_records` stores transcription records. Legacy prompt presets, app rules, corrections and feedback retain their existing tables for compatibility.
 - Audio files and logs reside in app-specific directories; cleanup follows retention settings.
 - A settings-only export excludes history and audio. Full backups are a separate local operation. Retired WebDAV settings remain stored and included in settings exports for compatibility.
 

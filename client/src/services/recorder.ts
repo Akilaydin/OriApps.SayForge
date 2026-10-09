@@ -1,6 +1,5 @@
 import { RecorderOrchestrator } from './recorder/RecorderOrchestrator'
 import type { RecorderState } from './recorder/types'
-import type { PromptPreset } from './store'
 
 let orchestrator = new RecorderOrchestrator()
 
@@ -40,14 +39,6 @@ export function setAiEnabledCache(next: boolean) {
 
 export function showAiEnabledToast(enabled: boolean) {
   orchestrator.showAiEnabledToast(enabled)
-}
-
-export function setActivePresetCache(id: string) {
-  orchestrator.setActivePresetCache(id)
-}
-
-export function setPromptPresetsCache(presets: PromptPreset[]) {
-  orchestrator.setPromptPresetsCache(presets)
 }
 
 export function setHotwordsCache(words: string[]) {

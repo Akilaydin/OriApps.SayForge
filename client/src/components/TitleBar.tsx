@@ -3,11 +3,9 @@ import * as bridge from '@/services/bridge'
 import { Minus, Square, X, Wand2 } from 'lucide-react'
 import appIcon from '@/assets/ico-frame-48x48.png'
 import { useAiEnabled, useAiEnabledReady } from '@/hooks/useAiEnabled'
-import { useActivePreset } from '@/hooks/useActivePreset'
 import { toggleAiEnabled } from '@/stores/aiEnabled'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useT } from '@/i18n/useT'
-import { recordedPromptPresetDisplayName } from '@/i18n/displayNames'
 
 export default function TitleBar() {
   const t = useT()
@@ -19,11 +17,6 @@ export default function TitleBar() {
     const id = requestAnimationFrame(() => requestAnimationFrame(() => setAnimate(true)))
     return () => cancelAnimationFrame(id)
   }, [ready, animate])
-  const activePreset = useActivePreset()
-  const presetName = activePreset.name
-    ? recordedPromptPresetDisplayName(activePreset.id, activePreset.name)
-    : t('titleBar.defaultPreset')
-
   return (
     <div className="flex h-10 items-center justify-between bg-titlebar border-b select-none"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
@@ -33,7 +26,7 @@ export default function TitleBar() {
       </div>
       <div className="flex items-center">
         <div className="flex items-center pr-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <Tooltip content={t('titleBar.presetTooltip', { name: presetName })}>
+          <Tooltip content={t('titleBar.aiCleanupToggle')}>
             <button
               type="button"
               role="switch"

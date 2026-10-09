@@ -24,14 +24,13 @@ import {
   listHistory,
   setHistoryFavorite,
   updateHistoryRecord,
-  getActivePreset,
   getSetting,
   type HistoryRecord,
 } from '@/services/store'
 import { loadAudioAsDataUrl } from '@/services/audioFileService'
 import { useT } from '@/i18n/useT'
 import { applyTextTransforms, restoreHotwordSpacing } from '@/services/textPostProcess'
-import { buildHotwordInjectionPart } from '@/services/personalization/promptRouter'
+import { getAiPrompt, buildHotwordInjectionPart } from '@/services/aiPrompt'
 import {
   BUILTIN_SET_WORDS_KEY,
   BUILTIN_SET_ACTIVE_KEY,
@@ -288,7 +287,7 @@ export default function History() {
       wouldBeSilent: reprocessPeakNorm < 0.01,
     })
 
-    const preset = await getActivePreset()
+    const prompt = await getAiPrompt()
     const aiEnabled = await getSetting('aiEnabled', false)
 
     let hotwords: string[] = []
@@ -308,7 +307,7 @@ export default function History() {
 
 
     const workMode = getWorkMode()
-    let systemPrompt = aiEnabled ? preset.systemPrompt : undefined
+    let systemPrompt = aiEnabled ? prompt : undefined
     if (systemPrompt && (await getSetting('injectHotwordsToPrompt', false))) {
       const part = buildHotwordInjectionPart(hotwords)
       if (part) systemPrompt = `${systemPrompt}\n\n${part}`

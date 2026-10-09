@@ -15,7 +15,6 @@ import About from './pages/About'
 import { initRecorder, cleanup } from './services/recorder'
 import { initTheme } from './stores/theme'
 import { initAiEnabled } from './stores/aiEnabled'
-import { initActivePreset } from './stores/activePreset'
 import { getSetting, setSetting } from './services/store'
 import * as bridge from './services/bridge'
 
@@ -27,7 +26,6 @@ export default function App() {
   useEffect(() => {
     void initTheme()
     void initAiEnabled()
-    void initActivePreset()
     initRecorder()
     // SayForge releases are installed manually until we have our own signed updater.
     // This independent distribution does not launch an automatic update installer.

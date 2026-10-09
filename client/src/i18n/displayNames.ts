@@ -1,5 +1,4 @@
 import type { HistoryFailReasonCode, PromptPreset } from '@/services/store'
-import type { AppPromptRule } from '@/services/personalization/types'
 import { t, type TranslationKey } from '.'
 
 const BUILTIN_PRESET_NAME_KEYS: Record<string, TranslationKey> = {
@@ -35,11 +34,6 @@ const HISTORY_FAILURE_KEYS: Record<HistoryFailReasonCode, TranslationKey> = {
 export function promptPresetDisplayName(preset: Pick<PromptPreset, 'id' | 'name' | 'builtin'>): string {
   const key = preset.builtin ? BUILTIN_PRESET_NAME_KEYS[preset.id] : undefined
   return key ? t(key) : preset.name
-}
-
-export function appPromptRuleDisplayName(rule: Pick<AppPromptRule, 'id' | 'appId' | 'name' | 'builtin'>): string {
-  const key = rule.builtin ? BUILTIN_APP_NAME_KEYS[rule.appId || rule.id] : undefined
-  return key ? t(key) : rule.name
 }
 
 export function recordedAppDisplayName(appId: string | undefined, fallback: string): string {

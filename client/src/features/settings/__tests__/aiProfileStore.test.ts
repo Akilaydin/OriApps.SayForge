@@ -65,6 +65,24 @@ describe('removed AI provider migration', () => {
     })
   })
 
+  it('migrates Groq profile values to the compatible provider', async () => {
+    const old={id:'g',provider:'groq',apiUrl:'https://relay.example/v1',apiKey:'test',model:'custom'}
+    state.values.set(AI_PROFILES_MIGRATED_KEY,true); state.values.set(AI_PROFILES_KEY,[old]); state.values.set(AI_ACTIVE_PROFILE_KEY,'g')
+    const loaded=await loadAiProfiles()
+    expect(loaded.profiles[0]).toMatchObject({...old,provider:'openai_compat'})
+    expect(state.values.get('cloudAi.apiUrl')).toBe(old.apiUrl)
+    expect(state.values.get('cloudAi.apiKey')).toBe(old.apiKey)
+  })
+  it('keeps flat compatible settings during profile bootstrap', async () => {
+    state.values.set(AI_PROFILES_MIGRATED_KEY,true)
+    state.values.set('cloudAi.provider','openai_compat'); state.values.set('cloudAi.apiUrl','https://relay.example/v1')
+    state.values.set('cloudAi.apiKey','test-flat'); state.values.set('cloudAi.model','custom')
+    expect((await loadAiProfiles()).profiles[0]).toMatchObject({apiUrl:'https://relay.example/v1',apiKey:'test-flat',model:'custom'})
+  })
+  it('preserves retired Ollama records unchanged', () => {
+    const old={id:'o',provider:'ollama',apiUrl:'http://127.0.0.1:11434',model:'custom'}
+    expect(parseProfilesDetailed([old])).toEqual({profiles:[],orphans:[old]})
+  })
   it('does not treat a removed provider as the default supported provider', () => {
     const legacy = { id: 'old', provider: 'mimo', apiKey: 'DO-NOT-LOSE' }
     const result = parseProfilesDetailed([legacy])

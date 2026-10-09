@@ -37,8 +37,8 @@ describe('AI_PROVIDERS 清单', () => {
     expect(new Set(values).size).toBe(values.length)
   })
 
-  it('只有 Ollama 是免密钥的本机服务', () => {
-    expect(AI_PROVIDERS.filter((p) => p.keyless).map((p) => p.value)).toEqual(['ollama'])
+  it('exposes only the compatible AI endpoint', () => {
+    expect(AI_PROVIDERS.filter((p) => p.keyless).map((p) => p.value)).toEqual([])
   })
 })
 
@@ -304,9 +304,9 @@ describe('一行的标题与副标题', () => {
 })
 
 describe('isProfileComplete', () => {
-  it('免密钥的 Ollama 不要求密钥，其余都要', () => {
+  it('requires credentials and rejects retired keyless providers', () => {
     expect(isProfileComplete(profile({ apiKey: '' }))).toBe(false)
-    expect(isProfileComplete(profile({ provider: 'ollama', apiKey: '', apiUrl: 'http://127.0.0.1:11434' }))).toBe(true)
+    expect(isProfileComplete(profile({ provider: 'ollama', apiKey: '', apiUrl: 'http://127.0.0.1:11434' }))).toBe(false)
   })
 
   it('缺地址或缺模型都算没填完', () => {

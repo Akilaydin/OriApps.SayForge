@@ -146,7 +146,7 @@ export default function DiagnosticsPage() {
       const aiModel = await getSetting('cloudAi.model', '') as string
       const displayName = aiProvider ? providerLabel(aiProvider) : ''
 
-      if (!aiProvider || (!aiApiKey && aiProvider !== 'ollama') || !aiApiUrl) {
+      if (!aiProvider || !aiApiKey || !aiApiUrl) {
         items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'error', detail: t('diagnostics.incomplete') })
       } else {
         try {

@@ -6,6 +6,7 @@ import { getSetting, setSetting } from '@/services/store'
 import {
   AI_PROVIDERS,
   aiSettingKey,
+  makeProfileId,
   migrateLegacyProfiles,
   parseLegacyLatencies,
   parseProfilesDetailed,
@@ -38,7 +39,7 @@ async function syncRuntimeActive(profile: AiProfile | null): Promise<void> {
 
 async function readLegacyData(): Promise<LegacyProviderData[]> {
   return Promise.all(
-    AI_PROVIDERS.map(async (provider): Promise<LegacyProviderData> => {
+    [...AI_PROVIDERS, {value:'groq'}].map(async (provider): Promise<LegacyProviderData> => {
       const [apiUrl, apiKey, model, modelsRaw, latencyRaw] = await Promise.all([
         getSetting(aiSettingKey(provider.value, 'apiUrl'), '') as Promise<string>,
         getSetting(aiSettingKey(provider.value, 'apiKey'), '') as Promise<string>,
@@ -69,7 +70,20 @@ export async function loadAiProfiles(): Promise<AiProfileState> {
   orphanProfiles = parsed.orphans
   let profiles = parsed.profiles
   let activeId = storedActiveId
-  let needsWrite = false
+  let needsWrite = Array.isArray(rawProfiles) && rawProfiles.some((p) => p?.provider === 'groq')
+
+  if (profiles.length === 0 && orphanProfiles.length === 0) {
+    const [provider, apiUrl, apiKey, model] = await Promise.all([
+      getSetting('cloudAi.provider', ''), getSetting('cloudAi.apiUrl', ''),
+      getSetting('cloudAi.apiKey', ''), getSetting('cloudAi.model', ''),
+    ])
+    if ((provider === 'openai_compat' || provider === 'groq') && (apiUrl || apiKey || model)) {
+      const profile = { id: makeProfileId(), provider: 'openai_compat', apiUrl, apiKey, model }
+      profiles = [profile]
+      activeId = profile.id
+      needsWrite = true
+    }
+  }
 
   if (!migrated) {
     if (profiles.length === 0) {
@@ -83,7 +97,7 @@ export async function loadAiProfiles(): Promise<AiProfileState> {
       activeId = result.activeId
     }
     await setSetting(AI_PROFILES_MIGRATED_KEY, true)
-    needsWrite = profiles.length > 0 || orphanProfiles.length > 0
+    needsWrite = needsWrite || profiles.length > 0 || orphanProfiles.length > 0
   }
 
   const active = resolveActiveProfile(profiles, activeId)
@@ -99,7 +113,11 @@ export async function loadAiProfiles(): Promise<AiProfileState> {
   // A removed vendor may still be in the flat runtime mirror even after the
   // list has been updated. Backup its credentials before selecting a supported
   // profile (or clearing the mirror). Never put secrets in logs.
-  const runtimeProvider = await getSetting('cloudAi.provider', '') as string
+  let runtimeProvider = await getSetting('cloudAi.provider', '') as string
+  if (runtimeProvider === 'groq') {
+    await setSetting('cloudAi.provider', 'openai_compat')
+    runtimeProvider = 'openai_compat'
+  }
   if (runtimeProvider && !AI_PROVIDERS.some((p) => p.value === runtimeProvider)) {
     const existingBackup = await getSetting(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY, null)
     if (existingBackup === null || existingBackup === undefined) {

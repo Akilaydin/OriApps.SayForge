@@ -1,16 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, User, Stethoscope, Palette, X } from 'lucide-react'
+import { Settings, Stethoscope, Palette, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
 import GeneralSettingsPage from './GeneralSettingsPage'
 import AppearancePage from './AppearancePage'
-import PersonalizationPage from './PersonalizationPage'
 import DiagnosticsPage from './DiagnosticsPage'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
-type SettingsView = 'general' | 'appearance' | 'personalization' | 'diagnostics'
+type SettingsView = 'general' | 'appearance' | 'diagnostics'
 
 interface SettingsMenuItem {
   id: SettingsView
@@ -21,7 +20,6 @@ interface SettingsMenuItem {
 const menuItems: SettingsMenuItem[] = [
   { id: 'general', icon: Settings, labelKey: 'settingsNav.general' },
   { id: 'appearance', icon: Palette, labelKey: 'settingsNav.appearance' },
-  { id: 'personalization', icon: User, labelKey: 'settingsNav.personalization' },
   { id: 'diagnostics', icon: Stethoscope, labelKey: 'settingsNav.diagnostics' },
 ]
 
@@ -76,7 +74,6 @@ export default function SettingsDialog() {
         <div className="custom-scrollbar flex-1 overflow-y-auto">
           {activeView === 'general' && <GeneralSettingsPage />}
           {activeView === 'appearance' && <AppearancePage />}
-          {activeView === 'personalization' && <PersonalizationPage />}
           {activeView === 'diagnostics' && <DiagnosticsPage />}
         </div>
       </div>

@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { type ConfigExportSelection, type ConfigImportPreview } from '@/services/backup'
 import { CUSTOM_THEMES_KEY, normalizeCustomThemes, type CustomTheme } from '@/services/hotwords/model'
-import { getPromptPresets, getSetting, type PromptPreset } from '@/services/store'
+import { getSetting, type PromptPreset } from '@/services/store'
 import { getTextReplacements, type TextReplacementRule } from '@/services/textReplacement'
 import { useT } from '@/i18n/useT'
 import { useBackdropDismiss } from '@/hooks/useBackdropDismiss'
@@ -290,7 +290,7 @@ export function ConfigExportDialog({
 
   useEffect(() => {
     let active = true
-    void Promise.all([getSetting<unknown>(CUSTOM_THEMES_KEY, []), getTextReplacements(), getPromptPresets()])
+    void Promise.all([getSetting<unknown>(CUSTOM_THEMES_KEY, []), getTextReplacements(), getSetting<PromptPreset[]>('promptPresets', [])])
       .then(([rawThemes, loadedReplacements, loadedPresets]) => {
         if (!active) return
         const customThemes = normalizeCustomThemes(rawThemes)

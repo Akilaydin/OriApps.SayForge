@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { listMicrophones, normalizeSelectedMicId } from '@/services/audio'
 import { refreshRecorderSettings } from '@/services/recorder'
-import { getPresetShortcuts, getSetting, setSetting } from '@/services/store'
+import { getSetting, setSetting } from '@/services/store'
 import { getDefault } from '@/services/defaults'
 import { drawBars, resetWaveform } from '@/services/waveform'
 import { Switch } from '@/components/ui/switch'
@@ -174,10 +174,6 @@ export default function GeneralSettingsPage() {
     if (pttShortcutConflictsWithAccelerator(value, aiToggleKey)) {
       return t('settings.shortcuts.conflictAiToggle')
     }
-    const presetShortcuts = await getPresetShortcuts()
-    if (Object.values(presetShortcuts).some(
-      (shortcut) => pttShortcutConflictsWithAccelerator(value, shortcut),
-    )) return t('settings.shortcuts.conflictPreset')
     return null
   }, [handsFreeKey, aiToggleKey])
   const validateHandsFree = useCallback(async (value: string) => {
@@ -186,8 +182,6 @@ export default function GeneralSettingsPage() {
       return t('settings.shortcuts.conflictPtt')
     }
     if (value === aiToggleKey) return t('settings.shortcuts.conflictAiToggle')
-    const presetShortcuts = await getPresetShortcuts()
-    if (Object.values(presetShortcuts).includes(value)) return t('settings.shortcuts.conflictPreset')
     return null
   }, [pttKey, aiToggleKey])
 

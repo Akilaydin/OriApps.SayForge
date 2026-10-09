@@ -56,11 +56,11 @@ async function loadClientAiConfig(): Promise<ClientAiConfig> {
 
 export function isClientAiConfigComplete(config: ClientAiConfig): boolean {
   return Boolean(
-    (config.provider === 'openai_compat' || config.provider === 'groq' || config.provider === 'ollama')
+    (config.provider === 'openai_compat' || config.provider === 'groq')
     &&
     config.apiUrl.trim()
     && config.model.trim()
-    && (config.apiKey.trim() || config.provider === 'ollama'),
+    && config.apiKey.trim(),
   )
 }
 

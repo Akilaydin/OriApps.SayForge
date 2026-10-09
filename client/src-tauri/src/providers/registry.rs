@@ -1,6 +1,6 @@
 
 use super::types::*;
-use super::{ai_ollama, ai_openai_compat, asr_transcriptions, asr_openai_chat_audio, asr_openai_compat};
+use super::{ai_openai_compat, asr_transcriptions, asr_openai_chat_audio, asr_openai_compat};
 use crate::error_protocol;
 
 #[tauri::command]
@@ -10,15 +10,6 @@ pub async fn cloud_polish(request: CloudPolishRequest) -> Result<AiResult, Strin
         //
         "openai_compat" | "groq" => {
             ai_openai_compat::polish(
-                &request.text,
-                config,
-                request.system_prompt.as_deref(),
-                request.text_context.as_ref(),
-            )
-            .await
-        }
-        "ollama" => {
-            ai_ollama::polish(
                 &request.text,
                 config,
                 request.system_prompt.as_deref(),
@@ -39,7 +30,6 @@ pub async fn test_ai_connection(config: AiProviderConfig) -> Result<TestResult, 
         "openai_compat" | "groq" => {
             Ok(ai_openai_compat::test_connection(&config).await)
         }
-        "ollama" => Ok(ai_ollama::test_connection(&config).await),
         other => Err(error_protocol::encode(
             "connect_failed",
             format!("Unknown AI provider: {}", other),
