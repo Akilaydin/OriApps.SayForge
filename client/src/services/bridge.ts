@@ -272,6 +272,13 @@ export function setAutoLaunch(enable: boolean) {
   return invoke('set_auto_launch', { enable })
 }
 
+export async function setAutoLaunchVerified(enable: boolean): Promise<boolean> {
+  await setAutoLaunch(enable)
+  const actual = await getAutoLaunch()
+  if (actual !== enable) throw new Error('Windows startup state did not match the requested state')
+  return actual
+}
+
 // ─── Tray ───
 
 export function setTrayAiEnabled(enabled: boolean) {

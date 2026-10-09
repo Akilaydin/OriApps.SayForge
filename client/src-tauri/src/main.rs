@@ -20,6 +20,24 @@ use tauri::{Manager, Emitter};
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
 use std::thread;
 
+fn initialize_autostart(
+    storage: &Storage,
+    is_enabled: impl FnOnce() -> Result<bool, String>,
+    register: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let migrated = storage.get("autoLaunchArgsMigrated", None);
+    if migrated.as_str() != Some("true") && migrated.as_bool() != Some(true) {
+        // Refresh arguments only for an existing enabled registration. Never disable it first.
+        if is_enabled()? { register()?; }
+        storage.set("autoLaunchArgsMigrated", &serde_json::json!("true")).map_err(|e| e.to_string())?;
+    }
+    let initialized = storage.get("autoLaunchInitialized", None);
+    if initialized.is_null() || initialized.as_str() == Some("") {
+        storage.set("autoLaunchInitialized", &serde_json::json!("true")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Environment-level WebView2 flags must be identical for every webview that shares
 /// com.oriapps.sayforge/EBWebView. Keep them global; never copy them into a single window's
 /// `additionalBrowserArgs` in tauri.conf.json (WebView2 rejects the second environment
@@ -392,23 +410,10 @@ fn main() {
                 use tauri_plugin_autostart::ManagerExt;
                 let storage: tauri::State<Storage> = app.state();
                 let autostart = app.autolaunch();
-                let already_set = storage.get("autoLaunchInitialized", None);
-                if already_set.is_null() || already_set.as_str() == Some("") {
-                    let _ = autostart.enable();
-                    let flag = serde_json::json!("true");
-                    let _ = storage.set("autoLaunchInitialized", &flag);
-                    let _ = storage.set("autoLaunchArgsMigrated", &flag);
-                    log::info!("Auto-launch enabled on first run");
-                } else {
-                    let migrated = storage.get("autoLaunchArgsMigrated", None);
-                    if migrated.as_str() != Some("true") {
-                        if autostart.is_enabled().unwrap_or(false) {
-                            let _ = autostart.disable();
-                            let _ = autostart.enable();
-                            log::info!("Auto-launch re-registered with --minimized arg");
-                        }
-                        let _ = storage.set("autoLaunchArgsMigrated", &serde_json::json!("true"));
-                    }
+                if let Err(error) = initialize_autostart(&storage,
+                    || autostart.is_enabled().map_err(|e| e.to_string()),
+                    || autostart.enable().map_err(|e| e.to_string())) {
+                    log::warn!("Auto-launch initialization failed: {error}");
                 }
             }
 
@@ -519,6 +524,41 @@ fn main() {
 #[cfg(test)]
 mod config_tests {
     use serde_json::Value;
+
+    #[test]
+    fn autostart_initialization_preserves_opt_in_and_retries_only_incomplete_migration() {
+        use super::Storage;
+        use serde_json::json;
+        use std::cell::Cell;
+        let dir = std::env::temp_dir().join(format!("sayforge-autostart-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (index, initialized, migrated, enabled, calls) in [
+            (0, Value::Null, Value::Null, false, 0),
+            (1, json!("true"), Value::Null, true, 1),
+            (2, json!("true"), Value::Null, false, 0),
+            (3, json!(true), json!(true), true, 0),
+        ] {
+            let storage = Storage::new(dir.join(format!("{index}.db"))).unwrap();
+            storage.set("autoLaunchInitialized", &initialized).unwrap();
+            storage.set("autoLaunchArgsMigrated", &migrated).unwrap();
+            if enabled { storage.set("autoLaunch", &json!(true)).unwrap(); }
+            let registrations = Cell::new(0);
+            super::initialize_autostart(&storage, || Ok(enabled), || { registrations.set(registrations.get()+1); Ok(()) }).unwrap();
+            assert_eq!(registrations.get(), calls);
+            assert_eq!(storage.get("autoLaunch", None), json!(enabled));
+            super::initialize_autostart(&storage, || panic!("completed migration must not reread OS"), || panic!("must not re-register")).unwrap();
+        }
+        let storage = Storage::new(dir.join("failure.db")).unwrap();
+        for read_failure in [true, false] {
+            assert!(super::initialize_autostart(&storage,
+                || if read_failure { Err("synthetic read failure".into()) } else { Ok(true) },
+                || Err("synthetic registration failure".into())).is_err());
+            assert_eq!(storage.get("autoLaunchArgsMigrated", None), Value::Null);
+            assert_eq!(storage.get("autoLaunchInitialized", None), Value::Null);
+        }
+        drop(storage);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[cfg(target_os = "windows")]
     #[test]

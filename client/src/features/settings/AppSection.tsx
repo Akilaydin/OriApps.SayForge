@@ -7,11 +7,17 @@ export default function AppSection({
   onToggleAutoLaunch,
   ready = true,
   animate = true,
+  busy = false,
+  error = '',
+  onRetry,
 }: {
   autoLaunch: boolean
   onToggleAutoLaunch: () => void
   ready?: boolean
   animate?: boolean
+  busy?: boolean
+  error?: string
+  onRetry?: () => void
 }) {
   const t = useT()
   return (
@@ -20,11 +26,12 @@ export default function AppSection({
         <h2 className="mb-4 text-lg font-semibold">{t('settings.app.title')}</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium">{t('settings.app.autoLaunch')}</p>
+            <p id="auto-launch-label" className="text-sm font-medium">{t('settings.app.autoLaunch')}</p>
             <p className="text-xs text-muted-foreground">{t('settings.app.autoLaunchDesc')}</p>
           </div>
-          <Switch checked={autoLaunch} onChange={onToggleAutoLaunch} noAnimation={!animate} hidden={!ready} />
+          <Switch checked={autoLaunch} onChange={onToggleAutoLaunch} noAnimation={!animate} hidden={!ready} disabled={busy} labelledBy="auto-launch-label" />
         </div>
+        {error && <p role="alert" className="mt-2 text-xs text-destructive">{error} <button type="button" className="underline" disabled={busy} onClick={onRetry}>{t('common.retry')}</button></p>}
       </CardContent>
     </Card>
   )

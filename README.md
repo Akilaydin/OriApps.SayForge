@@ -35,6 +35,9 @@ The application does not automatically download or install updates.
 
 ### First run
 
+Windows autostart is off for new installs. Enable **Start with Windows** in Settings
+to launch in the tray. Updating preserves the existing Windows startup choice.
+
 1. Select a voice engine. For cloud dictation, choose **OpenAI-compatible service**,
    provide your own endpoint, model and API key, and select the standard chat audio protocol.
 2. Configure the recording shortcut.

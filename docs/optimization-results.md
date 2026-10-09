@@ -129,6 +129,20 @@ multilingual overlay text. None supplies an English UI diagnostic or comment.
 Validation: 388 frontend / 116 Rust tests, TypeScript, strict i18n, AST inventory and
 `git diff --check` passed. Runtime visual checks remain unverified.
 
+## 9. Explicit Windows autostart
+
+Fresh installs keep autostart off. Existing enabled registrations alone get the historical
+`--minimized` argument migration, without disabling first. Disabled/deleted registrations
+stay disabled. String/boolean flags are accepted; failed OS reads/registration do not mark
+migration done. Existing stored choices are preserved; only the fresh seed default changes.
+UI reads OS state, disables duplicate changes while pending, verifies readback and shows
+an error/retry when a write/read fails or the OS disagrees. No optimistic success remains.
+Installed auto-launch 0.5.0 source confirms `enable()` overwrites the existing Run value.
+Validation: 392 frontend / 117 Rust tests, TypeScript/i18n and `git diff --check` passed.
+Fresh/legacy/disabled flags, denied reads/writes and inconsistent readback are covered.
+Actual registry/Windows sign-in and tray startup smoke remain unverified; no user startup
+registration was changed during testing.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

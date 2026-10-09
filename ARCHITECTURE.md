@@ -110,6 +110,14 @@ Missing legacy codec settings and legacy chat remain WAV. New profile defaults a
 change to MP3; migrations preserve WAV. A 415 stops without another paid request.
 Users can explicitly select WAV for incompatible endpoints. LAME/LGPL notices remain.
 
+## Windows autostart
+
+Autostart initialization never enables an unregistered/disabled install. Migration
+refreshes `--minimized` only when Windows reports an existing enabled entry; `enable()`
+updates it without a preceding destructive `disable()`. Flags are written after success;
+read/write failures leave migration pending. Both historical string and boolean migration
+flags are accepted. Settings uses OS readback, showing failure/retry when state is unknown.
+
 ## Open questions
 
 - Verified minimum Windows version.

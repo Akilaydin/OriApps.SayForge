@@ -44,6 +44,10 @@ function ShortcutLabel({ label, help }: { label: string; help: string }) {
 export default function GeneralSettingsPage() {
   const t = useT()
   const [autoLaunch, setAutoLaunch] = useState(false)
+  const [autoLaunchReady, setAutoLaunchReady] = useState(false)
+  const [autoLaunchBusy, setAutoLaunchBusy] = useState(false)
+  const [autoLaunchError, setAutoLaunchError] = useState('')
+  const launchBusy = useRef(false)
   const [mics, setMics] = useState<MediaDeviceInfo[]>([])
   const [selectedMic, setSelectedMic] = useState('')
   const [testing, setTesting] = useState(false)
@@ -72,7 +76,7 @@ export default function GeneralSettingsPage() {
     let cancelled = false
     void (async () => {
       const [launch, mute, clip, contextAware, history, readySound, logDays] = await Promise.all([
-        bridge.getAutoLaunch().catch(() => false),
+        bridge.getAutoLaunch().catch(() => null),
         getSetting('muteSystemAudioWhileRecording', false).catch(() => false),
         getSetting('protectClipboard', true).catch(() => true),
         getSetting('contextAwareWritingEnabled', false).catch(() => false),
@@ -82,6 +86,8 @@ export default function GeneralSettingsPage() {
       ])
       if (cancelled) return
       setAutoLaunch(Boolean(launch))
+      setAutoLaunchReady(launch !== null)
+      if (launch === null) setAutoLaunchError(t('settings.app.autoLaunchReadFailed'))
       setMuteSystemAudio(Boolean(mute))
       setProtectClipboard(Boolean(clip))
       setContextAwareWriting(Boolean(contextAware))
@@ -117,7 +123,24 @@ export default function GeneralSettingsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const toggleAutoLaunch = async () => { const next = !autoLaunch; setAutoLaunch(next); await bridge.setAutoLaunch(next) }
+  const retryAutoLaunch = async () => {
+    if (launchBusy.current) return
+    launchBusy.current = true; setAutoLaunchBusy(true)
+    try {
+      setAutoLaunch(await bridge.getAutoLaunch()); setAutoLaunchReady(true); setAutoLaunchError('')
+    } catch { setAutoLaunchReady(false); setAutoLaunchError(t('settings.app.autoLaunchReadFailed')) }
+    finally { launchBusy.current = false; setAutoLaunchBusy(false) }
+  }
+  const toggleAutoLaunch = async () => {
+    if (launchBusy.current || !autoLaunchReady) return
+    launchBusy.current = true; setAutoLaunchBusy(true); setAutoLaunchError('')
+    try { setAutoLaunch(await bridge.setAutoLaunchVerified(!autoLaunch)) }
+    catch {
+      setAutoLaunchError(t('settings.app.autoLaunchChangeFailed'))
+      try { setAutoLaunch(await bridge.getAutoLaunch()) }
+      catch { setAutoLaunchReady(false) }
+    } finally { launchBusy.current = false; setAutoLaunchBusy(false) }
+  }
   const handleMicChange = async (deviceId: string) => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }
   const toggleMuteSystemAudio = async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }
   const toggleProtectClipboard = async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }
@@ -375,7 +398,7 @@ export default function GeneralSettingsPage() {
           </Modal>
         )}
 
-        <AppSection autoLaunch={autoLaunch} onToggleAutoLaunch={toggleAutoLaunch} ready={ready} animate={animate} />
+        <AppSection autoLaunch={autoLaunch} onToggleAutoLaunch={toggleAutoLaunch} ready={ready && autoLaunchReady} animate={animate} busy={autoLaunchBusy} error={autoLaunchError} onRetry={() => void retryAutoLaunch()} />
 
         <Card>
           <CardContent className="p-6">
