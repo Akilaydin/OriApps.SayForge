@@ -43,9 +43,7 @@ The application does not automatically download or install updates.
 3. Press the shortcut, speak, release, and verify that the transcript reaches your text field.
 
 SayForge supports **two voice engines**: Cloud API (direct calls to a user-configured
-ASR provider) and Local (on-device recognition). The built-in Python backend
-and Server Mode have been removed. Existing `workMode=server` preferences
-are migrated to Cloud API on startup; saved cloud credentials are not discarded.
+ASR provider) and Local (on-device recognition).
 
 ### Application data and settings
 
@@ -57,12 +55,12 @@ SayForge uses an independent Windows app identity and data directory:
 | User data | `%LOCALAPPDATA%\com.oriapps.sayforge` |
 | SQLite | `sayforge.db` |
 
-Existing installations and their data are not deleted, overwritten or silently
-imported. To transfer configuration manually, use the built-in export/import
-feature. Review imported endpoints, models and keys before testing. A
-settings-only export does not include recorded audio or history.
+SayForge does not import other application data automatically. To transfer
+configuration, use the built-in export/import feature. Review imported
+endpoints, models and keys before testing. A settings-only export does not
+include recorded audio or history.
 
-If you want to run both applications, assign nonconflicting global shortcuts.
+Choose global shortcuts that do not conflict with other applications.
 
 ## Development
 
