@@ -7,16 +7,9 @@ import fs from 'fs'
 const host = process.env.TAURI_DEV_HOST
 const defaultServerUrl = process.env.SAYFORGE_DEFAULT_SERVER_URL || 'http://127.0.0.1:8000'
 
-// 从 tauri.conf.json 读取版本号
 const tauriConf = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, 'src-tauri/tauri.conf.json'), 'utf-8')
 )
-// SAYIT_FAKE_APP_VERSION：只为「在真机上测自动更新」存在。
-// 把前端自报的版本压低（如 0.1.5），线上 manifest 的 0.1.6 就成了"新版本"，
-// 整条链路（检查 → 下载 → SHA-512 校验 → 提醒图标 → 安装）都能真跑一遍，
-// 不用先发一个假包上去。发版前必须测自更新（见 .kiro/steering/pitfalls.md #3），
-// 而更新器的改动没法用自己验证自己，这个口子是那道验证的入口。
-// 正式构建不会设这个变量；设了会打一行醒目的警告。
 const fakeVersion = process.env.SAYFORGE_FAKE_APP_VERSION
 if (fakeVersion) {
   console.warn(`\n[vite] SAYFORGE_FAKE_APP_VERSION=${fakeVersion} — simulated version; do not use for production builds.\n`)
@@ -51,7 +44,6 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
   },
   build: {
-    // 生产构建移除 console.log 和 debugger（保留 console.warn/error）
     minify: 'esbuild',
     rollupOptions: {
       input: {

@@ -6,7 +6,6 @@ html, body, #root {
 
 .update-notification-shell {
   max-width: 100vw;
-  /* 底部 16px 与语音悬浮窗的 pb-4 一致，卡片底边对齐。 */
   padding: 12px 12px 16px;
 }
 
@@ -53,7 +52,6 @@ html, body, #root {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-/* 浏览器预览也按语音悬浮窗的底部居中位置展示。 */
 .update-notification-preview #root {
   display: flex;
   justify-content: center;

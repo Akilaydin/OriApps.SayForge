@@ -1,4 +1,3 @@
-// 模型下载器 — 支持断点续传和进度事件
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -39,7 +38,6 @@ struct DownloadActivity {
 static DOWNLOAD_ACTIVITY: Lazy<Mutex<DownloadActivity>> =
     Lazy::new(|| Mutex::new(DownloadActivity::default()));
 
-/// 同一路径只能有一个下载或删除任务；存储目录迁移期间也不接受新下载。
 pub struct ModelPathLease {
     path: PathBuf,
 }
@@ -67,7 +65,6 @@ pub fn acquire_model_path(path: &Path) -> Result<ModelPathLease, String> {
     Ok(ModelPathLease { path: key })
 }
 
-/// 目录迁移必须与所有模型下载、删除互斥，避免跨盘复制正在写入的临时文件。
 pub struct ModelStorageLease;
 
 impl Drop for ModelStorageLease {
@@ -93,12 +90,10 @@ pub fn acquire_model_storage() -> Result<ModelStorageLease, String> {
     Ok(ModelStorageLease)
 }
 
-/// 精确判断错误是否为 checksum 不匹配（Fail-Closed 设计）
 fn is_checksum_error(err_msg: &str) -> bool {
     err_msg.starts_with("sayit_error:download_checksum:")
 }
 
-/// 统一安全删除文件（文件不存在视为成功，其他 I/O 或权限错误显式返回）
 fn remove_file_if_exists(path: &Path) -> Result<(), String> {
     if let Err(e) = std::fs::remove_file(path) {
         if e.kind() != std::io::ErrorKind::NotFound {
@@ -108,7 +103,6 @@ fn remove_file_if_exists(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 校验落地文件的 SHA-256 哈希值
 fn verify_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<(), String> {
     use std::io::Read;
     let mut file = std::fs::File::open(file_path)
@@ -142,7 +136,6 @@ fn verify_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<(), Str
     Ok(())
 }
 
-/// 校验临时文件；仅明确哈希不匹配时删除，I/O 错误保留现场。
 fn verify_temp_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<(), String> {
     match verify_file_sha256(file_path, expected_sha256) {
         Ok(()) => Ok(()),
@@ -159,16 +152,11 @@ fn verify_temp_file_sha256(file_path: &Path, expected_sha256: &str) -> Result<()
 pub struct DownloadProgress {
     pub model_id: String,
     pub file_name: String,
-    /// 当前文件已下载字节
-    pub downloaded_bytes: u64,
-    /// 当前文件总字节（从 Content-Length 获取，0 表示未知）
-    pub total_bytes: u64,
-    /// 整体进度百分比（跨所有文件）
-    pub percent: f64,
-    /// 当前文件索引（从 1 开始）
-    pub file_index: u32,
-    /// 总文件数
-    pub file_count: u32,
+        pub downloaded_bytes: u64,
+        pub total_bytes: u64,
+        pub percent: f64,
+        pub file_index: u32,
+        pub file_count: u32,
     pub status: String,
     pub error: Option<String>,
 }
@@ -205,12 +193,8 @@ fn emit_progress(
     );
 }
 
-/// 用户自定义的模型存储根目录（进程级）。None = 用默认路径。
-/// 启动时由 main.rs 从设置 `localAsr.modelsDir` 灌入；用户在设置里更改时同步更新。
-/// 所有取模型路径的地方都走 `models_dir()`，改这一处即全链路生效。
 static CUSTOM_MODELS_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
 
-/// 默认模型存储根目录（未自定义时使用）。
 pub fn default_models_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -218,14 +202,12 @@ pub fn default_models_dir() -> PathBuf {
         .join("models")
 }
 
-/// 设置/清除自定义模型根目录。传 None 恢复默认。
 pub fn set_custom_models_dir(dir: Option<PathBuf>) {
     if let Ok(mut guard) = CUSTOM_MODELS_DIR.write() {
         *guard = dir;
     }
 }
 
-/// 获取模型存储根目录：优先自定义路径，否则默认路径。
 pub fn models_dir() -> PathBuf {
     if let Ok(guard) = CUSTOM_MODELS_DIR.read() {
         if let Some(ref dir) = *guard {
@@ -235,7 +217,6 @@ pub fn models_dir() -> PathBuf {
     default_models_dir()
 }
 
-/// 获取指定模型的目录
 pub fn model_dir(model_id: &str) -> PathBuf {
     models_dir().join(model_id)
 }
@@ -272,8 +253,6 @@ fn strong_etag(resp: &reqwest::Response) -> Option<String> {
     }
 }
 
-/// 构建带 User-Agent、连接超时和读取空闲超时的 HTTP 客户端。
-/// 不设置整个请求的总时限：慢速下载可以持续很久，但连接或单次读取不能永久挂住。
 fn build_http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("SayIt/1.0")
@@ -325,7 +304,6 @@ fn range_request(
     }
 }
 
-/// 用真实的 0-0 Range 请求探测能力、总大小和强 ETag。
 async fn probe_url(client: &reqwest::Client, url: &str) -> RemoteProbe {
     let resp = match range_request(client, url, "bytes=0-0".to_string(), None)
         .send()
@@ -380,7 +358,6 @@ fn resolve_download_size(expected_size: u64, remote_size: u64) -> Result<u64, St
     })
 }
 
-/// 纯函数校验 Range 响应头（支持零依赖单元测试与生产复用）
 fn validate_range_response_parts(
     status: u16,
     content_range_str: Option<&str>,
@@ -500,7 +477,6 @@ impl ChunkSpec {
     }
 }
 
-/// 单个分片写入独立文件。文件长度就是已连续完成的字节数，因此应用重启后可直接续传。
 async fn download_chunk(
     client: reqwest::Client,
     url: String,
@@ -622,7 +598,6 @@ async fn download_chunk(
     ))
 }
 
-/// 根据总大小计算合理的分片规划
 fn calculate_chunks(total_size: u64) -> Vec<ChunkSpec> {
     if total_size == 0 {
         return vec![];
@@ -749,7 +724,6 @@ fn load_or_create_parallel_state(
             }
             Ok(old_state) => {
                 cleanup_parallel_artifacts(temp_path, &state_path, &old_state.chunks)?;
-                // 新旧规划数量不同时，再清理一遍当前规划可能对应的孤儿分片。
                 for chunk in chunks {
                     remove_file_if_exists(&parallel_chunk_path(temp_path, chunk.index))?;
                 }
@@ -759,7 +733,6 @@ fn load_or_create_parallel_state(
             }
         },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            // 清理由旧版下载器或崩溃在状态文件落盘前留下的同名文件。
             cleanup_parallel_artifacts(temp_path, &state_path, chunks)?;
         }
         Err(error) => return Err(download_io_error("Failed to read parallel download state", error)),
@@ -826,7 +799,6 @@ fn prepare_assembly_file(
     Ok(())
 }
 
-/// 并发下载到独立分片文件；每个分片可跨调用续传，完成后按顺序组装并逐段释放空间。
 async fn download_file_parallel(
     app: &AppHandle,
     model_id: &str,
@@ -915,7 +887,6 @@ async fn download_file_parallel(
                 }
             }
         }
-        // 必须先释放其他 worker 持有的文件句柄，再决定是否清理临时文件。
         drop(futures);
         if let Some(error) = worker_error {
             if error.starts_with("sayit_error:download_range_invalid:")
@@ -954,7 +925,6 @@ async fn download_file_parallel(
     }
 
     for index in 0..state.assembled_chunks {
-        // 崩溃可能发生在状态落盘后、旧分片删除前；这些残留现在可以安全清理。
         remove_file_if_exists(&parallel_chunk_path(temp_path, index))?;
     }
 
@@ -1048,8 +1018,6 @@ async fn download_file_parallel(
     Ok(())
 }
 
-/// 并发失败后只有协议不兼容或最终对账失败适合改走单流；
-/// 普通网络中断保留分片，让用户重试时从已有进度继续。
 fn should_fallback_to_single_stream(err_msg: &str) -> bool {
     err_msg.starts_with("sayit_error:download_range_invalid:")
         || err_msg.starts_with("sayit_error:download_source_changed:")
@@ -1057,14 +1025,6 @@ fn should_fallback_to_single_stream(err_msg: &str) -> bool {
         || is_checksum_error(err_msg)
 }
 
-/// 纯函数校验断点续传响应（严格遵循 RFC 9110 §14.1.2）
-/// 规则：
-/// 1. 必须提供明确的 Content-Range 响应头（格式: bytes <start>-<end>/<total>）。
-/// 2. start 必须严格等于 expected_downloaded。
-/// 3. total 必须是明确合法的十进制数字（严禁 *，未知 total 必须拒绝 resume 并从头全量下载）。
-/// 4. 如果 expected_total > 0，total 必须等于 expected_total。
-/// 5. 对于 Range: bytes=N- 的请求，响应必须覆盖到文件最后一个字节，即 end == total - 1。
-/// 6. 如果提供了 content_length，必须满足 content_length == end - start + 1（即 total - start）。
 fn is_valid_resume_content_range(
     content_range_opt: Option<&str>,
     content_length_opt: Option<u64>,
@@ -1093,15 +1053,11 @@ fn parse_unsatisfied_range_total(content_range: Option<&str>) -> Option<u64> {
 
 #[derive(Debug, PartialEq, Eq)]
 enum ResumeDecision {
-    /// 完整文件已存在且校验通过，直接 finalize 入库
-    Finalize,
-    /// 文件损坏或超出预期大小，删除并从头开始
-    Restart,
-    /// 正常续传，携带起始偏移
-    Resume(u64),
+        Finalize,
+        Restart,
+        Resume(u64),
 }
 
-/// 纯函数预检断点续传状态（覆盖 416 防范、EOF 完整性与异常处理）
 fn inspect_resume_state(
     current_bytes: u64,
     total_size: u64,
@@ -1138,7 +1094,6 @@ async fn send_full_response(
     Ok(response)
 }
 
-/// 单流下载（用于小文件、不支持 Range 的服务端或并发协议失败时的 Fallback）
 async fn download_file_single_stream(
     app: &AppHandle,
     model_id: &str,
@@ -1230,7 +1185,6 @@ async fn download_file_single_stream(
                 }
             }
             200 => {
-                // If-Range 不匹配或服务端忽略 Range：当前响应是完整新表示，覆盖旧 partial。
                 (response, 0, false)
             }
             416 => {
@@ -1426,7 +1380,6 @@ async fn download_file_single_stream(
     Ok(())
 }
 
-/// 下载单个文件，支持智能并发分片、临时文件隔离、SHA-256 完整性验证与安全 Fallback 降级
 pub async fn download_file(
     app: AppHandle,
     model_id: &str,
@@ -1525,7 +1478,6 @@ pub async fn download_file(
         }
     };
 
-    // 旧版留下的连续 .part 优先续传，避免为了切换并发实现而浪费已有进度。
     let stream_partial_exists = std::fs::metadata(&stream_temp)
         .map(|metadata| metadata.len() > 0)
         .unwrap_or(false);
@@ -1584,7 +1536,6 @@ pub async fn download_file(
                 .await
             }
             Err(error) => {
-                // 网络中断保留各 chunk；再次点击会从每个 chunk 的现有长度继续。
                 emit_progress(
                     &app,
                     model_id,
@@ -1626,11 +1577,6 @@ pub async fn download_file(
     }
 }
 
-/// 下载 tar.bz2 压缩包并解压到模型目录
-/// 解压时会跳过顶层目录（如 sherpa-onnx-funasr-nano-int8-2025-12-30/）
-/// 并跳过 test_wavs/ 目录和 README.md
-/// 为 GitHub Release 地址生成候选下载列表：国内加速代理优先，直连兜底。
-/// 非 GitHub 地址（如 ModelScope）原样返回。
 fn build_archive_candidates(url: &str) -> Vec<String> {
     if url.starts_with("https://github.com/") {
         vec![
@@ -1643,7 +1589,6 @@ fn build_archive_candidates(url: &str) -> Vec<String> {
     }
 }
 
-/// 从单个 URL 下载压缩包到 temp_path（支持断点续传）。下载完整返回 Ok。
 async fn download_archive_once(
     app: &AppHandle,
     model_id: &str,
@@ -1716,7 +1661,6 @@ pub async fn download_and_extract_tar_bz2(
     std::fs::create_dir_all(&dest_dir)
         .map_err(|e| download_io_error("Failed to create model directory", e))?;
 
-    // 如果已经解压过（目录中有 onnx 文件），跳过下载
     // funasr-nano: encoder_adaptor.int8.onnx / paraformer: model.int8.onnx / qwen3-asr: encoder.int8.onnx
     if dest_dir.join("encoder_adaptor.int8.onnx").exists()
         || dest_dir.join("model.int8.onnx").exists()
@@ -1726,8 +1670,6 @@ pub async fn download_and_extract_tar_bz2(
         return Ok(());
     }
 
-    // 多源下载：GitHub 地址自动优先走国内加速代理，失败再回退直连。
-    // 各镜像内容一致，可跨源断点续传（沿用已有 .part）。
     let candidates = build_archive_candidates(url);
     let mut last_err = download_error("download_network", "No download source is available");
     let mut ok = false;
@@ -1751,7 +1693,6 @@ pub async fn download_and_extract_tar_bz2(
     log::info!("Archive downloaded: {}", model_id);
     emit_progress(&app, model_id, "extracting", 0, 0, "downloading", None, 1, 1);
 
-    // 解压 tar.bz2
     let archive_file = std::fs::File::open(&archive_path)
         .map_err(|e| download_io_error("Failed to open downloaded archive", e))?;
     let bz_decoder = bzip2::read::BzDecoder::new(archive_file);
@@ -1762,15 +1703,13 @@ pub async fn download_and_extract_tar_bz2(
         let path = entry.path().map_err(|e| download_error("download_failed", format!("Failed to read archive path: {}", e)))?;
         let path_str = path.to_string_lossy().to_string();
 
-        // 跳过 test_wavs/ 和 README.md
         if path_str.contains("test_wavs/") || path_str.ends_with("README.md") {
             continue;
         }
 
-        // 去掉顶层目录（如 sherpa-onnx-funasr-nano-int8-2025-12-30/）
         let components: Vec<_> = path.components().collect();
         if components.len() <= 1 {
-            continue; // 跳过顶层目录本身
+            continue;
         }
         let relative: std::path::PathBuf = components[1..].iter().collect();
         let dest = dest_dir.join(&relative);
@@ -1788,7 +1727,6 @@ pub async fn download_and_extract_tar_bz2(
         }
     }
 
-    // 删除压缩包
     std::fs::remove_file(&archive_path).ok();
 
     emit_progress(&app, model_id, "archive", 1, 1, "completed", None, 1, 1);
@@ -2074,7 +2012,6 @@ mod tests {
         assert_eq!(chunks.first().unwrap().start, 0);
         assert_eq!(chunks.last().unwrap().end, 99);
 
-        // 验证各分片连续且无遗漏无重叠
         for i in 1..chunks.len() {
             assert_eq!(chunks[i].start, chunks[i - 1].end + 1);
         }
@@ -2082,7 +2019,6 @@ mod tests {
 
     #[test]
     fn test_calculate_chunks_large_model() {
-        // 500MB 模型
         let total_size = 500 * 1024 * 1024;
         let chunks = calculate_chunks(total_size);
         assert!(chunks.len() >= 4 && chunks.len() <= 16);
@@ -2101,7 +2037,6 @@ mod tests {
 
     #[test]
     fn test_validate_range_response_parts_cases() {
-        // 1. 标准有效 206 匹配通过
         assert!(validate_range_response_parts(
             206,
             Some("bytes 0-99/1000"),
@@ -2111,7 +2046,6 @@ mod tests {
             1000
         ).is_ok());
 
-        // 2. HTTP 200 OK 必须被严格拒绝
         assert!(validate_range_response_parts(
             200,
             Some("bytes 0-99/1000"),
@@ -2121,12 +2055,10 @@ mod tests {
             1000
         ).is_err());
 
-        // 7. 已知文件大小时，未知、畸形或不匹配的 total 必须拒绝
         for header in ["bytes 0-99/*", "bytes 0-99/garbage", "bytes 0-99/999"] {
             assert!(validate_range_response_parts(206, Some(header), Some(100), 0, 99, 1000).is_err());
         }
 
-        // 3. Content-Range 缺失必须拒绝
         assert!(validate_range_response_parts(
             206,
             None,
@@ -2136,7 +2068,6 @@ mod tests {
             1000
         ).is_err());
 
-        // 4. 起始 offset 错位必须拒绝
         assert!(validate_range_response_parts(
             206,
             Some("bytes 10-99/1000"),
@@ -2146,7 +2077,6 @@ mod tests {
             1000
         ).is_err());
 
-        // 5. 结束 offset 错位必须拒绝
         assert!(validate_range_response_parts(
             206,
             Some("bytes 0-199/1000"),
@@ -2156,7 +2086,6 @@ mod tests {
             1000
         ).is_err());
 
-        // 6. Content-Length 与区间不符必须拒绝
         assert!(validate_range_response_parts(
             206,
             Some("bytes 0-99/1000"),
@@ -2169,7 +2098,6 @@ mod tests {
 
     #[test]
     fn test_is_valid_resume_content_range_rfc9110() {
-        // 1. 标准有效匹配（bytes 100-999/1000，请求 100-，覆盖到末尾 999，长度 900）
         assert!(is_valid_resume_content_range(
             Some("bytes 100-999/1000"),
             Some(900),
@@ -2177,7 +2105,6 @@ mod tests {
             1000
         ));
 
-        // 2. 拒绝未覆盖到文件末尾的响应（例如 bytes 100-199/1000，end != total - 1）
         assert!(!is_valid_resume_content_range(
             Some("bytes 100-199/1000"),
             Some(100),
@@ -2185,23 +2112,19 @@ mod tests {
             1000
         ));
 
-        // 3. 拒绝缺少 Content-Range 或畸形
         assert!(!is_valid_resume_content_range(None, Some(900), 100, 1000));
         assert!(!is_valid_resume_content_range(Some("invalid-header"), Some(900), 100, 1000));
         assert!(!is_valid_resume_content_range(Some("bytes 100-garbage/1000"), Some(900), 100, 1000));
         assert!(!is_valid_resume_content_range(Some("bytes 100-999/garbage"), Some(900), 100, 1000));
 
-        // 4. 拒绝 total 为 *（断点续传未知 total 时强制全量重传）
         assert!(!is_valid_resume_content_range(Some("bytes 100-999/*"), Some(900), 100, 0));
 
-        // 5. 拒绝 start 错位
         assert!(!is_valid_resume_content_range(Some("bytes 0-999/1000"), Some(1000), 100, 1000));
         assert!(!is_valid_resume_content_range(Some("bytes 50-999/1000"), Some(950), 100, 1000));
 
-        // 6. 拒绝 Content-Length 与区间不符
         assert!(!is_valid_resume_content_range(
             Some("bytes 100-999/1000"),
-            Some(899), // 应该是 900
+            Some(899),
             100,
             1000
         ));
@@ -2222,7 +2145,6 @@ mod tests {
             "sayit_error:download_checksum: SHA-256 mismatch"
         ));
 
-        // 普通网络中断必须保留 chunk，等待下次从现有长度续传，不能清空后全量重下。
         assert!(!should_fallback_to_single_stream(
             "sayit_error:download_network: connection reset"
         ));
@@ -2239,19 +2161,14 @@ mod tests {
         let temp_dir = std::env::temp_dir();
         let test_file = temp_dir.join("sayit_test_sha256.tmp");
 
-        // 写入测试数据 "hello world\n" (SHA-256: a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447)
         std::fs::write(&test_file, b"hello world\n").unwrap();
 
-        // 匹配成功
         assert!(verify_file_sha256(&test_file, "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447").is_ok());
-        // 大小写不敏感匹配
         assert!(verify_file_sha256(&test_file, "A948904F2F0F479B8F8197694B30184B0D2ED1C1CD2A1EC0FB85D299A192A447").is_ok());
 
-        // hash 不匹配生成前端可识别的 sayit_error:download_checksum: 错误代码
         let mismatch_err = verify_file_sha256(&test_file, "0000000000000000000000000000000000000000000000000000000000000000").unwrap_err();
         assert!(is_checksum_error(&mismatch_err));
 
-        // 验证非前缀的文本（即便是包含关键字）不会被生产分类器误判
         let wrapped_err = format!("other_wrapper: {}", mismatch_err);
         assert!(!is_checksum_error(&wrapped_err));
 
@@ -2278,23 +2195,17 @@ mod tests {
         let hash_err = Err("sayit_error:download_checksum: bad hash".to_string());
         let io_err = Err("sayit_error:download_permission: Access denied".to_string());
 
-        // 1. 完整文件且 SHA-256 匹配（或无预期 hash） -> Finalize
         assert_eq!(inspect_resume_state(1000, 1000, Some(ok_res)).unwrap(), ResumeDecision::Finalize);
         assert_eq!(inspect_resume_state(1000, 1000, None).unwrap(), ResumeDecision::Finalize);
 
-        // 2. 完整文件但明确 SHA-256 不匹配 -> Restart
         assert_eq!(inspect_resume_state(1000, 1000, Some(hash_err)).unwrap(), ResumeDecision::Restart);
 
-        // 3. 完整文件但由于 I/O 错误无法校验 -> 原样返回，生产保留文件现场
         assert_eq!(inspect_resume_state(1000, 1000, Some(io_err)).unwrap_err(), "sayit_error:download_permission: Access denied");
 
-        // 4. 文件尺寸超出 total_size -> Restart
         assert_eq!(inspect_resume_state(1200, 1000, None).unwrap(), ResumeDecision::Restart);
 
-        // 5. 正常断点续传（部分文件） -> Resume(downloaded)
         assert_eq!(inspect_resume_state(500, 1000, None).unwrap(), ResumeDecision::Resume(500));
 
-        // 6. 首次下载（无已有文件） -> Resume(0)
         assert_eq!(inspect_resume_state(0, 1000, None).unwrap(), ResumeDecision::Resume(0));
     }
 }

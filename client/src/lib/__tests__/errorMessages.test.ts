@@ -5,15 +5,11 @@ import {
   describeServerError,
 } from '../errorMessages'
 
-/**
- * 这些断言守住一条规则：设置页里不再出现原始异常文本作为主文案。
- * 每条错误都必须给出「发生了什么 + 往哪查」，并把原文降级到 detail。
- */
 describe('describeServerError', () => {
   it('把 Failed to fetch 翻译成可行动的提示，并建议恢复默认地址', () => {
     const result = describeServerError(new TypeError('Failed to fetch'), true)
     expect(result.message).not.toContain('Failed to fetch')
-    expect(result.message).toContain('连不上这个地址')
+    expect(result.message).toContain('reach that address')
     expect(result.detail).toBe('Failed to fetch')
     expect(result.action).toBe('reset_url')
     expect(result.code).toBe('server_unreachable')
@@ -25,25 +21,25 @@ describe('describeServerError', () => {
 
   it('401/403 说清是权限问题而不是网络问题', () => {
     const result = describeServerError(new Error('HTTP 403'), true)
-    expect(result.message).toContain('拒绝')
+    expect(result.message).toContain('refused')
     expect(result.message).toContain('403')
   })
 
   it('404 指出这里要填服务根地址', () => {
-    expect(describeServerError(new Error('HTTP 404'), true).message).toContain('根地址')
+    expect(describeServerError(new Error('HTTP 404'), true).message).toContain('service root')
   })
 
   it('5xx 把责任指向服务端', () => {
-    expect(describeServerError(new Error('HTTP 502'), true).message).toContain('服务端')
+    expect(describeServerError(new Error('HTTP 502'), true).message).toContain('server')
   })
 
   it('超时单独成一类', () => {
-    expect(describeServerError(new Error('超时'), true).message).toContain('超时')
+    expect(describeServerError(new Error('timeout'), true).message).toContain('too long')
   })
 
   it('认不出来的错误也不把原文当主文案', () => {
     const result = describeServerError(new Error('weird internal thing'), false)
-    expect(result.message).toBe('连接失败。')
+    expect(result.message).toBe('Connection failed.')
     expect(result.detail).toBe('weird internal thing')
   })
 })
@@ -58,36 +54,24 @@ describe('describeProviderError', () => {
 
   it('密钥类失败指向密钥本身', () => {
     const result = describeProviderError('Invalid API key')
-    expect(result.message).toContain('密钥被拒绝')
+    expect(result.message).toContain('key was rejected')
     expect(result.action).toBe('check_key')
     expect(result.code).toBe('provider_bad_key')
   })
 
   it('限流/欠费与密钥错误区分开', () => {
-    expect(describeProviderError(new Error('HTTP 429 rate limit')).message).toContain('限流')
+    expect(describeProviderError(new Error('HTTP 429 rate limit')).message).toContain('rate-limit')
   })
 
-  /**
-   * 实测（2026-09-16，OpenRouter）：余额不足返回的是 402，响应体是
-   * `{"error":{"message":"This request requires at least $0.50 in balance for audio","code":402}}`
-   *
-   * 以前 402 一条分类都没命中，落到 connect_failed 显示成「连接失败」——
-   * 而真实原因是账户里没钱，用户完全看不出该去干什么。
-   *
-   * 它必须和限流分开：两者给用户的动作是相反的。限流等一会儿就好；
-   * 余额不足等到明年也还是不行，得去充值。
-   */
   it('402 余额不足单独一类，不混进限流', () => {
     const raw = describeProviderError(new Error(
       'OpenRouter transcription error 402 Payment Required [http=402] gen=-: '
       + '{"error":{"message":"This request requires at least $0.50 in balance for audio","code":402}}',
     ))
     expect(raw.code).toBe('provider_insufficient_balance')
-    expect(raw.message).toContain('余额不足')
-    expect(raw.message).not.toContain('限流')
-    // 动作要把用户带到那份配置上（充值入口和密钥在同一个后台），而不是让他重试
+    expect(raw.message).toContain('balance is too low')
+    expect(raw.message).not.toContain('rate-limit')
     expect(raw.action).toBe('check_key')
-    // 具体金额和链接在服务商给的原文里，必须保留在 detail 供用户看
     expect(raw.detail).toContain('$0.50')
 
     const tagged = describeProviderError('sayit_error:provider_insufficient_balance:HTTP 402')
@@ -101,19 +85,12 @@ describe('describeProviderError', () => {
       .toBe('provider_rate_limit')
   })
 
-  // 实测：Groq 在中国大陆 IP 上返回 403 {"error":{"message":"Forbidden"}}，
-  // 而假密钥、真密钥、完全不带鉴权头三种情况的响应**完全相同** —— 请求在边缘节点
-  // 就被拒了，密钥从未被验证。归成「密钥被拒绝」会把用户引去反复重建密钥。
   it('403 不报成密钥问题，而是指出可能是地区或权限', () => {
-    // 实际链路：Rust 已经分好类，前端只按错误码取文案
     const tagged = describeProviderError('sayit_error:provider_forbidden:API error 403 Forbidden [http=403]')
     expect(tagged.code).toBe('provider_forbidden')
-    expect(tagged.message).not.toContain('密钥被拒绝')
+    expect(tagged.message).not.toContain('key was rejected')
     expect(tagged.action).toBe('switch_source')
 
-    // 退路：拿不到错误码时按文本分类，也不能落回「密钥被拒绝」。
-    // 这里刻意用 `[http=403]` —— 那是 diag::http_summary 的格式，
-    // 曾经因为正则认不出来而被归成"认不出的错误"。
     const raw = describeProviderError(new Error('API error 403 Forbidden [http=403]: {"error":{"message":"Forbidden"}}'))
     expect(raw.code).toBe('provider_forbidden')
   })
@@ -123,7 +100,7 @@ describe('describeProviderError', () => {
   })
 
   it('模型未开通给出换供应商的方向', () => {
-    expect(describeProviderError(new Error('model not found')).message).toContain('模型')
+    expect(describeProviderError(new Error('model not found')).message).toContain('model')
   })
 })
 
@@ -137,7 +114,7 @@ describe('describeDownloadError', () => {
 
   it('网络中断建议换下载源', () => {
     const result = describeDownloadError('error sending request for url (https://hf-mirror.com/...)')
-    expect(result.message).toContain('换一个下载源')
+    expect(result.message).toContain('another download source')
     expect(result.action).toBe('switch_source')
     expect(result.code).toBe('download_network')
     expect(result.detail).toContain('hf-mirror.com')
@@ -145,7 +122,7 @@ describe('describeDownloadError', () => {
 
   it('磁盘空间不足单独成一类，不建议换源', () => {
     const result = describeDownloadError('No space left on device')
-    expect(result.message).toContain('磁盘空间不足')
+    expect(result.message).toContain('disk space')
     expect(result.action).toBe('none')
   })
 

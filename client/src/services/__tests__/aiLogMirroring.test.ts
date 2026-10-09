@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ appendDebugLog: vi.fn() }))
 
-// 只替换真正的落盘出口。debugLog 本体用真实实现 —— 这条测试要验的就是它里面那层
-// 白名单过滤，mock 掉它等于什么都没验。
 vi.mock('../bridge', () => ({ appendDebugLog: mocks.appendDebugLog }))
 
 import {
@@ -33,17 +31,6 @@ function mirroredMessages(): string[] {
     .map((p) => p.message ?? '')
 }
 
-/**
- * 这次排查真正卡住的地方：`polishWithClientAi` 里那条"低于门槛所以跳过"的 info 日志
- * **执行了但没落盘** —— 它的 source 是 'server' / 'local' / 'cloud_api'，三个都不在
- * debugLog 的白名单里，于是既不进 sayit.log 也不进内存环形缓冲。
- *
- * 所以只断言"我调了 addRuntimeEvent"是不够的（那在出 bug 的版本上也全绿）。
- * 这里断言的是"它确实穿过了过滤层"。
- *
- * 变异验证：把 debugLog.ts 里 `source === AI_LOG_SOURCE && AI_KEY_EVENTS.has(...)`
- * 那两处放行条件去掉，本文件的前两条用例必须失败。若仍全绿，说明测试没覆盖过滤机制。
- */
 describe('AI 事件必须真的穿过落盘过滤层', () => {
   beforeEach(() => {
     mocks.appendDebugLog.mockClear()
@@ -67,7 +54,6 @@ describe('AI 事件必须真的穿过落盘过滤层', () => {
   })
 
   it('旧路径那条按 provider 命名的 info 依然不落盘（说明本轮的修法是必要的）', () => {
-    // 这几个 source 就是改之前 polishWithClientAi 用的 logSource
     for (const source of ['server', 'local', 'cloud_api', 'history']) {
       addRuntimeEvent('info', source, 'AI cleanup skipped below duration threshold', {})
     }

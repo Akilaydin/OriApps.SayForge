@@ -102,16 +102,12 @@ struct TimelineEntry {
     trace_id: Option<String>,
 }
 
-/// 解析日志行，格式: [2025-03-20 14:30:00.123] [LEVEL] [module] message
 fn parse_log_line(line: &str) -> Option<TimelineEntry> {
-    // 最少需要 [timestamp] [LEVEL] [module] msg
     let line = line.trim();
     if !line.starts_with('[') {
         return None;
     }
 
-    // 提取 timestamp。个别行可能是 [[2026-...]] 这种多方括号开头，去掉前导 '[' 并校验，
-    // 否则带 '[' 的时间戳字符串排序会排到最后，污染「覆盖记录终点」显示。
     let ts_end = line.find(']')?;
     let ts = line[1..ts_end].trim_start_matches('[').trim();
     if ts.is_empty() || !ts.as_bytes()[0].is_ascii_digit() {
@@ -123,14 +119,12 @@ fn parse_log_line(line: &str) -> Option<TimelineEntry> {
         return None;
     }
 
-    // 提取 level
     let level_end = rest.find(']')?;
     let level_raw = &rest[1..level_end];
     let level = level_raw.trim().to_lowercase();
 
     let rest2 = rest[level_end + 1..].trim_start();
     if !rest2.starts_with('[') {
-        // 没有 module 标签，用 "unknown"
         return Some(TimelineEntry {
             ts: ts.to_string(),
             level,
@@ -141,7 +135,6 @@ fn parse_log_line(line: &str) -> Option<TimelineEntry> {
         });
     }
 
-    // 提取 module
     let mod_end = rest2.find(']')?;
     let module = rest2[1..mod_end].trim().to_string();
     let title = rest2[mod_end + 1..].trim().to_string();
@@ -167,7 +160,6 @@ fn issue_window_label(occurrence: &str) -> &'static str {
     }
 }
 
-/// 根据 issue_occurrence 计算时间窗口的起始时间字符串
 fn occurrence_cutoff(occurrence: &str) -> Option<String> {
     let now = chrono::Local::now();
     let cutoff = match occurrence {
@@ -178,13 +170,11 @@ fn occurrence_cutoff(occurrence: &str) -> Option<String> {
         "yesterday" => (now.date_naive() - chrono::Duration::days(1))
             .and_hms_opt(0, 0, 0)
             .map(|naive| naive.and_local_timezone(chrono::Local).unwrap())?,
-        // "older" / "not_sure" — 不过滤
         _ => return None,
     };
     Some(cutoff.format("%Y-%m-%d %H:%M:%S").to_string())
 }
 
-/// 根据 issue_occurrence 过滤日志条目
 fn filter_entries_by_occurrence(entries: &[TimelineEntry], occurrence: &str) -> Vec<TimelineEntry> {
     match occurrence_cutoff(occurrence) {
         Some(cutoff) => entries.iter()
@@ -195,13 +185,11 @@ fn filter_entries_by_occurrence(entries: &[TimelineEntry], occurrence: &str) -> 
     }
 }
 
-/// 读取日志文件并解析为 timeline entries
 fn read_and_parse_logs() -> (Vec<TimelineEntry>, usize) {
     let dir = log_dir();
     let mut all_entries = Vec::new();
     let mut files_scanned = 0usize;
 
-    // 读取 sayit.log 和 rotated logs
     let filenames = ["sayforge.log", "sayforge.1.log", "sayforge.2.log", "sayforge.3.log"];
     for filename in &filenames {
         let path = dir.join(filename);
@@ -218,7 +206,6 @@ fn read_and_parse_logs() -> (Vec<TimelineEntry>, usize) {
         }
     }
 
-    // 按时间排序（字符串排序对 ISO 格式有效）
     all_entries.sort_by(|a, b| a.ts.cmp(&b.ts));
 
     (all_entries, files_scanned)
@@ -231,14 +218,11 @@ pub fn get_diagnostics_preview(data: Value) -> Result<Value, String> {
     let (all_entries, files_scanned) = read_and_parse_logs();
     let total_raw = all_entries.len();
 
-    // 根据 issue_occurrence 过滤时间窗口
     let entries = filter_entries_by_occurrence(&all_entries, &req.issue_occurrence);
 
-    // 统计 errors / warnings
     let errors = entries.iter().filter(|e| e.level == "error").count();
     let warnings = entries.iter().filter(|e| e.level == "warn" || e.level == "warning").count();
 
-    // 按 module 统计
     let mut module_map = std::collections::HashMap::<String, usize>::new();
     for entry in &entries {
         *module_map.entry(entry.module.clone()).or_insert(0) += 1;
@@ -249,10 +233,8 @@ pub fn get_diagnostics_preview(data: Value) -> Result<Value, String> {
         .collect();
     modules.sort_by(|a, b| b.count.cmp(&a.count));
 
-    // 最后一个 error
     let last_error = entries.iter().rev().find(|e| e.level == "error").cloned();
 
-    // 取最近 200 条作为 timeline
     let timeline: Vec<TimelineEntry> = entries.iter().rev().take(200).rev().cloned().collect();
     let timeline_count = timeline.len();
 
@@ -290,10 +272,7 @@ pub fn get_diagnostics_preview(data: Value) -> Result<Value, String> {
 #[derive(Deserialize)]
 struct DiagnosticsZipRequest {
     description: String,
-    /// 用户选的问题类型码（insert_failed / no_text / …，定义在 types/appApi.d.ts）。
-    /// 写进 manifest 是为了让收到 ticket 的人不必读完整份日志就知道该看哪一段。
-    /// 老版本客户端不发这个字段，所以要能缺省。
-    #[serde(rename = "issueType", default)]
+                #[serde(rename = "issueType", default)]
     issue_type: String,
     settings: Value,
     #[serde(rename = "issueOccurrence")]
@@ -348,7 +327,6 @@ pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
     zip.write_all(serde_json::to_string_pretty(&req.settings).unwrap().as_bytes())
         .map_err(|e| e.to_string())?;
 
-    // 3. 日志文件
     let log_d = log_dir();
     for filename in &["sayforge.log", "sayforge.1.log", "sayforge.2.log", "sayforge.3.log"] {
         let path = log_d.join(filename);
@@ -361,7 +339,6 @@ pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
         }
     }
 
-    // 4. 截图
     for (i, img) in req.images.iter().enumerate() {
         let ext = match img.mime_type.as_str() {
             "image/png" => "png",
@@ -411,7 +388,6 @@ pub fn copy_diagnostics_zip(source: String, destination: String) -> Result<(), S
         return Err("The diagnostics file does not exist".to_string());
     }
     std::fs::copy(&src, &destination).map_err(|e| format!("Failed to copy diagnostics file: {}", e))?;
-    // 清理临时文件
     let _ = std::fs::remove_file(&src);
     Ok(())
 }
@@ -422,7 +398,7 @@ pub fn read_log_file(log_type: String) -> Result<Option<String>, String> {
 
     let filename = match log_type.as_str() {
         "current" | "" | "frontend" => "sayforge.log",
-        "ptt" => "sayforge.log", // PTT 事件也写在同一个日志里
+        "ptt" => "sayforge.log",
         "1" => "sayforge.1.log",
         "2" => "sayforge.2.log",
         "3" => "sayforge.3.log",
@@ -434,7 +410,6 @@ pub fn read_log_file(log_type: String) -> Result<Option<String>, String> {
         return Ok(None);
     }
 
-    // 最多读 200KB
     let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
     let size = meta.len();
     const MAX_READ: u64 = 200 * 1024;

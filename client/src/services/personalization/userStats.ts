@@ -31,21 +31,19 @@ const DOMAIN_SCENE_RULES: DomainSceneRule[] = [
       'studio64',
       'kiro',
     ],
-    promptSnippet: '该用户具有深厚的软件开发背景，遇到发音模糊的词汇请优先推测为 IT 术语、API 名称、命令行参数或英文变量。', // i18n-allow: 中文口述整理 Prompt
+    promptSnippet: 'The user is a software developer. Resolve ambiguous speech toward technical terms, APIs, command-line arguments and identifiers.',
   },
   {
     id: 'communication',
     get label() { return t('userScene.communication') },
-    // weixin：微信 4.1 起 exe 从 WeChat.exe 改名为 Weixin.exe，只留 wechat 会把
-    // 新版微信整个漏掉（personalization/defaults.ts 的内置规则同样列了两个名字）
-    matchers: ['wechat', 'weixin', 'wecom', 'qq', 'teams', 'slack', 'discord', 'telegram', 'dingtalk'],
-    promptSnippet: '该用户长期处于即时沟通场景，遇到模糊表达时优先整理成简洁、可直接发送的消息。', // i18n-allow: 中文口述整理 Prompt
+    matchers: ['teams', 'slack', 'discord', 'telegram'],
+    promptSnippet: 'For messaging contexts, prefer concise, natural messages ready to send.',
   },
   {
     id: 'office',
     get label() { return t('userScene.office') },
-    matchers: ['outlook', 'word', 'excel', 'powerpnt', 'wps', 'onenote', 'notion'],
-    promptSnippet: '该用户长期处于办公写作场景，遇到模糊表达时优先采用正式、完整、结构清晰的书面语，但不要新增事实。', // i18n-allow: 中文口述整理 Prompt
+    matchers: ['outlook', 'word', 'excel', 'powerpnt', 'onenote', 'notion'],
+    promptSnippet: 'For work writing, prefer clear, complete and professionally structured text without adding facts.',
   },
   {
     id: 'browser',

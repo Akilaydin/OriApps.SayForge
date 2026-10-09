@@ -97,8 +97,6 @@ export default function PTTLab() {
     })
 
     if (probe.isCurrentAppProcess) {
-      // SayIt 自身是 Chromium 窗口，renderer 直插对 React 受控组件无效，
-      // 走和外部窗口一样的 Rust paste（Ctrl+V）路径。
       appendLog('Target is the SayIt process; using Rust paste', { hwnd: probe.hwnd })
       // Fall through to normal editable / not_editable flow
     }
@@ -325,8 +323,6 @@ export default function PTTLab() {
               <div className="space-y-1 rounded-lg border bg-card p-3 text-xs text-foreground">
                 <div>editable: <span className={lastProbe.editable ? 'text-success font-medium' : 'text-destructive font-medium'}>{String(lastProbe.editable)}</span></div>
                 <div>verdict: {lastProbe.verdict || '-'}</div>
-                {/* gate = 结论由哪一层判据给出。no_signal 表示四层全空，这时要看下面
-                    那几行是哪一项没给出信号，而不是去怀疑 SendInput。 */}
                 <div>gate: {lastProbe.gate || '-'}</div>
                 <div>process: {lastProbe.process || '-'} (pid: {lastProbe.pid ?? '-'})</div>
                 <div>hwnd: {lastProbe.hwnd || '-'} / focus: {lastProbe.focusHwnd || '-'}</div>

@@ -81,7 +81,6 @@ pub struct AppContext {
     pub text_context: Option<TextContext>,
 }
 
-/// 前台窗口所在显示器的物理工作区，已排除任务栏。
 #[derive(Debug, Clone)]
 pub struct MonitorBounds {
     pub left: i32,
@@ -175,8 +174,6 @@ impl ContextDetector {
                 APP.with(|a| {
                     if let Some(app) = a.borrow().as_ref() {
                         let _ = app.emit("active-app-context", &ctx);
-                        // 前台窗口切换后，若悬浮窗正显示，立即把它重新顶回最上层——
-                        // 覆盖「用户切到/打开 PotPlayer 等置顶程序把悬浮窗压下去」的场景。
                         app.state::<crate::window::WindowState>()
                             .reassert_overlay_topmost_if_visible(app);
                     }
@@ -279,7 +276,6 @@ fn capture_context_with_text(reason: &str, include_text_context: bool) -> AppCon
     ctx
 }
 
-/// 捕获当前前台窗口所在显示器的物理工作区。
 #[cfg(windows)]
 pub fn capture_foreground_monitor() -> Option<MonitorBounds> {
     unsafe {
@@ -713,7 +709,6 @@ pub unsafe fn read_class_name(hwnd: HWND) -> String {
     }
 }
 
-/// pid → 可执行文件名（不含路径）。inject 模块用它指认「是谁占着剪贴板」。
 #[cfg(windows)]
 pub(crate) fn get_process_name(pid: u32) -> String {
     use windows::Win32::Foundation::CloseHandle;

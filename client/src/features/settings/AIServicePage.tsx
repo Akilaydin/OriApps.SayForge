@@ -1,4 +1,3 @@
-// AI 服务配置页面
 
 import AIProviderSection from './AIProviderSection'
 import { useT } from '@/i18n/useT'

@@ -28,7 +28,6 @@ export default function UpdateNotificationHost({ enabled }: { enabled: boolean }
     const unlisten = listen<UpdateNotificationAction>(UPDATE_NOTIFICATION_ACTION, ({ payload }) => {
       void controller.act(payload)
     })
-    // 只读取内存，兼顾录音空闲期与主题变化，不占用录音器已有的单一 UI 订阅。
     const timer = setInterval(() => controller.tick(), 500)
     controller.tick()
     return () => {

@@ -21,14 +21,6 @@ export interface OverlayCommonPayload {
   showDuration: boolean
   baseWidth?: number
   barCount?: number
-  /**
-   * 界面语言，随每次 overlay 更新一起下发。
-   *
-   * 悬浮窗是**独立的 React 根**，读不到主窗的内存状态；而它必须在按下快捷键后
-   * 立刻出现，不能为了读一次设置加一条异步初始化（overlay 创建本身就脆，
-   * 见 pitfalls 7）。所以复用这条现成通道 —— payload 在 Rust 侧是不透明 JSON，
-   * 多带一个字段是零成本的。
-   */
   locale?: string
 }
 
@@ -44,18 +36,10 @@ export interface PTTEventPayload {
   timestamp?: number
 }
 
-/**
- * 单次录音上限（秒）。到点会自动结束本次录音并进入识别。
- *
- * ⚠️ 必须与 Rust 侧 `keyboard/mod.rs` 的 HARD_RELEASE_AFTER_SECS 保持一致
- * （按住说话的硬释放在 Rust 看门狗里；免提的自动停止在 RecorderOrchestrator）。
- */
 export const MAX_RECORDING_SEC = 300
 
-/** 距上限还剩多少秒时，计时区改为显示倒计时（提醒即将到点） */
 export const RECORDING_COUNTDOWN_SEC = 60
 
-/** 上限的可读说明（如「5 分钟」/「5 min」）。界面文案一律用它，避免改了上限忘了改文案。 */
 export function formatRecordingLimit(): string {
   if (MAX_RECORDING_SEC < 60) return t('duration.seconds', { count: MAX_RECORDING_SEC })
   const minutes = Math.floor(MAX_RECORDING_SEC / 60)
@@ -65,12 +49,6 @@ export function formatRecordingLimit(): string {
     : t('duration.minutesSeconds', { minutes, seconds })
 }
 
-/**
- * 悬浮窗计时区要显示的内容。
- *
- * 最后一分钟把"已录多久"换成"还剩多久"：到点会自动结束，此时用户更需要知道剩余时间。
- * 文案保持紧凑（`剩余 47s`）—— 胶囊宽度按波形条数固定，太长会被裁掉。
- */
 export function formatRecordingTimer(elapsedSec: number): {
   text: string
   countdown: boolean

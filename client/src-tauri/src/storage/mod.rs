@@ -6,9 +6,6 @@ use std::sync::Mutex;
 
 /// Default settings values (mirrors electron-app/electron/store.ts)
 const DEFAULT_SETTINGS: &[(&str, &str)] = &[
-    // 按住说话的默认键。不能是 Shift：长按右 Shift 会触发 Windows 筛选键，
-    // 导致松开后录音停不下来。与 src/services/defaults.ts、keyboard/mod.rs 的
-    // DEFAULT_PTT_SETTING 保持一致。
     ("shortcutPTT", r#""ControlRight""#),
     ("shortcutPTTCombo", r#""Alt+Q""#),
     ("shortcutHandsFree", r#""AltRight""#),
@@ -766,10 +763,8 @@ fn parse_stats(json: &Option<String>) -> (f64, i64) {
     }
 }
 
-// ─── 备份 / 恢复辅助（导入导出用）───
 impl Storage {
-    /// 导出 app_settings 为 { key: value } 对象；exclude 中的 key 会被跳过。
-    pub fn export_app_settings(&self, exclude: &[&str]) -> Value {
+        pub fn export_app_settings(&self, exclude: &[&str]) -> Value {
         let db = self.db.lock().unwrap();
         let mut map = serde_json::Map::new();
         if let Ok(mut stmt) = db.prepare("SELECT key, value_json FROM app_settings") {
@@ -790,8 +785,7 @@ impl Storage {
         Value::Object(map)
     }
 
-    /// 原子应用一组配置：设置 key 与可选集合要么全部成功，要么全部回滚。
-    pub fn apply_config_transaction(
+        pub fn apply_config_transaction(
         &self,
         app_settings: &serde_json::Map<String, Value>,
         exclude: &[&str],

@@ -12,13 +12,11 @@ describe('uint8ArrayToBase64', () => {
   })
 
   it('大数据（超过 chunk 大小）正确编码', () => {
-    // 创建 20KB 的数据，超过 8192 的 chunk 大小
     const size = 20000
     const data = new Uint8Array(size)
     for (let i = 0; i < size; i++) {
       data[i] = i % 256
     }
-    // 用原始方法验证结果一致
     let expected = ''
     for (let i = 0; i < data.length; i++) {
       expected += String.fromCharCode(data[i])

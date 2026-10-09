@@ -9,8 +9,6 @@ import { useUpdateState } from '@/features/update/useUpdateState'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
-// 导航项存 key 而不是文案：切语言时这些常量不会重新求值（模块级只算一次），
-// 存成中文串就会永远停在启动时那个语言。
 const dailyNavItems = [
   { to: '/', icon: Home, labelKey: 'nav.home' },
   { to: '/history', icon: Clock, labelKey: 'nav.history' },
@@ -68,14 +66,12 @@ function IconOnlyNavItem({
   to: string
   icon: typeof Home
   label: string
-  /** 覆盖图标自身的颜色/动效（如「有更新」时的绿色闪烁） */
   iconClassName?: string
 }) {
   return (
     <Tooltip content={label}>
       <NavLink
         to={to}
-        // 这里只有图标、没有文字，不给 aria-label 的话读屏用户听到的是空按钮
         aria-label={label}
         className={({ isActive }) =>
           cn(
@@ -90,19 +86,6 @@ function IconOnlyNavItem({
   )
 }
 
-/**
- * 侧栏底部那排图标。
- *
- * 有更新待安装时**不新增图标** —— 让「关于」这一枚自己变绿闪烁，悬停提示换成
- * 「新版本已下载好」。关于页就是更新所在的地方，点它正好到达能看到版本说明和
- * 「立即安装」的位置；多一枚图标既挤又需要用户先学会它是什么意思。
- *
- * 后台下载期间**故意毫无变化**：那会儿没有任何需要用户知道的事，静默才是本意。
- *
- * ⚠ 这里用绿色不违反下面 ModeIndicator 那条"不给任何好颜色"的规矩：那条针对的是
- * 我们没验证过的事（配置填完了 ≠ 真能用）。而"包已下载完、哈希校验过、随时可装"
- * 是确定的事实。别顺手把它改回中性色。
- */
 function FooterIcons() {
   const t = useT()
   const update = useUpdateState()
@@ -138,8 +121,6 @@ function ModeIndicator() {
   const Icon = mode === 'local' ? Cpu : Cloud
   const title = mode === 'local' ? t('mode.local') : t('mode.cloudApi')
   const notReady = ready === false
-  // blockedReason 目前是 Rust/服务层给的中文串（P2-1 会改成 code 再本地化）。
-  // 这里只保证**外壳**跟随语言，不假装里面那句已经翻好了。
   const tip = notReady
     ? t('mode.tooltipNotReady', { mode: title, reason: blockedReason || t('mode.notReadyFallback') })
     : detail ? t('mode.tooltipDetail', { mode: title, detail }) : title

@@ -1,4 +1,3 @@
-// ASR 测试卡片 — 用内置测试音频测试当前模式的识别效果
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { invoke } from '@tauri-apps/api/core'
@@ -8,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Feedback } from '@/components/ui/feedback'
 import { getSetting } from '@/services/store'
 import { getEngineDraftDirty, subscribeEngineDraft } from '@/stores/engineDraft'
-import { buildAsrExtra, isQwenOmniProvider, resolveAsrDisplayModel } from '@/lib/asrModels'
+import { buildAsrExtra, resolveAsrDisplayModel } from '@/lib/asrModels'
 import { describeProviderError } from '@/lib/errorMessages'
 import type { WorkMode } from '@/services/transcription'
 import { useT } from '@/i18n/useT'
@@ -31,15 +30,11 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
   const [testing, setTesting] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [result, setResult] = useState<TestResult | null>(null)
-  // 失败原来是被写进 result.text 的，于是用与成功完全相同的面板渲染出来，
-  // 外面还配着「ASR 0ms」的徽标——失败长得像"成功识别出了『测试失败:』这几个字"。
   const [error, setError] = useState<TestError | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // 上方配置有未保存改动时，这里读到的还是旧值，测出来的结果没有意义
   const draftDirty = useSyncExternalStore(subscribeEngineDraft, getEngineDraftDirty)
 
-  // 换了工作模式，旧结果就不再说明任何事情，直接作废
   useEffect(() => {
     setResult(null)
     setError(null)
@@ -70,14 +65,13 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
     setError(null)
 
     try {
-      // 获取测试音频并计算时长
       const wavB64 = await invoke<string>('get_test_audio_b64')
       const wavBytes = Uint8Array.from(atob(wavB64), (c) => c.charCodeAt(0))
       const pcmBytes = wavBytes.slice(44)
       const audioDurationSec = pcmBytes.length / 2 / 16000
 
       if (workMode === 'local') {
-        const modelId = await getSetting('localAsr.modelId', 'sensevoice-small-gguf') as string
+        const modelId = await getSetting('localAsr.modelId', 'nemotron-asr-streaming-0.6b-gguf') as string
         const language = await getSetting('localAsr.language', 'auto') as string
         const r = await invoke<{ text: string; elapsed_ms: number; model_id: string }>('run_asr_benchmark', {
           modelId, language,
@@ -92,18 +86,11 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
         }
         pcmB64 = btoa(pcmB64)
 
-        const asrProvider = await getSetting('cloudAsr.provider', 'doubao_v2') as string
+        const asrProvider = await getSetting('cloudAsr.provider', 'openai_compat') as string
         const asrApiKey = await getSetting('cloudAsr.apiKey', '') as string
         const asrAppId = await getSetting('cloudAsr.appId', '') as string
         const asrModel = await getSetting('cloudAsr.model', '') as string
 
-        // 模型解析一律走 @/lib/asrModels。这里原来自己抄了一份映射表，还留着几个
-        // 已经不在 ASR_PROVIDERS 里的旧 key——测试可能用与实际配置不同的模型。
-        const isOmni = isQwenOmniProvider(asrProvider)
-        const savedPrompt = isOmni
-          ? await getSetting('cloudAsr.omniSystemPrompt', '') as string
-          : ''
-        // baseUrl 只有「地址自己填」那两张卡是非空的，其余一律空串（见 asrEndpointUrl）
         const baseUrl = await getSetting('cloudAsr.baseUrl', '') as string
         const protocol = await getSetting('cloudAsr.protocol', 'auto') as string
         const systemInstruction = asrProvider === 'openai_compat'
@@ -114,7 +101,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           ? await getSetting('cloudAsr.audioEncoding', 'wav') as string : 'wav'
         const extra = buildAsrExtra(asrProvider, {
           model: asrModel,
-          instructions: isOmni ? savedPrompt : systemInstruction,
+          instructions: systemInstruction,
           userPrompt,
           audioEncoding,
           baseUrl,
@@ -127,7 +114,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
             audio_b64: pcmB64,
             sample_rate: 16000,
             asr_config: {
-              provider: isOmni ? 'qwen_omni' : asrProvider,
+              provider: asrProvider,
               api_key: asrApiKey,
               app_id: asrAppId,
               ...(extra && { extra }),
@@ -139,7 +126,6 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           text: r.text,
           asrMs: totalMs,
           mode: 'cloud_api',
-          // 报的必须是**真正发出去的**那个模型，否则这个面板就成了误导源
           model: extra?.model || resolveAsrDisplayModel(asrProvider),
           audioDurationSec,
         })
@@ -155,13 +141,9 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
   return (
     <Card>
       <CardContent className="p-6">
-        {/* flex-wrap：最小窗口下标题 + 两个按钮挤一行会溢出 */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">{t('asrTest.title')}</h2>
-            {/* 这张卡只测 ASR。服务器模式下请求里写着 disable_ai: true，本地和云 API 也
-                不经过 AI 整理——原来界面上还渲染一个恒为 0 的「LLM 0ms」，会让人以为
-                AI 整理坏了。现在把范围说清，并不再展示那个假字段。 */}
             <p className="mt-1 text-xs text-muted-foreground">
               {t('asrTest.desc')}
             </p>
@@ -182,7 +164,6 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
           </div>
         </div>
 
-        {/* 测试读的是已保存的配置。粘完密钥直接点测试必然失败，用户会误判成"密钥是坏的"。 */}
         {draftDirty && (
           <Feedback
             className="mt-4"

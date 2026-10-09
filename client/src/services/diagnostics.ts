@@ -8,7 +8,6 @@ export const MAX_DIAGNOSTIC_IMAGE_SIZE = 5 * 1024 * 1024
 export const MAX_DIAGNOSTIC_TOTAL_IMAGE_SIZE = 20 * 1024 * 1024
 
 export interface DiagnosticsSubmission {
-  /** 用户的补充说明。选了问题类型后它就是可选的 —— 逼用户写作文只会换来「不好用」。 */
   description: string
   issueType: DiagnosticIssueType
   issueOccurrence: DiagnosticOccurrence

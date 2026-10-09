@@ -13,7 +13,6 @@ import { historyFailureReasonDisplay } from '@/i18n/displayNames'
 import { useRecordingPlayback } from './useRecordingPlayback'
 import { AudioProgressBar } from './AudioProgressBar'
 
-/** 云 API 内部 key → 用户友好的模型 ID */
 const ASR_PROVIDER_DISPLAY: Record<string, string> = {
   doubao_v2: 'Doubao-Seed-ASR-2.0',
   doubao: 'Doubao-Seed-ASR',
@@ -30,11 +29,8 @@ interface HistoryRecordListProps {
   onDelete: (id: string) => Promise<void> | void
   onToggleFavorite?: (id: string, nextFavorite: boolean) => Promise<void> | void
   onReprocess?: (record: HistoryRecord) => Promise<void> | void
-  /** 手工编辑转换结果并保存 */
   onEdit?: (id: string, nextText: string) => Promise<void> | void
-  /** 记下「这条的 ASR 纠错已提交/已撤回」，由页面写回本地记录 */
   emptyText?: string
-  /** 搜索关键词：在正文与 ASR 原文里高亮命中处 */
   highlight?: string
 }
 
@@ -46,7 +42,6 @@ function getDayLabel(ts: number): string {
   yesterday.setDate(yesterday.getDate() - 1)
   const recordDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
-  // 日期格式跟界面语言：英文界面下 "August 4" 而不是 "8月4日"
   const dateStr = date.toLocaleDateString(getLocale(), { month: 'long', day: 'numeric' })
   if (recordDay.getTime() === today.getTime()) return t('record.dayPrefix', { day: t('record.today'), date: dateStr })
   if (recordDay.getTime() === yesterday.getTime()) return t('record.dayPrefix', { day: t('record.yesterday'), date: dateStr })
@@ -58,7 +53,6 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })
 }
 
-/** 把 text 中命中 keyword 的子串用 <mark> 高亮（大小写不敏感，用 indexOf 避免正则特殊字符问题）。 */
 function highlightText(text: string, keyword: string) {
   const kw = keyword.trim()
   if (!kw) return text
@@ -97,13 +91,7 @@ function HistoryItem({
   onEdit?: (nextText: string) => Promise<void> | void
   highlight?: string
 }) {
-  // 详情区靠**点「展开详情」按钮**开合，不用 hover。
   //
-  // 曾经改成过鼠标悬停展开（进入停留 160ms 才开、离开延迟 180ms 才收，编辑/播放/
-  // 键盘焦点时粘滞不收）。那套逻辑本身是能用的，但被撤掉了：hover 展开意味着
-  // 光标只是路过列表，行高就会变化，读一屏历史时整个列表始终在动；而"展开某条看细节"
-  // 本来就是个明确的意图，值得用户点一下。
-  // 别再改回 hover —— 那条路已经走过一次了。
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
@@ -132,8 +120,6 @@ function HistoryItem({
     }
   }, [onReprocess, reprocessing])
 
-  // ── 编辑：自动保存（失焦 / 离开页面即存，无需按钮）──
-  // 用 ref 保存最新值，供失焦回调与卸载清理读取，避免闭包拿到旧值。
   const editTextRef = useRef('')
   const editingRef = useRef(false)
   const textRef = useRef(text)
@@ -148,7 +134,6 @@ function HistoryItem({
     setEditing(true)
   }, [text])
 
-  // 提交：仅当仍在编辑且内容有变化时写回。幂等——重复调用（失焦后又卸载）不会重复保存。
   const commitEdit = useCallback(async () => {
     if (!editingRef.current) return
     editingRef.current = false
@@ -158,13 +143,11 @@ function HistoryItem({
     await onEditRef.current(next)
   }, [])
 
-  // 取消：不保存，直接退出（后续失焦/卸载因 editingRef=false 而跳过）。
   const cancelEdit = useCallback(() => {
     editingRef.current = false
     setEditing(false)
   }, [])
 
-  // 离开页面（组件卸载）时若仍在编辑，自动保存。
   useEffect(() => () => { void commitEdit() }, [commitEdit])
 
   const handleDownloadAudio = useCallback(async () => {
@@ -209,9 +192,6 @@ function HistoryItem({
   return (
     <div
       className="group rounded-md transition-colors hover:bg-accent/50"
-      // 关掉滚动锚定：Chromium 默认会在行高变化时自动调 scrollTop 去"稳住"某个锚点元素，
-      // 锚点若落在展开行下方，补偿的结果就是内容（含你刚点开的这行）往上蹿 ——
-      // 表现为"有时往上、有时往下，挤来挤去"。关掉之后展开一律向下推，行为可预期。
       style={{ overflowAnchor: 'none' }}
     >
       <div className="flex items-start gap-2 px-2 py-2">
@@ -231,7 +211,6 @@ function HistoryItem({
                   className="w-full resize-y rounded-md border border-input-border bg-input-bg px-2.5 py-1.5 text-sm leading-relaxed focus:border-input-focus-border focus:outline-none"
                   onBlur={() => { void commitEdit() }}
                   onKeyDown={(e) => {
-                    // Esc 取消（不保存）；Ctrl/Cmd+Enter 立即保存（失焦触发提交）
                     if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
                     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); (e.target as HTMLTextAreaElement).blur() }
                   }}
@@ -256,7 +235,6 @@ function HistoryItem({
                 }}
               >
                 {(() => {
-                  // 编辑过的记录：在正文末尾内联一个小铅笔图标（hover 提示「已编辑」），不占额外行、不混入正文文本
                   const editedMark = record.manualEditedAt ? (
                     <Tooltip content={t('record.edited')}>
                       <Pencil className="ml-1 inline-block h-3 w-3 translate-y-[1px] text-muted-foreground/40" />
@@ -335,8 +313,6 @@ function HistoryItem({
             </Tooltip>
           </div>
 
-          {/* 展开动画：grid 0fr→1fr，200ms ease-out。中途试过实测高度 + 自定义曲线 +
-              内容淡入位移，叠得越多反而越碎，已经撤掉，别再往上加。 */}
           <div
             className="col-span-2 grid grid-cols-subgrid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
             style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
@@ -344,8 +320,6 @@ function HistoryItem({
           >
             <div className="col-span-2 grid grid-cols-subgrid overflow-hidden">
               <div className="col-span-2 mt-2 grid grid-cols-subgrid gap-y-2 text-xs">
-                {/* 空结果的成因。折叠行只能显示「无有效声音」，真实原因（额度耗尽、
-                    资源未开通、服务端断连、文本处理清空）放这里。老记录没有这个字段。 */}
                 {isEmpty && (record.failReasonCode || record.failReason) && (
                   <div className="col-span-2 text-muted-foreground">
                     <span className="font-medium">{t('record.reasonLabel')}</span>
@@ -379,9 +353,6 @@ function HistoryItem({
                   <span className="text-border">|</span>
                   <span>{t('record.recognizeTime', { total: ((record.asrMs + record.llmMs) / 1000).toFixed(1), asr: record.asrMs, llm: record.llmMs })}</span>
 
-                  {/* 四个操作按钮单独收成一组：它们原来和左边的文字共用外层的 gap-2(8px)，
-                      按钮之间也就被撑到 8px，比右上角那排（gap-0.5）散得多。
-                      这里组内用 gap-0.5 与上排统一，组与文字之间仍由外层的 gap-2 分隔。 */}
                   <div className="flex items-center gap-0.5">
                     {!isEmpty && onEdit && !editing && (
                       <Tooltip content={t('record.editText')}>
@@ -471,7 +442,6 @@ function HistoryItem({
                     {t('record.downloadFailed', { path: downloadPath })}
                   </div>
                 )}
-                {/* 音频进度条 + 倍速 */}
                 {playback.ready && <AudioProgressBar playback={playback} className="col-span-2 mt-2" />}
               </div>
             </div>
@@ -532,7 +502,6 @@ export default function HistoryRecordList({
   highlight,
 }: HistoryRecordListProps) {
   useT()
-  // 默认值不能写在参数里：默认参数在模块作用域求值不了 t()，写死中文串又会在英文界面漏出来。
   const resolvedEmptyText = emptyText ?? t('history.empty')
   const grouped = useMemo(() => {
     return records.reduce((acc, record) => {
@@ -545,8 +514,6 @@ export default function HistoryRecordList({
 
   const sortedDays = useMemo(() => {
     return Object.keys(grouped).sort((a, b) => {
-      // 判据跟着译文走：分组标签就是 getDayLabel 拼出来的，硬编码「今天」在英文下永远不命中，
-      // 结果是今天的记录被按字母序丢到中间。
       const todayLabel = t('record.today')
       const yesterdayLabel = t('record.yesterday')
       const aIsToday = a.startsWith(todayLabel)

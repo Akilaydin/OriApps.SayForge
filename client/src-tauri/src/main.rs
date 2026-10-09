@@ -25,10 +25,6 @@ use std::thread;
 /// com.oriapps.sayforge/EBWebView. Keep them global; never copy them into a single window's
 /// `additionalBrowserArgs` in tauri.conf.json (WebView2 rejects the second environment
 /// with ERROR_INVALID_STATE when the option sets differ).
-// 注意：不要再加回 --auto-accept-camera-and-microphone-capture。
-// 该参数会抢先自动处理权限请求，使 PermissionRequested 事件不触发，权限停留在 "prompt"，
-// 导致新版 WebView2 隐藏 enumerateDevices 的设备名/deviceId。麦克风授权改由下面的
-// PermissionRequested 处理器负责（显式 Allow → 变为持久 granted → 恢复设备枚举）。
 const WEBVIEW2_BROWSER_ARGS: &str =
     "--ignore-certificate-errors \
      --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
@@ -47,9 +43,6 @@ fn browser_args_fingerprint(value: &str) -> String {
 
 /// Clean up expired audio files based on retention setting.
 fn cleanup_expired_audio(storage: &Storage) {
-    // 默认必须和前端 defaults.ts 的 audioRetentionDays 一致（-1 = 永久保留）。
-    // 曾经这里写死 30：用户从没动过这个设置时，界面显示"永久"，实际 30 天就被删掉了 ——
-    // 不报错、没有提示，只是录音悄悄消失（"纠正识别"入口大面积置灰就是这么来的）。
     let retention_val = storage.get("audioRetentionDays", Some(&serde_json::json!(-1)));
     let retention_days = retention_val.as_i64().unwrap_or(-1);
     if retention_days < 0 {
@@ -121,7 +114,6 @@ fn cleanup_expired_logs(storage: &Storage) {
             if !path.is_file() {
                 continue;
             }
-            // 不删除当前日志文件
             if path.file_name().map(|n| n == identity::LOG_FILE).unwrap_or(false) {
                 continue;
             }
@@ -164,13 +156,6 @@ fn main() {
         })
         .init();
 
-    // ── 全局 panic 钩子（悬浮窗/热键间歇性失效排查埋点）──
-    // 生产环境用 windows_subsystem="windows"，没有控制台窗口，任何线程 panic 的
-    // 默认输出（stderr）都会直接丢失、无迹可寻。键盘钩子回调、dispatcher 线程等
-    // 一旦 panic，对应线程直接退出但主进程不受影响——表现出来就是"Alt 键突然
-    // 没反应了，但软件看起来还在正常运行"，与用户反馈的现象高度吻合。
-    // 这里把所有 panic 信息（发生位置、线程名、payload）写入 sayit.log，
-    // 下次复现后可以直接搜索 "[PANIC]" 定位是哪个线程挂了。
     {
         let default_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |panic_info| {
@@ -252,7 +237,6 @@ fn main() {
 
     // Read PTT setting before moving storage into managed state
     let ptt_setting_val = storage.get("shortcutPTT", None);
-    // 兜底键与 storage 种子、前端 defaults.ts 保持一致；绝不能是 Shift（会触发筛选键）
     let ptt_str = ptt_setting_val.as_str().unwrap_or("ControlRight").to_string();
     let hf_setting_val = storage.get("shortcutHandsFree", None);
     let hf_str = hf_setting_val.as_str().unwrap_or("AltRight").to_string();
@@ -261,47 +245,28 @@ fn main() {
     log::info!("PTT setting from DB: raw={:?} parsed={:?}", ptt_setting_val, ptt_str);
     log::info!("HF setting from DB: raw={:?} parsed={:?}", hf_setting_val, hf_str);
 
-    // 自定义模型存储目录：启动时读回并设为进程内生效路径（空串 = 用默认）。
-    // 必须在任何取模型路径的调用之前设定，且要在 storage 被 move 进 manage 之前读。
     let models_dir_val = storage.get("localAsr.modelsDir", None);
     if let Some(custom_dir) = models_dir_val.as_str().map(str::trim).filter(|s| !s.is_empty()) {
         models::downloader::set_custom_models_dir(Some(std::path::PathBuf::from(custom_dir)));
         log::info!("Custom models dir from DB: {}", custom_dir);
     }
 
-    // ⚠️ 这里**故意不注册** ggml 计算后端。注册动作已下沉到 gguf_asr 的懒路径
-    // （ensure_loaded / describe_devices），别再把 init_backends() 加回启动路径。
     //
-    // 为什么：注册会 dlopen exe 旁边所有 ggml 模块，其中 ggml-vulkan.dll 一被载入就
-    // 立刻 vk::createInstance() 建出真实的 Vulkan 上下文。放在这里意味着**云 API 和
-    // 服务器模式的用户也要付这笔钱**：实测白占约 36 MB 共享显存、让进程出现在任务
-    // 管理器的 GPU 进程列表里（连 engtype_compute 都登记上），还同步阻塞启动 80~520 ms
-    // —— 而这些模式一个模型都不会加载，收益是零。用户反馈"即便使用云 API 模式也持续
-    // 占用 GPU"就是这条。
     //
-    // 另外 transcribe-cpp 的 init_backends 上游标注为 idempotent 但 NOT retryable，
-    // 进程内也没有反注册路径，所以一旦注册就撤不回来 —— 更不该无条件先做。
 
-    // 回收上一代 sherpa-onnx 时期的模型权重（新引擎读不了，只白占几百 MB ~ 1 GB）。
-    // 放后台线程，不让删除卡住启动。
     models::local_asr::spawn_legacy_reclaim();
 
-    // 本地模式：启动就在后台把模型加载起来，别等用户第一次按热键才等几百毫秒~几秒。
-    // 非本地模式不加载，避免白占几百 MB 内存。
     if storage.get("workMode", None).as_str() == Some("local") {
         let model_id = storage
             .get("localAsr.modelId", None)
             .as_str()
-            .unwrap_or("sensevoice-small-gguf")
+            .unwrap_or("nemotron-asr-streaming-0.6b-gguf")
             .to_string();
         let accelerator = storage
             .get("localAsr.accelerator", None)
             .as_str()
             .unwrap_or("auto")
             .to_string();
-        // 必须跟着一起读：显卡选择是缓存 key 的一部分，这里传空（自动）而用户设了
-        // 具体某张卡的话，启动预热加载的引擎会在第一次口述时因 key 不符被整个丢掉
-        // 重载一遍 —— 预热白做，用户还要多等一次"卸旧 + 载新 + 预热"。
         let gpu_device = storage
             .get("localAsr.gpuDevice", None)
             .as_str()
@@ -310,14 +275,11 @@ fn main() {
         std::thread::spawn(move || {
             match models::gguf_asr::preload(&model_id, &accelerator, &gpu_device) {
                 Ok(()) => log::info!("Startup local model warm-up completed: {}", model_id),
-                // 模型没下载是正常情况（新装用户），不当错误刷日志
                 Err(e) => log::info!("Startup local model warm-up skipped ({}): {}", model_id, e),
             }
         });
     }
 
-    // 空闲超时卸载：默认让本地模型常驻，用户可在设置里选择 10 / 30 / 60 分钟。
-    // 守护线程始终只启动一个，0 表示仅监听动态配置、不执行卸载。
     let idle_minutes = storage
         .get("localAsr.unloadIdleMinutes", None)
         .as_u64()
@@ -329,8 +291,6 @@ fn main() {
     let context_detector = ContextDetector::new();
 
     tauri::Builder::default()
-        // 单实例锁：必须作为第一个插件注册。第二次启动时不新开进程，
-        // 而是唤起已有窗口，避免两个客户端同时收全局热键、各插一份文本。
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
@@ -374,18 +334,9 @@ fn main() {
             let hook: tauri::State<KeyboardHookManager> = app.state();
             hook.start(app.handle(), &ptt_str, &hf_str, &ai_toggle_str);
 
-            // 每 60s 记录一次键盘钩子健康快照（[ptt-watchdog] 日志行），
-            // 用于排查"过一段时间后 Alt 说话没反应"这类间歇性问题：
-            // 复现后翻 sayit.log 找最后一次正常快照和第一次异常快照之间的时间窗。
             keyboard::spawn_health_watchdog();
 
-            // 设置窗口图标（用 ICO 文件，包含多尺寸帧，Windows 自动选最合适的）
-            // 并根据启动方式决定是否显示主窗口：
-            // 开机自启会带 --minimized 参数 → 保持隐藏，静默停留在托盘
-            // 用户手动打开则正常显示（窗口配置为 visible:false，需显式 show）
             let launched_minimized = std::env::args().any(|arg| arg == "--minimized");
-            // 自动更新安装完成后，看门人进程会带 --open-about 重新拉起本程序，
-            // 用于自动打开并跳转到关于页，让用户能确认更新已生效。
             let launched_open_about = std::env::args().any(|arg| arg == "--open-about");
             if let Some(main_window) = app.get_webview_window("main") {
                 let ico_bytes = include_bytes!("../icons/icon.ico");
@@ -393,10 +344,6 @@ fn main() {
                     let _ = main_window.set_icon(icon);
                 }
 
-                // 麦克风/摄像头权限：--auto-accept-camera-and-microphone-capture 只放行采集，
-                // 不会把权限置为持久 granted，导致新版 WebView2 隐藏 enumerateDevices 的设备名与
-                // deviceId（设置里麦克风列表只剩一个通用项）。挂 PermissionRequested 显式 Allow，
-                // 使权限变为 granted，恢复完整设备枚举与选择。失败仅记录日志、不影响其余功能。
                 #[cfg(target_os = "windows")]
                 {
                     let _ = main_window.with_webview(|webview| {
@@ -442,9 +389,6 @@ fn main() {
                 }
 
                 if !launched_minimized {
-                    // show() 只清 SW_HIDE，不解除最小化（iconic）状态：窗口若以
-                    // 最小化状态诞生，只 show 会停在 -32000 的停车位上，看起来"没启动"。
-                    // 托盘/单实例路径都是 show + unminimize，这里保持一致。
                     let _ = main_window.show();
                     let _ = main_window.unminimize();
                     let _ = main_window.set_focus();
@@ -461,14 +405,9 @@ fn main() {
                 }
             }
 
-            // 系统托盘图标
             {
-                // 自定义菜单窗口在启动时预创建并隐藏；右键时只定位、显示，没有首开延迟。
                 commands::tray::create_tray_menu_window(app.handle())?;
 
-                // 每张托盘图都由 256px 原图直接生成，避免 256 → 32 → 系统实际尺寸的
-                // 二次缩放。按窗口所在屏幕的缩放比例选最接近 Windows 托盘槽位的尺寸；
-                // Logo 的轮廓和完整 SayIt 字样都不变，只对小图做了轻微锐化。
                 let tray_scale = app
                     .get_webview_window("main")
                     .and_then(|window| window.scale_factor().ok())
@@ -525,9 +464,6 @@ fn main() {
                 commands::shortcuts::register_all_global_shortcuts(app.handle(), storage.inner());
             }
 
-            // 把首次 overlay WebView 的创建成本挪到启动后的空闲时段。延迟执行避免与主窗
-            // 首屏、托盘和键盘钩子争抢启动资源；用户若在此之前已开始口述，预热会看到
-            // overlay 已存在或正在显示并安全跳过。
             {
                 let overlay_app = app.handle().clone();
                 let _ = thread::Builder::new()
@@ -539,21 +475,18 @@ fn main() {
                     });
             }
 
-            // 首次安装时自动启用开机自启（仅执行一次）
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let storage: tauri::State<Storage> = app.state();
                 let autostart = app.autolaunch();
                 let already_set = storage.get("autoLaunchInitialized", None);
                 if already_set.is_null() || already_set.as_str() == Some("") {
-                    // 首次运行，注册开机自启并标记（新注册已带 --minimized 参数）
                     let _ = autostart.enable();
                     let flag = serde_json::json!("true");
                     let _ = storage.set("autoLaunchInitialized", &flag);
                     let _ = storage.set("autoLaunchArgsMigrated", &flag);
                     log::info!("Auto-launch enabled on first run");
                 } else {
-                    // 老用户迁移：旧自启项不带 --minimized 参数，重新注册一次以写入新参数
                     let migrated = storage.get("autoLaunchArgsMigrated", None);
                     if migrated.as_str() != Some("true") {
                         if autostart.is_enabled().unwrap_or(false) {
@@ -635,7 +568,6 @@ fn main() {
             commands::audio::read_audio_file,
             commands::audio::audio_file_exists,
             commands::audio::delete_audio_file,
-            // Audio output mute (录音期间静音系统输出，防回采)
             commands::audio_mute::mute_system_output,
             commands::audio_mute::restore_system_output,
             commands::audio_mute::get_mic_mute_state,
@@ -652,7 +584,6 @@ fn main() {
             commands::export::save_text_export,
             commands::export::save_export_bundle,
             commands::export::save_full_export,
-            // Backup / Restore (配置与全部数据的导入导出)
             commands::backup::get_backup_directory,
             commands::backup::export_config,
             commands::backup::export_full,
@@ -660,7 +591,6 @@ fn main() {
             commands::backup::import_config,
             commands::backup::import_full,
             commands::backup::restart_app,
-            // WebDAV 备份（配置必备，历史/音频可选）
             commands::webdav::webdav_test,
             commands::webdav::webdav_list,
             commands::webdav::webdav_backup_now,
@@ -678,27 +608,8 @@ fn main() {
             providers::registry::cloud_transcribe,
             providers::registry::test_ai_connection,
             providers::registry::test_asr_connection,
-            // 「这家 ASR 拿热词做什么」的唯一权威来源。前端不再自己维护一份清单 ——
-            // 那正是 issue #67 的成因（声明和实现分处两侧、无人对账）。
             providers::capabilities::asr_hotword_capability,
-            // 同上，全部服务一次给全，供「各服务对热词的支持」对照表使用。
-            // 那张表因此是实现的投影，不是第二份手写清单。
             providers::capabilities::asr_hotword_capability_matrix,
-            // Doubao realtime streaming ASR
-            providers::asr_doubao_realtime::doubao_stream_open,
-            providers::asr_doubao_realtime::doubao_stream_send,
-            providers::asr_doubao_realtime::doubao_stream_finish,
-            providers::asr_doubao_realtime::doubao_stream_close,
-            // Qwen realtime streaming ASR
-            providers::asr_qwen_realtime::qwen_stream_open,
-            providers::asr_qwen_realtime::qwen_stream_send,
-            providers::asr_qwen_realtime::qwen_stream_finish,
-            providers::asr_qwen_realtime::qwen_stream_close,
-            // Qwen-Audio-ASR-Flash streaming, 3.0 and 3.1 (DashScope duplex protocol)
-            providers::asr_qwen_audio_stream::qwen_audio_stream_open,
-            providers::asr_qwen_audio_stream::qwen_audio_stream_send,
-            providers::asr_qwen_audio_stream::qwen_audio_stream_finish,
-            providers::asr_qwen_audio_stream::qwen_audio_stream_close,
             // OpenAI realtime transcription (gpt-live-transcribe)
             providers::asr_openai_realtime::openai_live_open,
             providers::asr_openai_realtime::openai_live_send,
@@ -728,7 +639,6 @@ fn main() {
             models::test_audio::get_test_audio_b64,
         ])
         .on_window_event(|window, event| {
-            // 点击关闭按钮时隐藏到托盘，而不是退出
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
@@ -736,9 +646,6 @@ fn main() {
                 }
             }
         })
-        // 用 build + run 而不是直接 run：需要在 RunEvent::Exit 上挂"退出时兜底安装更新"。
-        // 用户没点更新图标就直接关掉 SayIt 时，在这里把已下载的新版静默装掉，
-        // 下次打开即是新版 —— 否则更新完全依赖用户主动点击，不点的人永远留在旧版。
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         // Independent distribution: no upstream auto-installer on app exit.

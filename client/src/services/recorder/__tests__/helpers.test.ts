@@ -21,12 +21,6 @@ describe('hasSilenceEvidence', () => {
     return { peakAmplitude, silentFrames, totalFrames, silenceRmsThreshold: SILENCE_RMS_THRESHOLD }
   }
 
-  /**
-   * 回归钉：判据取「且」不取「或」。
-   *
-   * 取或的版本会把这条判成"确实没声音"，于是界面告诉用户去检查麦克风，而真正的
-   * 失败原因（额度耗尽、服务端提前断开、热词回显被判空）被藏了起来。
-   */
   it('说了一句话再长时间沉默，不算没声音', () => {
     expect(hasSilenceEvidence(stats(0.4, 996, 1000))).toBe(false)
   })
@@ -49,8 +43,6 @@ describe('hasSilenceEvidence', () => {
 })
 
 describe('judgeOsMicMute', () => {
-  // 回归：Plantronics Blackwire 5220 停在 GetMute=true 但音频照常流动，
-  // 直接采信系统标志会导致每次按热键都先误报一次「麦克风已被静音」。
   it('音频在流动时立刻丢弃系统的静音标志', () => {
     expect(judgeOsMicMute(0, 'voiced', 1600)).toEqual({ verdict: 'dismissed' })
     expect(judgeOsMicMute(0, 'low', 1600)).toEqual({ verdict: 'dismissed' })

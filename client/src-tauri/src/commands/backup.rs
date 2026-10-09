@@ -1,11 +1,4 @@
-// 备份 / 恢复：配置（JSON）与全部数据（zip，含音频）的导出与导入。
 //
-// 设计要点：
-// - 导入走活动数据库的正常写入通道（app_settings upsert + 集合表整表替换），
-//   不替换 sqlite 文件、不涉及文件锁，导入完成后由前端触发重启使内存状态重载。
-// - 语义为「覆盖」：集合表整表替换；app_settings 逐 key 覆盖（不删除未出现的 key）。
-// - 「配置」不含使用统计 stats，避免覆盖本机计数；「全部」包含 stats。
-// - 全部导入时，历史记录里的 audioFilePath 是旧机绝对路径，会重写为本机 audio 目录下的同名文件。
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -18,13 +11,10 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::storage::Storage;
 
-/// 备份文件格式版本。导入时若备份版本高于此值则拒绝。
 const FORMAT_VERSION: i64 = 1;
-/// 分项配置文件格式；完整配置与全部数据继续使用 v1，保持兼容。
 const SELECTED_CONFIG_FORMAT_VERSION: i64 = 2;
 const MAX_HOTWORDS: usize = 1000;
 const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "zh2en", "casual"];
-/// 「配置」档不导出/导入的 app_settings key（使用统计属于使用数据，不属于配置）。
 const CONFIG_EXCLUDE: &[&str] = &["stats"];
 
 #[derive(Clone, Deserialize)]
@@ -41,11 +31,7 @@ pub struct ConfigExportSelection {
     prompt_preset_ids: Vec<String>,
 }
 
-/// 全量备份里除配置之外还装什么。
 ///
-/// 两个字段都**不给 serde 默认值**：调用方必须显式表态。给默认值的那一版是个陷阱 ——
-/// 漏传参数时会静默按「全都要」打包，而含音频的包可以有几个 GB，自动备份场景下
-/// 意味着每次悄悄上传几个 GB。宁可让反序列化直接失败，报一条看得见的错。
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupScope {
@@ -129,7 +115,6 @@ fn timestamped_backup_path(prefix: &str, extension: &str) -> PathBuf {
     backup_dir().join(format!("{}-{}.{}", prefix, timestamp, extension))
 }
 
-/// 取路径的文件名部分（兼容 / 和 \ 分隔符，跨平台备份用）。
 fn basename(path: &str) -> String {
     path.rsplit(|c| c == '/' || c == '\\')
         .next()
@@ -277,18 +262,13 @@ fn build_selected_config_value(
     }))
 }
 
-/// 组装 `backup.json`。
 ///
-/// 不含历史时**整个字段都不写**（而不是写一个空数组）：`import_full` 对缺失段是
-/// `if let Some(...)`，字段缺席就跳过、保留本机现有历史；写成空数组反而会把本机
-/// 历史整表清空。「只备份配置」这一档能安全恢复，全靠这个区别。
 fn build_full_value(storage: &Storage, scope: BackupScope) -> Value {
     let mut payload = json!({
         "kind": "full",
         "formatVersion": FORMAT_VERSION,
         "appVersion": app_version(),
         "exportedAt": chrono::Utc::now().to_rfc3339(),
-        // 备份包自报装了什么，供恢复前预览与排查「为什么恢复完没有历史」。
         "scope": {
             "includeHistory": scope.include_history,
             "includeAudio": scope.include_audio,
@@ -339,7 +319,6 @@ fn is_selected_config(data: &Value) -> bool {
             == Some(SELECTED_CONFIG_FORMAT_VERSION)
 }
 
-/// 应用完整配置部分（设置 + Prompt 预设 + 分应用规则），两档共用。
 fn apply_config_part(
     storage: &Storage,
     data: &Value,
@@ -369,7 +348,6 @@ fn apply_config_part(
         .map_err(|error| format!("Failed to write configuration: {}", error))
 }
 
-/// 重写单条历史记录的音频路径：把目录段换成本机 audio 目录，文件名不变。
 fn rewrite_audio_path(rec: &Value, adir: &Path) -> Value {
     let mut rec = rec.clone();
     if let Some(obj) = rec.as_object_mut() {
@@ -700,7 +678,6 @@ fn build_selected_import_plan(storage: &Storage, data: &Value) -> Result<Selecte
     })
 }
 
-// ─── 导出 ───
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -792,7 +769,6 @@ pub async fn export_config(
     Ok(path)
 }
 
-/// 打包过程中的一帧进度。`phase` 取值与前端 `BackupExportProgress['phase']` 对齐。
 pub struct ArchiveProgress<'a> {
     pub phase: &'static str,
     pub current_file: Option<&'a str>,
@@ -803,17 +779,9 @@ pub struct ArchiveProgress<'a> {
     pub percent: f64,
 }
 
-/// 把配置（+ 按 scope 决定的历史 / 音频）打成 zip 写到 `output`。
 ///
-/// 本地「全部数据」导出与 WebDAV 备份共用这一份实现，两者的差别只在落地位置和
-/// 进度事件名。刻意不让 WebDAV 自己写一套打包：一旦两份代码分家，就会出现
-/// 「本地导出能恢复、云端备份恢复不了」这种只在换机时才暴露的问题。
 ///
-/// 先写 `.part` 再原子 rename，失败时清掉临时文件 —— 中断留下的半个 zip 不能
-/// 长得像一个有效备份。
 ///
-/// 总量（文件数 / 字节数）通过 `on_progress` 报出去，不作为返回值：调用方要的是
-/// 打包完成后**zip 本身**的大小（用来算上传进度），那个得 stat 产物文件才知道。
 pub fn write_backup_archive(
     storage: &Storage,
     scope: BackupScope,
@@ -947,8 +915,6 @@ pub async fn export_full(
     let output = timestamped_backup_path("sayforge-backup", "zip");
     let out_path = output.to_string_lossy().to_string();
 
-    // 失败分支也要报出总量，所以在回调里留一份最近值：write_backup_archive 出错时
-    // 只给 Err(String)，拿不到它内部算出的 totals。
     let mut seen_totals = (0u64, 0u64);
     let export_result = {
         let progress_app = app.clone();
@@ -1000,7 +966,6 @@ pub async fn export_full(
             Ok(out_path)
         }
         Err(error) => {
-            // 临时文件已由 write_backup_archive 清理。
             emit_export_progress(
                 &app,
                 BackupExportProgress {
@@ -1021,7 +986,6 @@ pub async fn export_full(
     }
 }
 
-// ─── 导入 ───
 
 fn content_fingerprint(content: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
@@ -1073,8 +1037,6 @@ fn validate_config_collection(key: &str, items: &[Value]) -> Result<(), String> 
             .filter(|value| !value.is_empty())
             .ok_or_else(|| format!("Item {} in {} is missing id", index + 1, key))?;
 
-        // 内置 Prompt 的中英文自定义内容共存在 promptPresets 中，因此同一个稳定 id
-        // 可以出现两次，但同一语言仍只能有一份。旧备份没有语言字段，只能是中文。
         let unique_id = if key == "promptPresets" && BUILTIN_PRESET_IDS.contains(&id) {
             let language = object
                 .get("builtinPromptLanguage")
@@ -1256,7 +1218,6 @@ pub async fn import_config(
         return Err("The configuration file changed; select it again and reconfirm".to_string());
     }
 
-    // 完整配置导入排除 stats，避免覆盖本机使用统计。
     apply_config_part(storage.inner(), &data, CONFIG_EXCLUDE)?;
     Ok(ConfigImportResult {
         changed_sections: vec!["fullConfig".to_string()],
@@ -1272,15 +1233,11 @@ pub async fn import_full(in_path: String, storage: State<'_, Storage>) -> Result
     apply_full_backup(storage.inner(), &in_path)
 }
 
-/// 应用一个全量备份 zip。本地导入与 WebDAV 恢复共用。
 ///
-/// 对缺失段是宽容的：只含配置的备份（WebDAV 默认档）不会带 `history` 字段，
-/// 此时**保留本机现有历史**而不是清空 —— 见 `build_full_value` 里为什么不写空数组。
 pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String> {
     let file = fs::File::open(in_path).map_err(|e| format!("Failed to open file: {}", e))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Not a valid backup archive: {}", e))?;
 
-    // 1. 读取并校验 backup.json
     let mut json_str = String::new();
     {
         let mut entry = archive
@@ -1291,7 +1248,6 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
     let data: Value = serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse backup.json: {}", e))?;
     check_kind_and_version(&data, "full", FORMAT_VERSION)?;
 
-    // 2. 释放音频文件到本机 audio 目录
     let adir = audio_dir();
     fs::create_dir_all(&adir).map_err(|e| format!("Failed to create audio directory: {}", e))?;
     for i in 0..archive.len() {
@@ -1311,10 +1267,8 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
         }
     }
 
-    // 3. 应用配置部分（含 stats）
     apply_config_part(storage, &data, &[])?;
 
-    // 4. 历史：重写音频路径后整表替换
     if let Some(history) = data.get("history").and_then(|v| v.as_array()) {
         let rewritten: Vec<Value> = history.iter().map(|rec| rewrite_audio_path(rec, &adir)).collect();
         storage
@@ -1334,11 +1288,8 @@ pub fn apply_full_backup(storage: &Storage, in_path: &str) -> Result<(), String>
     Ok(())
 }
 
-/// 导入完成后由前端调用，重启应用使内存中的设置/供应商状态全量重载。
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) {
-    // 这次退出的意图是"重启回同一个版本"，不是更新。若让退出兜底安装跑起来，
-    // 重启拉起来的会是正在被安装程序覆盖的 exe。
     crate::commands::system::suppress_exit_install();
     app.restart();
 }
@@ -1354,13 +1305,8 @@ mod tests {
         (storage, dir)
     }
 
-    /// 不含历史时，`history` 字段必须**整个缺席**，不能是空数组。
-    ///
-    /// 这是「只备份配置」这一档能安全恢复的全部依据：`apply_full_backup` 用
-    /// `if let Some(history)` 判断，字段缺席就保留本机历史，写成空数组则会把本机
-    /// 历史整表清空 —— 一个「只想同步设置」的用户会因此丢掉全部记录，而且备份和
-    /// 恢复都不会报任何错。
-    #[test]
+        ///
+                    #[test]
     fn config_only_backup_omits_history_instead_of_emptying_it() {
         let (storage, dir) = temp_storage("scope");
         storage
@@ -1384,7 +1330,6 @@ mod tests {
         );
         assert!(config_only.get("manualCorrections").is_none());
         assert!(config_only.get("feedbackQueue").is_none());
-        // 配置部分照旧在，且 kind 仍是 full —— 用现有的导入路径就能恢复。
         assert_eq!(config_only.get("kind").and_then(Value::as_str), Some("full"));
         assert!(config_only.get("appSettings").is_some());
         assert_eq!(
@@ -1410,8 +1355,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// 不含音频时不去扫 audio 目录，也就不会把别的备份的录音塞进来。
-    #[test]
+        #[test]
     fn audio_files_are_only_collected_when_requested() {
         assert!(collect_audio_export_files(false).is_empty());
     }

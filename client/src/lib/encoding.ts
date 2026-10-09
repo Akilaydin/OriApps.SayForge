@@ -1,7 +1,3 @@
-/**
- * Uint8Array → base64 编码
- * 分块处理避免超长字符串拼接导致的性能问题
- */
 export function uint8ArrayToBase64(bytes: Uint8Array): string {
   const CHUNK_SIZE = 8192
   let binary = ''

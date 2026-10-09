@@ -12,10 +12,7 @@ import { recordedPromptPresetDisplayName } from '@/i18n/displayNames'
 export default function TitleBar() {
   const t = useT()
   const aiEnabled = useAiEnabled()
-  // 冷启动时 AI 初始值异步读回：就绪前开关先隐藏、不放动画，避免自己从关跳到开
   const ready = useAiEnabledReady()
-  // 同 AppearancePage：显示与「允许过渡」必须错开一帧，否则揭开那一刻会把
-  // 开关从默认(关)到已保存(开)真的滑动一遍。
   const [animate, setAnimate] = useState(false)
   useEffect(() => {
     if (!ready || animate) return

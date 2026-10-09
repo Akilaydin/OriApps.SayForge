@@ -69,7 +69,6 @@ pub fn save_export_bundle(payload: ExportBundlePayload) -> Result<Option<String>
     Ok(Some(clean))
 }
 
-/// 完整导出：JSON 文件 + 音频目录，带进度事件
 #[derive(Deserialize)]
 pub struct FullExportPayload {
     #[serde(rename = "defaultPath")]
@@ -94,7 +93,6 @@ pub async fn save_full_export(
         let _ = fs::create_dir_all(parent);
     }
 
-    // 收集音频文件列表
     let audio_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(crate::identity::APP_ID)
@@ -116,18 +114,16 @@ pub async fn save_full_export(
     let json_files = payload.files;
     let app_handle = app.clone();
 
-    // 在阻塞线程中执行 zip 打包
     tokio::task::spawn_blocking(move || {
         let file = fs::File::create(&out_path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipWriter::new(file);
         let text_opts = zip::write::FileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         let audio_opts = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored); // 音频不压缩，速度快
+            .compression_method(zip::CompressionMethod::Stored);
 
         let mut current = 0usize;
 
-        // 写入 JSON 文件
         for item in &json_files {
             current += 1;
             let _ = app_handle.emit("export-progress", ExportProgress {
@@ -137,7 +133,6 @@ pub async fn save_full_export(
             zip.write_all(item.content.as_bytes()).map_err(|e| e.to_string())?;
         }
 
-        // 写入音频文件
         for audio_path in &audio_files {
             current += 1;
             let fname = audio_path.file_name()

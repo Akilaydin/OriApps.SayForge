@@ -3,7 +3,6 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useSortable, DragHandle } from '@/components/ui/sortable'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
-import { Segmented } from '@/components/ui/segmented'
 import {
   getBuiltinPromptPresets,
   type BuiltinPromptLanguage,
@@ -21,9 +20,7 @@ export default function PromptPresetSection({
   presetShortcuts,
   editingShortcut,
   promptLanguage,
-  promptLanguageChanging,
   onSelectPreset,
-  onPromptLanguageChange,
   onStartNewPreset,
   onStartEditing,
   onEditingPresetChange,
@@ -38,26 +35,16 @@ export default function PromptPresetSection({
   activePresetId: string
   editingPreset: PromptPreset | null
   presetShortcuts: Record<string, string>
-  /** 编辑中的快捷键草稿。**不即时落库** —— 见下方 onEditingShortcutChange 的说明 */
   editingShortcut: string
   promptLanguage: BuiltinPromptLanguage
-  promptLanguageChanging?: boolean
   onSelectPreset: (id: string) => void
-  onPromptLanguageChange: (language: BuiltinPromptLanguage) => void
   onStartNewPreset: () => void
   onStartEditing: (preset: PromptPreset) => void
   onEditingPresetChange: (preset: PromptPreset) => void
-  /**
-   * 只改草稿，保存时才写库。
-   * 以前这里是即时写库的，于是：给还没保存的新模式设了快捷键再点取消，会留下一条指向
-   * 不存在模式的快捷键；而且写入时为保证组合键唯一会把占用同一组合键的旧模式清掉，
-   * 取消后那个旧模式的快捷键也回不来了。
-   */
   onEditingShortcutChange: (accelerator: string) => void
   onCancelEditing: () => void
   onSavePreset: (preset: PromptPreset) => void
   onDeletePreset: (id: string) => void
-  /** 拖拽调整自定义模式的顺序（下标是在"自定义"这一段里的下标；内置顺序固定） */
   onMovePreset: (from: number, to: number) => void
   validateShortcut?: ShortcutValidate
 }) {
@@ -67,12 +54,8 @@ export default function PromptPresetSection({
   const [templateId, setTemplateId] = useState('')
   const editingPresetName = editingPreset ? promptPresetDisplayName(editingPreset) : ''
 
-  // 是否在"新建"（草稿的 id 还不在已有列表里）
   const isCreating = !!editingPreset && !presets.some((preset) => preset.id === editingPreset.id)
 
-  // 打开表单时把焦点放到名称框。
-  // 依赖**只能**是 id / builtin 这类原始值：editingPreset 每次输入都是新对象，
-  // 把它列进依赖会导致每敲一个字都重新聚焦，光标从提示词框被拽回名称框。
   const editingId = editingPreset?.id ?? null
   const editingBuiltin = !!editingPreset?.builtin
   useEffect(() => {
@@ -102,18 +85,6 @@ export default function PromptPresetSection({
             <p className="text-xs text-muted-foreground">{t('promptPreset.desc')}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Segmented
-              label={t('promptPreset.promptLanguage')}
-              value={promptLanguage}
-              options={[
-                { value: 'zh-CN', label: t('promptPreset.languageZh') },
-                { value: 'en', label: t('promptPreset.languageEn') },
-              ]}
-              onChange={onPromptLanguageChange}
-              size="sm"
-              disabled={promptLanguageChanging}
-              className="gap-1"
-            />
             <button
               onClick={onStartNewPreset}
               className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors hover:bg-accent"
@@ -123,8 +94,6 @@ export default function PromptPresetSection({
           </div>
         </div>
 
-        {/* 编辑/新建表单放在列表**上方**：以前在整个列表下面，列表一长就在屏幕外，
-            点了「新建」看着像没反应。 */}
         {editingPreset && (
           <div className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-muted p-4">
             <p className="text-sm font-medium">{isCreating ? t('promptPreset.createTitle') : t('promptPreset.editTitle', { name: editingPresetName })}</p>
@@ -141,7 +110,6 @@ export default function PromptPresetSection({
               />
             </div>
 
-            {/* 新建时给个起点：从零写 System Prompt 门槛太高，内置模式本身就是好模板 */}
             {isCreating && (
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-foreground">{t('promptPreset.template')}</label>
@@ -190,7 +158,6 @@ export default function PromptPresetSection({
             </div>
 
             <div className="flex items-center justify-end gap-2">
-              {/* 保存不可点时说明原因，而不是干灰着 */}
               {(missingName || missingPrompt) && (
                 <span className="mr-auto text-xs text-muted-foreground">
                   {missingName && missingPrompt

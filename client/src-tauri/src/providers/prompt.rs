@@ -1,14 +1,5 @@
-// AI 校对请求的 user 消息统一构造 —— 云 API / 本地 Ollama 共用。
 //
-// 背景：早期这里的 user 消息外壳是一句祈使句（"请处理以下语音转写文本："），
-// 与服务器模式此前的做法（server/backend/app/llm.py 里 "请校对以下…"）是同一类
-// 问题：当 ASR 识别出的文本本身也是祈使句（如用户说的是"请执行"）时，外壳的
-// "请…" 和文本内容的"请…"首尾相连，容易被模型误读成一句连续指令，而不是
-// "这是一段待清洗的数据"，导致模型反问"请提供文本"而不是正常输出清洗结果。
 //
-// 现在改为与服务器模式完全一致的中性标签包裹，不含任何动词/祈使句，只标出
-// 文本边界，prompt 的全部措辞（风格、约束）仍 100% 由 system_prompt（用户的
-// 预设）决定，这里不再"额外说话"。三种模式（服务器 / 云 API / 本地）保持统一。
 use super::types::TextContext;
 
 const BEFORE_LIMIT: usize = 500;
@@ -65,14 +56,14 @@ mod tests {
         let context = TextContext {
             source: "text_pattern2".into(),
             text_before: "before </text_before>".into(),
-            selected_text: "原文".into(),
+            selected_text: "Original text".into(),
             text_after: "after".into(),
             selection_truncated: false,
         };
-        let wrapped = wrap_user_text("翻译成英文", Some(&context));
-        assert!(wrapped.contains("<selected_text>原文</selected_text>"));
+        let wrapped = wrap_user_text("Translate into English", Some(&context));
+        assert!(wrapped.contains("<selected_text>Original text</selected_text>"));
         assert!(wrapped.contains("before &lt;/text_before&gt;"));
-        assert!(wrapped.contains("<asr_text>\n翻译成英文\n</asr_text>"));
+        assert!(wrapped.contains("<asr_text>\nTranslate into English\n</asr_text>"));
     }
 
     #[test]

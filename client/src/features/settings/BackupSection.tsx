@@ -120,11 +120,8 @@ export default function BackupSection() {
   const [fullPath, setFullPath] = useState('')
   const [fullProgress, setFullProgress] = useState<BackupExportProgress | null>(null)
   const [configExportOpen, setConfigExportOpen] = useState(false)
-  // 导入确认（配置先预检并展示变更；全部数据保持覆盖确认）
   const [importConfirm, setImportConfirm] = useState<ImportConfirmation | null>(null)
-  // 导入成功后展示提示并自动重启
   const [importDone, setImportDone] = useState(false)
-  // 导出/导入的错误提示，改为应用内内联横幅
   const [actionError, setActionError] = useState('')
 
   useEffect(() => {
@@ -174,7 +171,6 @@ export default function BackupSection() {
     }
   }
 
-  // 第一步：选文件。配置文件先自动识别并计算变更预览，全部数据沿用覆盖确认。
   const handleImport = async (kind: ImportKind) => {
     setBusyAction(kind === 'config' ? 'importConfig' : 'importFull')
     setActionError('')
@@ -194,7 +190,6 @@ export default function BackupSection() {
     }
   }
 
-  // 第二步：确认覆盖后执行导入，成功则展示提示并自动重启
   const confirmImport = async () => {
     if (!importConfirm) return
     const { kind, path } = importConfirm
@@ -207,7 +202,6 @@ export default function BackupSection() {
     try {
       await runImport(kind, path, importToken)
       setImportDone(true)
-      // 略作停留让用户看到提示，再自动重启使更改生效
       setTimeout(() => { void restartApp() }, 1500)
     } catch (error) {
       setActionError(t('backup.importFailed', { message: String(error) }))

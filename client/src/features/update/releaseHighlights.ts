@@ -1,22 +1,4 @@
-// 本次版本更新亮点（关于页面展示）。
-// 每次发版时更新 version 与 items，保持与 CHANGELOG 同步。
-// version 需与打包版本一致，关于页面仅在与当前版本匹配时展示，避免串版。
 //
-// 写法约定：
-// · 按**重要性**排序：先「能力变强」，再「不再被坑」，最后「更顺手」；
-// · **一条要一行读完：中文渲染宽度 ≤80（汉字算 2、字母数字算 1，约 40 字），
-//   英文 ≤22 词。** 这是硬上限，不是目标值 —— 关于页是扫一眼的地方，不是读文档的
-//   地方，用户不会逐条读完。写不下的细节属于 CHANGELOG，不属于这里；宁可少说一句，
-//   也不要把「为什么」「哪些情况」「此前怎样」塞进来
-//   （2026-09-16 因为这个被打回过一次，当时最长一条 120 余字）。
-// · 语气平实、偏书面，像商业产品的发布说明：
-//     - 别用宣传腔（「任你挑」「一头雾水」这类）；
-//     - 也别太口语（「快了一大截」「密钥不再露脸」「自己跳一下」这类）；
-//     - 陈述做了什么，不做解释、不带因果分号套嵌。
-// · 说用户看得见的变化，不写模块名、字段名、「重构」这类内部词；
-// · 条数压在 10 条以内 —— 列太长等于没重点。
-
-import { t } from '@/i18n'
 
 export interface ReleaseHighlights {
   version: string
@@ -24,20 +6,10 @@ export interface ReleaseHighlights {
 }
 
 export const RELEASE_HIGHLIGHTS: ReleaseHighlights = {
+  // The inherited v0.2.2 notes describe providers removed from this edition.
+  // Reintroduce release highlights when SayForge publishes an independent release.
   version: '0.2.2',
-  // getter 防止模块加载时把语言冻结；About 已订阅 locale，重渲染后会重新读取。
   get items() {
-    return [
-      t('release.0.2.2.1'),
-      t('release.0.2.2.2'),
-      t('release.0.2.2.3'),
-      t('release.0.2.2.4'),
-      t('release.0.2.2.5'),
-      t('release.0.2.2.6'),
-      t('release.0.2.2.7'),
-      t('release.0.2.2.8'),
-      t('release.0.2.2.9'),
-      t('release.0.2.2.10'),
-    ]
+    return []
   },
 }

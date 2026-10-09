@@ -10,7 +10,6 @@ interface NotificationDependencies {
   onError: (error: unknown) => void
 }
 
-/** 主窗口持有唯一更新状态；独立卡片只展示快照、回传用户操作。 */
 export class UpdateNotificationController {
   private dismissed = new Set<string>()
   private idleSince: number | null = null
@@ -41,7 +40,6 @@ export class UpdateNotificationController {
   async act(event: UpdateNotificationAction) {
     if (this.stopped || this.installing) return
     const state = this.deps.readUpdate()
-    // 旧卡片的点击不能安装刚替换的新包，安装中也不能再次启动安装程序。
     if (state.pending?.version !== event.version || state.phase === 'installing') return
     if (event.action === 'later') {
       this.dismissed.add(event.version)
@@ -69,7 +67,6 @@ export class UpdateNotificationController {
     if (fingerprint === this.previous) return
     this.previous = fingerprint
     const snapshot = { revision: ++this.revision, data }
-    // 串行发送并跳过已过时的排队操作，避免慢速创建窗口后又显示旧卡片。
     this.queue = this.queue.then(async () => {
       if (snapshot.revision !== this.revision) return
       try {

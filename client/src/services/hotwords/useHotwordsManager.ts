@@ -63,7 +63,6 @@ export function useHotwordsManager() {
   }, [])
 
   const syncToBackend = useCallback(async (words: string[]) => {
-    // 热词不再写入后端全局文件；直接刷新录音器快照，由下一次会话随 start 消息传递。
     setHotwordsCache(words)
   }, [])
 
@@ -83,7 +82,6 @@ export function useHotwordsManager() {
         getSetting<string[]>(LEGACY_MANUAL_WORDS_KEY, []),
       ])
 
-      // 热词全部从本地 store 加载，不依赖远程服务器
       const savedSetWords = normalizeBuiltinSetWords(rawSetWords)
       const savedSetActive = normalizeBuiltinSetActive(rawSetActive)
 
@@ -120,7 +118,6 @@ export function useHotwordsManager() {
           : false
       }
 
-      // 从本地状态组合出当前生效的热词列表
       const composed = composeHotwords(
         [],
         nextSetWords,
@@ -243,11 +240,6 @@ export function useHotwordsManager() {
     themeInputs,
   ])
 
-  /**
-   * 拖拽调整自定义热词分类的顺序。
-   * 顺序不只是好看：合并后的热词表会按顺序截断到 MAX_HOTWORDS，且部分模型只吃前一小段，
-   * 所以越靠前的分类越容易真正生效。
-   */
   const moveTheme = useCallback(async (from: number, to: number) => {
     if (from === to || from < 0 || to < 0 || from >= customThemes.length || to >= customThemes.length) return
 

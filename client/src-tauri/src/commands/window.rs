@@ -3,7 +3,6 @@ use tauri::{AppHandle, State};
 
 use crate::window::WindowState;
 
-// IMPORTANT: 创建 WebView 的命令必须是 async，避免 Windows 主线程死锁。
 #[tauri::command]
 pub async fn present_overlay(
     data: Value,
@@ -40,7 +39,6 @@ pub async fn update_overlay_state(
     Ok(())
 }
 
-/// `device_pixel_ratio` 可缺省：老版本前端不带它，此时沿用缓存的缩放。
 #[tauri::command]
 pub fn overlay_ready(
     app: AppHandle,
@@ -64,7 +62,6 @@ pub fn get_overlay_health(
     window_state.health_snapshot(&app, show_id)
 }
 
-/// 旧版轻量 ping/pong，保留用于历史日志兼容。
 #[tauri::command]
 pub fn overlay_pong(seq: u64) {
     crate::window::record_overlay_pong(seq);

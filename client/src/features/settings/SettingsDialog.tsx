@@ -34,7 +34,6 @@ export default function SettingsDialog() {
     navigate('/')
   }
 
-  // 这个弹窗的误关代价最大 —— 它不是"关掉草稿"，是直接 navigate('/') 跳回首页。
   const backdropDismiss = useBackdropDismiss(handleClose)
 
   return (
@@ -46,7 +45,6 @@ export default function SettingsDialog() {
         className="relative flex h-[85vh] w-[90vw] max-w-6xl overflow-hidden rounded-xl bg-background shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 关闭按钮 */}
         <button
           onClick={handleClose}
           className="absolute right-3 top-3 z-10 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
@@ -55,7 +53,6 @@ export default function SettingsDialog() {
           <X className="h-4 w-4" />
         </button>
 
-        {/* 左侧菜单 */}
         <div className="w-48 border-r border-border bg-card py-8">
           <div className="space-y-0.5 px-3">
             {menuItems.map(({ id, icon: Icon, labelKey }) => (
@@ -76,7 +73,6 @@ export default function SettingsDialog() {
           </div>
         </div>
 
-        {/* 右侧内容区 */}
         <div className="custom-scrollbar flex-1 overflow-y-auto">
           {activeView === 'general' && <GeneralSettingsPage />}
           {activeView === 'appearance' && <AppearancePage />}

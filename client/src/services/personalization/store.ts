@@ -86,12 +86,6 @@ function normalizeUserStats(raw: unknown): UserStats {
   }
 }
 
-/**
- * 读取应用规则，**原样保留存档里的数组顺序**（顺序即优先级，见 AppPromptRule 的注释）。
- *
- * 这里不能再按任何字段重排：界面上拖出来的顺序就是存进去的顺序，重排一次就等于
- * 用户白拖。老存档虽然带着 priority，但当时写入前已经按它排好序了，直接沿用即可。
- */
 export async function getAppPromptRules(): Promise<AppPromptRule[]> {
   const saved = await getSetting<unknown>(APP_PROMPT_RULES_KEY, [])
   const builtinById = new Map(BUILTIN_APP_RULES.map((rule) => [rule.id, rule]))
@@ -101,8 +95,6 @@ export async function getAppPromptRules(): Promise<AppPromptRule[]> {
   if (Array.isArray(saved)) {
     for (const item of saved) {
       const id = String((item as { id?: unknown } | null)?.id ?? '').trim()
-      // 内置规则以 BUILTIN_APP_RULES 为骨架（用户只能改其中几个字段，删不掉）；
-      // 不在内置清单里的是用户自建规则，原样保留。
       const skeleton = builtinById.get(id)
       const normalized = normalizeAppPromptRule(item, skeleton)
       if (!normalized || seen.has(normalized.id)) continue
@@ -111,9 +103,6 @@ export async function getAppPromptRules(): Promise<AppPromptRule[]> {
     }
   }
 
-  // 存档里没出现过的内置规则：全新安装（此时顺序就是 BUILTIN_APP_RULES 的顺序），
-  // 或版本更新新增的规则 —— 后者追加到末尾。新增的内置规则默认关闭，位置不影响行为，
-  // 用户启用它时会自动置顶。
   const missing = BUILTIN_APP_RULES
     .filter((rule) => !seen.has(rule.id))
     .map((rule) => ({ ...rule, matcher: { ...rule.matcher } }))

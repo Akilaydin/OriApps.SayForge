@@ -1,11 +1,5 @@
-//! 录音期间静音系统输出（默认扬声器）——防止外放的声音被麦克风回采。
 //!
-//! 只在采集期间静音，松开热键立即恢复到用户原本的静音状态：
-//! - `mute_system_output`：记录当前默认输出设备的静音状态，然后静音。
-//! - `restore_system_output`：恢复到之前记录的状态（若用户本来就是静音，则保持静音）。
 //!
-//! 用「保存/恢复原状态」而非「无脑取消静音」，避免录完后把用户原本的静音误开成有声。
-
 use serde::Serialize;
 
 #[cfg(windows)]
@@ -13,21 +7,15 @@ use once_cell::sync::Lazy;
 #[cfg(windows)]
 use std::sync::Mutex;
 
-/// 查询麦克风静音状态的结果。
-/// - `matched`：是否成功定位到目标设备（默认设备总能定位；指定设备需按名字唯一匹配到）。
-///   为 false 时前端不应据此判定，应退回基于音频信号的检测。
-/// - `muted`：目标设备在系统层面是否被静音。
 #[derive(Debug, Clone, Serialize)]
 pub struct MicMuteState {
     pub matched: bool,
     pub muted: bool,
 }
 
-/// 保存的「静音前的原始状态」。None 表示当前未处于我们施加的静音中。
 #[cfg(windows)]
 static SAVED_MUTE_STATE: Lazy<Mutex<Option<bool>>> = Lazy::new(|| Mutex::new(None));
 
-/// 获取默认渲染端点（扬声器）的音量控制接口，并在其上执行闭包。
 #[cfg(windows)]
 unsafe fn with_endpoint_volume<F, R>(f: F) -> Result<R, String>
 where
@@ -68,8 +56,6 @@ where
     result
 }
 
-/// 记录当前默认输出设备静音状态并将其静音。
-/// 返回 true 表示已处理（Windows），false 表示非 Windows 平台跳过。
 #[tauri::command]
 pub fn mute_system_output() -> Result<bool, String> {
     #[cfg(windows)]
@@ -80,7 +66,6 @@ pub fn mute_system_output() -> Result<bool, String> {
                 .map_err(|e| format!("GetMute: {}", e))?
                 .as_bool();
 
-            // 仅在首次静音时保存原状态，避免重复调用覆盖真实原值
             {
                 let mut saved = SAVED_MUTE_STATE.lock().unwrap();
                 if saved.is_none() {
@@ -106,8 +91,6 @@ pub fn mute_system_output() -> Result<bool, String> {
     }
 }
 
-/// 恢复到 `mute_system_output` 之前记录的静音状态。
-/// 若没有记录（未曾静音），则不做任何操作。
 #[tauri::command]
 pub fn restore_system_output() -> Result<bool, String> {
     #[cfg(windows)]
@@ -137,11 +120,8 @@ pub fn restore_system_output() -> Result<bool, String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 麦克风静音状态查询
 // ─────────────────────────────────────────────────────────────────────────
 
-/// 浏览器会给默认设备名加上 Default/Communications 前缀；Windows 端点友好名没有。
-/// 这里只做名字规范化以定位本次实际打开的端点，不参与静音与否的判断。
 fn normalize_mic_label(label: &str) -> String {
     let trimmed = label.trim();
     let lower = trimmed.to_lowercase();
@@ -196,11 +176,7 @@ unsafe fn get_device_friendly_name(
     name_result
 }
 
-/// 查询采集设备的静音状态。
 ///
-/// 前端传入 getUserMedia 实际打开的 MediaStreamTrack.label。这里枚举 Windows 采集端点，
-/// 按规范化后的友好名唯一匹配，再读取该端点真实的 IAudioEndpointVolume::GetMute 状态。
-/// 找不到或出现同名多个端点时返回 matched=false，绝不猜测静音。
 #[cfg(windows)]
 unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
@@ -245,7 +221,6 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
                     continue;
                 }
                 if matched.is_some() {
-                    // 同名设备无法可靠区分；宁可回退信号检测，也不查询错端点。
                     return Ok(MicMuteState {
                         matched: false,
                         muted: false,
@@ -286,9 +261,6 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
     result
 }
 
-/// 查询麦克风是否被系统静音。
-/// `device_label`：本次 MediaStreamTrack 实际打开的设备名；传 None/空才回退查询系统默认麦克风。
-/// 返回 `matched=false` 时表示无法可靠定位设备（如选了特定设备但同名多个），前端应退回信号检测。
 #[tauri::command]
 pub fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
     #[cfg(windows)]

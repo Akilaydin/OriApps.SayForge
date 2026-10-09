@@ -1,4 +1,3 @@
-// 文本替换规则管理组件
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, X, List } from 'lucide-react'
@@ -29,7 +28,6 @@ export default function TextReplacementSection() {
 
   useEffect(() => {
     getTextReplacements().then((loaded) => {
-      // 兼容旧数据：确保每条规则都有唯一 id 和 enabled 字段
       const migrated = loaded.map((r) => ({
         ...r,
         id: r.id || createId(),
@@ -64,7 +62,6 @@ export default function TextReplacementSection() {
       let updated = 0
       for (const { from, to } of parsed) {
         if (existing.has(from)) {
-          // 已存在同一原文：更新其替换内容
           const idx = next.findIndex((r) => r.from === from)
           if (idx >= 0 && next[idx].to !== to) {
             next[idx] = { ...next[idx], to }
@@ -84,7 +81,6 @@ export default function TextReplacementSection() {
     setBatchText('')
   }, [batchText])
 
-  /** 拖拽排序。顺序即执行顺序（applyReplacements 按数组顺序逐条替换）。 */
   const moveRule = useCallback((from: number, to: number) => {
     setRules((prev) => moveItem(prev, from, to))
   }, [])
@@ -102,7 +98,6 @@ export default function TextReplacementSection() {
     })
   }, [])
 
-  // 每次 rules 变化后持久化
   const initialized = useRef(false)
   useEffect(() => {
     if (!initialized.current) {
@@ -129,7 +124,6 @@ export default function TextReplacementSection() {
         )}
       </div>
       <div className="p-4">
-        {/* 添加新规则 — 两列对齐 */}
         {!batchMode && (
           <div className="flex items-center gap-2">
             <input
@@ -178,11 +172,9 @@ export default function TextReplacementSection() {
           </div>
         )}
 
-        {/* 批量添加 */}
         {batchMode && (
           <div className="rounded-lg border border-border p-3">
             <p className="mb-2 text-xs text-muted-foreground">
-              {/* 按 {arrow} 占位切分，让 <code>=&gt;</code> 落在译文决定的位置上 */}
               {t('textReplace.batchHelp').split('{arrow}').map((part, i) => (
                 <span key={i}>{i > 0 && <code>=&gt;</code>}{part}</span>
               ))}
@@ -225,10 +217,8 @@ export default function TextReplacementSection() {
           </div>
         )}
 
-        {/* 规则列表 — 两列布局 */}
         {rules.length > 0 && (
           <div className="mt-4 rounded-lg border border-border overflow-hidden">
-            {/* 列头 */}
             <div className="flex items-center border-b border-border bg-muted/30 px-3 py-1.5">
               <span className="w-[22px] shrink-0" />
               <span className="w-7 shrink-0" />
