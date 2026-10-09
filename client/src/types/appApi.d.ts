@@ -143,7 +143,6 @@ export interface AppAPI {
   historyAdd: (record: unknown) => Promise<void>
   historyUpdate: (id: string, patch: Record<string, unknown>) => Promise<void>
   historyDelete: (id: string) => Promise<void>
-  historySetFavorite: (id: string, favorite: boolean) => Promise<void>
   saveTextExport: (payload: {
     defaultPath: string
     content: string

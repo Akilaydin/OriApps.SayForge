@@ -352,10 +352,6 @@ impl Storage {
         Ok(())
     }
 
-    pub fn history_set_favorite(&self, id: &str, favorite: bool) -> SqlResult<()> {
-        self.history_update(id, &serde_json::json!({ "favorite": favorite }))
-    }
-
     // ─── Collections ───
 
     fn read_collection(&self, key: &str) -> SqlResult<Value> {

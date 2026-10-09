@@ -221,10 +221,6 @@ export function historyDelete(id: string) {
   return invoke('history_delete', { id })
 }
 
-export function historySetFavorite(id: string, favorite: boolean) {
-  return invoke('history_set_favorite', { id, favorite })
-}
-
 // ─── Export ───
 
 export function saveTextExport(payload: {
@@ -289,8 +285,6 @@ export function onAiCleanupToggleRequested(cb: () => void) {
   const unlisten = listen('toggle-ai-cleanup', () => cb())
   return () => { unlisten.then((fn) => fn()) }
 }
-
-// ─── Audio Files ───
 
 // ─── Diagnostics ───
 

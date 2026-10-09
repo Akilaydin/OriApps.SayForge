@@ -76,50 +76,8 @@ export interface PromptPreset {
 
 export type BuiltinPromptLanguage = 'en'
 
-export type FeedbackIssueType = 'asr_error' | 'llm_error' | 'duration_mismatch' | 'other'
-
-export interface FeedbackRecord {
-  id: string
-  historyId: string
-  createdAt: number
-  issueType: FeedbackIssueType
-  note: string
-  status: 'pending_backend'
-  snapshot: {
-    asrText: string
-    llmText: string
-    asrMs: number
-    llmMs: number
-    durationSec: number
-    audioDurationSec?: number
-    asrDurationSec?: number
-    charCount: number
-    isEmpty?: boolean
-  }
-}
-
-export interface ManualCorrectionRecord {
-  id: string
-  historyId?: string
-  createdAt: number
-  source: 'studio'
-  appId?: string
-  appName?: string
-  promptSummary?: string
-  preferredKind?: 'llm' | 'asr'
-  originalAsrText: string
-  originalLlmText: string
-  editedAsrText: string
-  editedLlmText: string
-  preferredText: string
-}
-
 // Default English cleanup instruction for all builtin presets.
 export const USER_PROMPT_PREFIX = 'Process the following speech transcript:\n\n'
-
-export async function getHistory(): Promise<HistoryRecord[]> {
-  return listHistory()
-}
 
 export async function listHistory(query: HistoryListQuery = {}): Promise<HistoryRecord[]> {
   try {
@@ -153,26 +111,6 @@ export async function updateHistoryRecord(id: string, patch: Partial<HistoryReco
   await api().historyUpdate(id, patch as Record<string, unknown>)
 }
 
-export async function getFeedbackQueue(): Promise<FeedbackRecord[]> {
-  return ((await api().storeGet('feedbackQueue')) as FeedbackRecord[]) || []
-}
-
-export async function addFeedback(record: FeedbackRecord): Promise<void> {
-  const queue = await getFeedbackQueue()
-  queue.unshift(record)
-  await api().storeSet('feedbackQueue', queue)
-}
-
-export async function getManualCorrections(): Promise<ManualCorrectionRecord[]> {
-  return ((await api().storeGet('manualCorrections')) as ManualCorrectionRecord[]) || []
-}
-
-export async function addManualCorrection(record: ManualCorrectionRecord): Promise<void> {
-  const corrections = await getManualCorrections()
-  corrections.unshift(record)
-  await api().storeSet('manualCorrections', corrections.slice(0, 200))
-}
-
 import { getDefault } from './defaults'
 
 export async function getSetting<T>(key: string, fallback?: T): Promise<T> {
@@ -196,5 +134,3 @@ export async function getSetting<T>(key: string, fallback?: T): Promise<T> {
 export async function setSetting(key: string, value: unknown): Promise<void> {
   await api().storeSet(key, value)
 }
-
-// Prompt presets

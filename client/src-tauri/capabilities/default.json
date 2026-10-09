@@ -24,8 +24,6 @@
     "shell:allow-open",
     "clipboard-manager:default",
     "dialog:default",
-    "fs:default",
-    "fs:allow-write-file",
     "autostart:default",
     "global-shortcut:default"
   ]

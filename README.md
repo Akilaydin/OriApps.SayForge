@@ -67,6 +67,8 @@ backend is required.
 
 Requirements: Node.js 18+, Rust toolchain, Visual Studio C++ Build Tools,
 CMake for the retained MP3 encoder. No Vulkan SDK or model download is required.
+The release packages contain the app and bundled synthetic Cloud API test audio;
+no local ASR DLLs or model downloads are packaged. Tray WebView and overlay prewarm remain enabled.
 
 ```powershell
 git clone https://github.com/Akilaydin/OriApps.SayForge.git

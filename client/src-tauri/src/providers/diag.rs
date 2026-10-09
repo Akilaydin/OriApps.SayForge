@@ -43,19 +43,6 @@ pub fn fail(scope: &str, stage: &str, user_msg: String) -> String {
     error_protocol::encode(classify_failure(stage, &user_msg), user_msg)
 }
 
-/// Explicit variant for failures whose semantic category is known at the call site.
-pub fn fail_code(scope: &str, stage: &str, code: &str, user_msg: String) -> String {
-    write_log_line(&format!(
-        "{} {} {} FAILED code={} {}",
-        TAG,
-        scope,
-        stage,
-        code,
-        truncate(&user_msg, 400)
-    ));
-    error_protocol::encode(code, user_msg)
-}
-
 fn contains_http_status(message: &str, expected: &[u16]) -> bool {
     message
         .split(|ch: char| !ch.is_ascii_digit())

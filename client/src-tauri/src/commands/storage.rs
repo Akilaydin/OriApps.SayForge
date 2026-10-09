@@ -44,11 +44,6 @@ pub fn history_delete(id: String, storage: State<Storage>) -> Result<(), String>
     storage.history_delete(&id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn history_set_favorite(id: String, favorite: bool, storage: State<Storage>) -> Result<(), String> {
-    storage.history_set_favorite(&id, favorite).map_err(|e| e.to_string())
-}
-
 fn parse_history_query(query: &Option<Value>) -> (Option<String>, bool, Option<i64>, Option<i64>) {
     match query {
         Some(v) => {

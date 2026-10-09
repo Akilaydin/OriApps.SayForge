@@ -4,7 +4,6 @@ use tauri::{AppHandle, State};
 use crate::storage::Storage;
 use std::io::Write;
 use std::sync::Mutex;
-use base64::Engine;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -283,23 +282,6 @@ pub fn append_debug_log(payload: Value) -> Result<(), String> {
 
     write_log_line(&line);
     Ok(())
-}
-
-#[tauri::command]
-pub fn save_audio_to_downloads(base64_data: String, filename: String) -> Result<String, String> {
-    let downloads = dirs::download_dir()
-        .ok_or_else(|| "Could not locate the Downloads directory".to_string())?;
-
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&base64_data)
-        .map_err(|e| format!("Failed to decode base64 audio: {}", e))?;
-
-    let dest = downloads.join(&filename);
-    std::fs::write(&dest, &bytes).map_err(|e| format!("Failed to write file: {}", e))?;
-
-    let path_str = dest.to_string_lossy().to_string();
-    write_log_line(&format!("[INFO] [audio] Audio saved to {}", path_str));
-    Ok(path_str)
 }
 
 #[tauri::command]

@@ -26,10 +26,11 @@ repository alone may not satisfy the LGPL static-linking obligations.
 
 ## Other dependencies and assets
 
-- Other JavaScript, Rust and Python dependencies retain their own licenses.
+- Other JavaScript and Rust dependencies retain their own licenses.
   Review the resolved dependency lists before distribution.
 - The current icon artwork is maintained with its design source files under
   `assets/branding`.
+- Local ASR engines/model catalogs and their GGML/Vulkan/Silero libraries are no longer distributed. LAME remains linked for optional MP3 cloud input.
 - Historic source and acknowledgements remain available in the Git history.
 
 This notice is not a substitute for a complete distributable license inventory.
