@@ -95,6 +95,18 @@ Validation: 388 frontend tests passed across full/focused checks; TypeScript/i18
 `git diff --check` passed. Fixture/parser/payload/error tests use synthetic data.
 React click/unmount interaction and live-provider smoke checks remain manual/unverified.
 
+## 7. Dictionary simplification
+
+Removed the model/provider support table and its independent capability/settings reads.
+The remaining notice uses the same complete active configuration as recognition, refreshes
+after protocol detection/settings changes, and rejects stale lookup responses. It explains
+chat context vs multipart punctuation prompts and retains any client-limit warning.
+Removed the obsolete AI hotword-switch advice; local spacing and replacements still work
+with AI off. Categories/search/editing/sorting/export, text formatting, stored dictionaries
+and `/hotwords` routing are unchanged. No user-data migration was introduced.
+Validation: 388 frontend tests, TypeScript/i18n and `git diff --check` passed; native ASR capability
+branches were already covered in tasks 1/3. Interactive Dictionary smoke remains unverified.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.

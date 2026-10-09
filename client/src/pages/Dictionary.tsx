@@ -1,16 +1,10 @@
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, X, Search, RotateCcw, ChevronDown, ChevronUp, FolderPlus, Trash2, Download, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip } from '@/components/ui/tooltip'
-import {
-  ASR_PLATFORMS,
-  ASR_PROVIDERS,
-  asrModelsOf,
-  type AsrPlatform,
-} from '@/features/settings/asrProviderCatalog'
 import {
   foldHotwordDelivery,
   hotwordUndecidedReason,
@@ -20,7 +14,7 @@ import {
 import { cn } from '@/lib/utils'
 import * as bridge from '@/services/bridge'
 import { exportHotwords } from '@/services/exports'
-import { getSetting } from '@/services/store'
+import { loadAsrConfig } from '@/services/transcription/asrConfig'
 import { BUILTIN_SETS, MAX_HOTWORDS } from '@/services/hotwords/model'
 import { useHotwordsManager } from '@/services/hotwords/useHotwordsManager'
 import TextReplacementSection from '@/components/TextReplacementSection'
@@ -94,47 +88,40 @@ function deliveryMessageKey(
 }
 
 function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
-  const [tableOpen, setTableOpen] = useState(false)
   const [state, setState] = useState<{
     ui: HotwordUiState
     clientCap: number | null
-    hasSpacingRestore: boolean
     undecidedReason: HotwordUndecidedReason | null
   } | null>(null)
 
   useEffect(() => {
     let disposed = false
+    let generation = 0
 
     const load = async () => {
-      const [provider, protocol] = await Promise.all([
-        getSetting('cloudAsr.provider', '') as Promise<string>,
-        getSetting('cloudAsr.protocol', 'auto') as Promise<string>,
-      ])
-      const [baseUrl, model] = await Promise.all([
-        getSetting('cloudAsr.baseUrl', '') as Promise<string>,
-        getSetting('cloudAsr.model', '') as Promise<string>,
-      ])
-      const capability = await bridge.asrHotwordCapability(provider, {
-        ...(model ? { model } : {}),
-        ...(baseUrl ? { baseUrl } : {}),
-        ...(protocol && protocol !== 'auto' ? { protocol } : {}),
-      })
-      if (disposed) return
-      if (!capability) {
+      const current = ++generation
+      try {
+        const config = await loadAsrConfig()
+        const capability = await bridge.asrHotwordCapability(config.provider, config.extra)
+        if (disposed || current !== generation) return
+        if (!capability) {
+          setState({
+            ui: 'undecided',
+            clientCap: null,
+            undecidedReason: 'query_failed',
+          })
+          return
+        }
         setState({
-          ui: 'undecided',
-          clientCap: null,
-          hasSpacingRestore: true,
-          undecidedReason: 'query_failed',
+          ui: foldHotwordDelivery(capability.buffered),
+          clientCap: capability.bufferedClientCap,
+          undecidedReason: hotwordUndecidedReason(capability.buffered),
         })
-        return
+      } catch {
+        if (!disposed && current === generation) {
+          setState({ ui: 'undecided', clientCap: null, undecidedReason: 'query_failed' })
+        }
       }
-      setState({
-        ui: foldHotwordDelivery(capability.buffered),
-        clientCap: capability.bufferedClientCap,
-        hasSpacingRestore: true,
-        undecidedReason: hotwordUndecidedReason(capability.buffered),
-      })
     }
 
     void load()
@@ -148,23 +135,12 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
 
   if (!state) return null
 
-  const tone = state.ui === 'sent'
-    ? 'text-muted-foreground'
-    : state.ui === 'undecided'
-      ? 'text-muted-foreground'
-      : 'text-amber-500'
+  const tone = state.ui === 'not_sent' ? 'text-amber-500' : 'text-muted-foreground'
 
   return (
     <div className={cn('mb-4 -mt-1 space-y-1 text-xs leading-relaxed', tone)}>
       <p>
         <RichText text={t(deliveryMessageKey(state.ui, state.undecidedReason))} />
-        <button
-          type="button"
-          onClick={() => setTableOpen(true)}
-          className="ml-1.5 text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
-        >
-          {t('dict.delivery.openTable')}
-        </button>
       </p>
       {state.clientCap !== null && hotwordCount > state.clientCap && (
         <p className="text-amber-500">
@@ -174,139 +150,10 @@ function HotwordDeliveryNotice({ hotwordCount }: { hotwordCount: number }) {
       {state.ui === 'not_sent' && (
         <p><RichText text={t('dict.delivery.fallbackHint')} /></p>
       )}
-      {state.hasSpacingRestore && state.ui !== 'sent' && (
+      {state.ui !== 'sent' && (
         <p className="text-muted-foreground"><RichText text={t('dict.delivery.spacingRestore')} /></p>
       )}
-      {tableOpen && <HotwordSupportTable onClose={() => setTableOpen(false)} />}
     </div>
-  )
-}
-
-interface SupportRow {
-  platform: AsrPlatform
-  model: string
-  provider: string
-  buffered: HotwordUiState
-  bufferedCap: number | null
-}
-
-function HotwordSupportTable({ onClose }: { onClose: () => void }) {
-  useT()
-  const [rows, setRows] = useState<SupportRow[] | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [currentProvider, setCurrentProvider] = useState('')
-
-  useEffect(() => {
-    let disposed = false
-    void (async () => {
-      const [matrix, provider, mode] = await Promise.all([
-        bridge.asrHotwordCapabilityMatrix(),
-        getSetting('cloudAsr.provider', '') as Promise<string>,
-        getSetting('workMode', 'cloud_api') as Promise<string>,
-      ])
-      if (disposed) return
-      if (!matrix) {
-        setFailed(true)
-        return
-      }
-      setCurrentProvider(mode === 'cloud_api' ? provider : '')
-      setRows(ASR_PROVIDERS.flatMap((entry) => asrModelsOf(entry).map((model) => {
-        const capability = matrix[model.provider]
-        const buffered = capability ? foldHotwordDelivery(capability.buffered) : 'undecided'
-        return {
-          platform: entry.platform,
-          model: model.id,
-          provider: model.provider,
-          buffered,
-          bufferedCap: capability?.bufferedClientCap ?? null,
-        }
-      })))
-    })()
-    return () => { disposed = true }
-  }, [])
-
-  const label = (state: HotwordUiState) => t(
-    state === 'sent' ? 'dict.table.sent'
-      : state === 'not_sent' ? 'dict.table.notSent'
-        : 'dict.table.undecided',
-  )
-  const stateClass = (state: HotwordUiState) => state === 'sent'
-    ? 'text-foreground'
-    : state === 'not_sent' ? 'text-amber-500' : 'text-muted-foreground'
-
-  const renderNote = (row: SupportRow) => {
-    const caps = new Set<number>()
-    if (row.buffered === 'sent' && row.bufferedCap !== null) caps.add(row.bufferedCap)
-    if (caps.size === 0) return null
-    return t('dict.table.capNote', { cap: Array.from(caps).join(' / ') })
-  }
-
-  let lastPlatform: AsrPlatform | '' = ''
-
-  return (
-    <Modal
-      title={t('dict.table.title')}
-      onClose={onClose}
-      showCloseButton
-      panelClassName="w-[780px]"
-    >
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        <RichText text={t('dict.table.intro')} />
-      </p>
-
-      {failed && (
-        <p className="mt-4 text-xs text-amber-500">{t('dict.table.unavailable')}</p>
-      )}
-
-      {rows && (
-        <table className="mt-3 w-full border-collapse text-xs">
-          <thead>
-            <tr className="text-left text-muted-foreground/70">
-              <th className="pb-1.5 pr-3 font-normal">{t('dict.tableModel')}</th>
-              <th className="pb-1.5 pr-3 font-normal">{t('dict.tableHotword')}</th>
-              <th className="pb-1.5 font-normal">{t('dict.tableNote')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const isCurrent = row.provider === currentProvider
-              const platformChanged = row.platform !== lastPlatform
-              lastPlatform = row.platform
-              return (
-                <Fragment key={`${row.provider}-${row.model}`}>
-                  {platformChanged && (
-                    <tr>
-                      <td colSpan={3} className="pb-0.5 pt-2.5 text-[11px] font-medium text-muted-foreground">
-                        {ASR_PLATFORMS[row.platform].label}
-                      </td>
-                    </tr>
-                  )}
-                  <tr className={cn('align-top', isCurrent && 'bg-accent/50')}>
-                    <td className="py-1 pr-3">
-                      {row.model}
-                      {isCurrent && (
-                        <span className="ml-1.5 text-[10px] text-muted-foreground">
-                          {t('dict.table.current')}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1 pr-3"><span className={stateClass(row.buffered)}>{label(row.buffered)}</span></td>
-                    <td className="py-1 text-muted-foreground">{renderNote(row)}</td>
-                  </tr>
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
-      )}
-
-      <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-        <RichText text={t('dict.table.otherModes')} />
-      </p>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        <RichText text={t('dict.table.footer')} />
-      </p>
-    </Modal>
   )
 }
 
