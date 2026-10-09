@@ -139,7 +139,7 @@ fn cleanup_expired_logs(storage: &Storage) {
 }
 
 fn main() {
-    // Mirror the Rust log facade to sayit.log as well as stderr. This is essential on
+    // Mirror the Rust log facade to sayforge.log as well as stderr. This is essential on
     // Windows release builds (`windows_subsystem = "windows"`), where stderr is invisible.
     // It also captures tauri-runtime-wry errors such as the original WebView2 HRESULT.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -195,7 +195,7 @@ fn main() {
 
     // Allow self-signed certificates and auto-grant microphone for backend connection (WebView2)
     // This must be set before any WebView2 instance is created.
-    // Also disable Chromium's background tab/window throttling: SayIt keeps a long-lived
+    // Also disable Chromium's background tab/window throttling: SayForge keeps a long-lived
     // WebSocket connection alive via a 30s JS heartbeat even when the window is minimized
     // or not focused. Without these flags, WebView2 throttles setInterval timers in the
     // background, delaying the heartbeat well past the server's idle timeout and causing
@@ -225,7 +225,7 @@ fn main() {
 
     let storage = Storage::new(db_path).expect("failed to initialize SQLite storage");
 
-    // Deliberately do not automatically import the original SayIt databases.
+    // Deliberately do not automatically import databases from other distributions.
     // Users may migrate settings through Settings → Export/Import; the upstream
     // app and its audio/history files must remain untouched.
 
@@ -307,7 +307,7 @@ fn main() {
         .manage(context_detector)
         .manage(commands::update_notification::UpdateNotificationState::default())
         .setup(move |app| {
-            // SayIt's main window and lazy overlay share one WebView2 user-data directory.
+            // SayForge's main window and lazy overlay share one WebView2 user-data directory.
             // Per-window browser arguments violate WebView2's environment compatibility
             // contract. Fail loudly during startup instead of leaving a half-working app
             // whose main window works but whose overlay can never be created.

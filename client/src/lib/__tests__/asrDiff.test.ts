@@ -27,8 +27,8 @@ describe('computeAsrDiff', () => {
   })
 
   it('两侧文本可以从 segments 无损还原', () => {
-    const original = '我们用的是 sayit 这个工具，识别率还不错'
-    const corrected = '我们用的是 SayIt 这个工具，识别率还不错。'
+    const original = '我们用的是 sayforge 这个工具，识别率还不错'
+    const corrected = '我们用的是 SayForge 这个工具，识别率还不错。'
     const segments = computeAsrDiff(original, corrected)
     const { left, right } = rebuild(segments)
     expect(left).toBe(normalizeForDiff(original))

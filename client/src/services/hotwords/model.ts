@@ -20,7 +20,7 @@ export const BUILTIN_SETS: Record<string, { label: string; description: string; 
     words: [
       'ChatGPT', 'GPT', 'OpenAI', 'Claude', 'Gemini', 'Groq',
       'LLM', 'Token', 'Prompt', 'Agent', 'Ollama',
-      'OpenClaw', 'ASR', 'Codex', 'Claude Code', 'SayIt', 'Hermes',
+      'OpenClaw', 'ASR', 'Codex', 'Claude Code', 'SayForge', 'Hermes',
       'Vibe Coding', 'Typeless', 'Vibe',
     ],
   },

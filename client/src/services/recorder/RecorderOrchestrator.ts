@@ -1459,7 +1459,7 @@ export class RecorderOrchestrator {
     })
 
     if (probe.isCurrentAppProcess) {
-      addRuntimeEvent('info', 'recorder', 'Target is SayIt; using native paste instead of renderer insertion', {
+      addRuntimeEvent('info', 'recorder', 'Target is SayForge; using native paste instead of renderer insertion', {
         probeId: probe.probeId,
         editable: probe.editable,
         hwnd: probe.hwnd,

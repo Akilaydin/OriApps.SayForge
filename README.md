@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/images/readme/icon.png" alt="SayForge placeholder icon" width="96" height="96">
+  <img src="docs/images/readme/icon.png" alt="SayForge icon" width="96" height="96">
 
   # SayForge
 
@@ -17,12 +17,6 @@ SayForge is an independently maintained Windows dictation application by **OriAp
 Record speech using a configurable hotkey, transcribe it with a local model or your
 own cloud API, optionally polish the text, and paste it into another application.
 
-**Project origin:** SayForge is **based on** [SayIt](https://github.com/crosswk/SayIt)
-by **Liu Qianglong (crosswk)** and contributors, not merely inspired by it.
-It preserves SayIt's Git history, copyright attribution and
-[GNU AGPL-3.0 license](LICENSE). SayForge is not affiliated with or endorsed
-by the original maintainer; changes and support belong to this project.
-
 ### Features
 
 - Global press-to-talk and hands-free shortcuts, with insertion into the active Windows app.
@@ -35,12 +29,11 @@ by the original maintainer; changes and support belong to this project.
 
 ## Install
 
-See [SayForge Releases](https://github.com/Akilaydin/OriApps.SayForge/releases)
-for builds **when they become available**. The current app and icons are undergoing
-an independent-brand transition; a reviewed, signed release has not yet been published.
+Check [SayForge Releases](https://github.com/Akilaydin/OriApps.SayForge/releases)
+for packaged Windows builds.
 
 Until a verified SayForge update channel exists, **updates are manual only**.
-The application does **not** download or install original SayIt updates.
+The application does not automatically download or install updates.
 
 ### First run
 
@@ -54,21 +47,20 @@ ASR provider) and Local (on-device recognition). The built-in Python backend
 and Server Mode have been removed. Existing `workMode=server` preferences
 are migrated to Cloud API on startup; saved cloud credentials are not discarded.
 
-### Switching from SayIt
+### Application data and settings
 
-SayForge uses a different Windows app identity and data directory:
+SayForge uses an independent Windows app identity and data directory:
 
-| | Original SayIt | SayForge |
-| --- | --- | --- |
-| App ID | `com.sayit.app` | `com.oriapps.sayforge` |
-| User data | `%LOCALAPPDATA%\com.sayit.app` | `%LOCALAPPDATA%\com.oriapps.sayforge` |
-| SQLite | `sayit.db` | `sayforge.db` |
+| Setting | SayForge |
+| --- | --- |
+| App ID | `com.oriapps.sayforge` |
+| User data | `%LOCALAPPDATA%\com.oriapps.sayforge` |
+| SQLite | `sayforge.db` |
 
-Original data is **not deleted, overwritten or silently imported**.
-For an intentional transfer, export settings in SayIt and import them in SayForge
-through the built-in configuration export/import feature. Review your imported
-endpoint, model and keys before testing. The settings-only export does not
-include recorded audio and history; these stay in your SayIt installation.
+Existing installations and their data are not deleted, overwritten or silently
+imported. To transfer configuration manually, use the built-in export/import
+feature. Review imported endpoints, models and keys before testing. A
+settings-only export does not include recorded audio or history.
 
 If you want to run both applications, assign nonconflicting global shortcuts.
 
@@ -89,18 +81,16 @@ npm run build
 npm run tauri -- build --bundles nsis
 ```
 
-The checked-in icons are temporary placeholders. Replace the existing assets
-in `client/src-tauri/icons/`, `client/src/assets/` and `docs/images/readme/`
-with your own finished design. Include matching PNG, ICO
-and NSIS BMP variants; no icon generator script is required.
+Source artwork is maintained in `assets/branding/`. Platform-specific PNG,
+ICO and NSIS BMP assets are checked into `client/src-tauri/icons/`,
+`client/src/assets/` and `docs/images/readme/`.
 
 
 ## Contributions
 
 Issues and pull requests **are welcome** in
 [this repository](https://github.com/Akilaydin/OriApps.SayForge).
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. Contributions to SayForge
-are not automatically submitted to the original SayIt repository.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## License and third-party notices
 
@@ -114,6 +104,12 @@ Public binary distribution therefore requires an additional LGPL compliance
 review (including notices and any required relinking materials); an AGPL notice
 alone is not sufficient. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Original project: [crosswk/SayIt](https://github.com/crosswk/SayIt).
+**Project attribution:** SayForge is a modified distribution **based on**
+[SayIt by Liu Qianglong (crosswk)](https://github.com/crosswk/SayIt) and
+contributors, not merely inspired by the original work. This independent
+distribution is not affiliated with or endorsed by the original maintainer.
+Its existing Git history, copyright attribution and AGPL-3.0 requirements
+remain applicable to the modified source and any distributed binaries.
+
 SayIt copyright © 2026 Liu Qianglong and its contributors.
 Independent changes © 2026 OriApps and contributors.

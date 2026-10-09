@@ -1,6 +1,6 @@
 //
 //
-pub const USER_AGENT: &str = concat!("SayIt/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("SayForge/", env!("CARGO_PKG_VERSION"));
 
 static SHARED: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
     reqwest::Client::builder()

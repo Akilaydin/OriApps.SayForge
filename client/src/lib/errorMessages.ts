@@ -7,7 +7,7 @@ export type FriendlyErrorCode =
   | 'server_timeout'
   | 'server_unreachable'
   | 'server_forbidden'
-  | 'server_not_sayit'
+  | 'server_not_service'
   | 'server_internal'
   | 'provider_timeout'
   | 'provider_unreachable'
@@ -32,7 +32,7 @@ export interface FriendlyError {
   action: ErrorActionHint
 }
 
-const ERROR_PROTOCOL_PREFIX = 'sayit_error:'
+const ERROR_PROTOCOL_PREFIX = 'sayforge_error:'
 
 interface DecodedError {
   code: FriendlyErrorCode | null
@@ -43,7 +43,7 @@ const FRIENDLY_ERROR_CODES = new Set<FriendlyErrorCode>([
   'server_timeout',
   'server_unreachable',
   'server_forbidden',
-  'server_not_sayit',
+  'server_not_service',
   'server_internal',
   'provider_timeout',
   'provider_unreachable',
@@ -63,7 +63,7 @@ const FRIENDLY_ERROR_CODES = new Set<FriendlyErrorCode>([
 ])
 
 /**
- * Rust/Tauri errors use `sayit_error:<stable-code>:<diagnostic detail>`.
+ * Rust/Tauri errors use `sayforge_error:<stable-code>:<diagnostic detail>`.
  * The code is the contract; the detail may change language and remains useful for diagnostics.
  * Unknown codes deliberately fall back to legacy text classification for forward compatibility.
  */
@@ -125,10 +125,10 @@ export function describeServerError(error: unknown, hasCustomUrl: boolean): Frie
       action: 'retry',
     }
   }
-  if (stableCode === 'server_not_sayit' || status === 404) {
+  if (stableCode === 'server_not_service' || status === 404) {
     return {
-      code: 'server_not_sayit',
-      message: t('err.server.notSayIt'),
+      code: 'server_not_service',
+      message: t('err.server.notService'),
       detail: text,
       action: hasCustomUrl ? 'reset_url' : 'retry',
     }

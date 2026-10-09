@@ -91,7 +91,7 @@ pub fn acquire_model_storage() -> Result<ModelStorageLease, String> {
 }
 
 fn is_checksum_error(err_msg: &str) -> bool {
-    err_msg.starts_with("sayit_error:download_checksum:")
+    err_msg.starts_with("sayforge_error:download_checksum:")
 }
 
 fn remove_file_if_exists(path: &Path) -> Result<(), String> {
@@ -255,7 +255,7 @@ fn strong_etag(resp: &reqwest::Response) -> Option<String> {
 
 fn build_http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("SayIt/1.0")
+        .user_agent("SayForge/1.0")
         .tcp_nodelay(true)
         .pool_max_idle_per_host(16)
         .connect_timeout(CONNECT_TIMEOUT)
@@ -535,7 +535,7 @@ async fn download_chunk(
             total_file_size,
             expected_etag.as_deref(),
         ) {
-            if !error.starts_with("sayit_error:download_network:") || attempt == max_attempts {
+            if !error.starts_with("sayforge_error:download_network:") || attempt == max_attempts {
                 return Err(error);
             }
             tokio::time::sleep(std::time::Duration::from_millis(500 * attempt as u64)).await;
@@ -889,8 +889,8 @@ async fn download_file_parallel(
         }
         drop(futures);
         if let Some(error) = worker_error {
-            if error.starts_with("sayit_error:download_range_invalid:")
-                || error.starts_with("sayit_error:download_source_changed:")
+            if error.starts_with("sayforge_error:download_range_invalid:")
+                || error.starts_with("sayforge_error:download_source_changed:")
             {
                 cleanup_parallel_artifacts(temp_path, &state_path, &chunks)?;
             }
@@ -1019,9 +1019,9 @@ async fn download_file_parallel(
 }
 
 fn should_fallback_to_single_stream(err_msg: &str) -> bool {
-    err_msg.starts_with("sayit_error:download_range_invalid:")
-        || err_msg.starts_with("sayit_error:download_source_changed:")
-        || err_msg.starts_with("sayit_error:download_parallel_verify_failed:")
+    err_msg.starts_with("sayforge_error:download_range_invalid:")
+        || err_msg.starts_with("sayforge_error:download_source_changed:")
+        || err_msg.starts_with("sayforge_error:download_parallel_verify_failed:")
         || is_checksum_error(err_msg)
 }
 
@@ -1748,7 +1748,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!(
-            "sayit_downloader_{}_{}_{}",
+            "sayforge_downloader_{}_{}_{}",
             label,
             std::process::id(),
             nonce
@@ -1887,7 +1887,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(error.starts_with("sayit_error:download_source_changed:"));
+        assert!(error.starts_with("sayforge_error:download_source_changed:"));
         assert!(!chunk_path.exists());
         let request = server.join().unwrap()[0].to_ascii_lowercase();
         assert!(request.contains("if-match: \"model-v1\""));
@@ -1992,7 +1992,7 @@ mod tests {
         assert_eq!(resolve_download_size(0, 100).unwrap(), 100);
         assert_eq!(resolve_download_size(100, 0).unwrap(), 100);
         let error = resolve_download_size(100, 99).unwrap_err();
-        assert!(error.starts_with("sayit_error:download_source_mismatch:"));
+        assert!(error.starts_with("sayforge_error:download_source_mismatch:"));
     }
 
     #[test]
@@ -2133,33 +2133,33 @@ mod tests {
     #[test]
     fn test_single_stream_fallback_classification() {
         assert!(should_fallback_to_single_stream(
-            "sayit_error:download_range_invalid: bad Content-Range"
+            "sayforge_error:download_range_invalid: bad Content-Range"
         ));
         assert!(should_fallback_to_single_stream(
-            "sayit_error:download_source_changed: ETag changed"
+            "sayforge_error:download_source_changed: ETag changed"
         ));
         assert!(should_fallback_to_single_stream(
-            "sayit_error:download_parallel_verify_failed: bytes mismatch"
+            "sayforge_error:download_parallel_verify_failed: bytes mismatch"
         ));
         assert!(should_fallback_to_single_stream(
-            "sayit_error:download_checksum: SHA-256 mismatch"
+            "sayforge_error:download_checksum: SHA-256 mismatch"
         ));
 
         assert!(!should_fallback_to_single_stream(
-            "sayit_error:download_network: connection reset"
+            "sayforge_error:download_network: connection reset"
         ));
         assert!(!should_fallback_to_single_stream(
-            "sayit_error:download_no_space: No space on disk"
+            "sayforge_error:download_no_space: No space on disk"
         ));
         assert!(!should_fallback_to_single_stream(
-            "sayit_error:download_permission: Access denied"
+            "sayforge_error:download_permission: Access denied"
         ));
     }
 
     #[test]
     fn test_verify_file_sha256() {
         let temp_dir = std::env::temp_dir();
-        let test_file = temp_dir.join("sayit_test_sha256.tmp");
+        let test_file = temp_dir.join("sayforge_test_sha256.tmp");
 
         std::fs::write(&test_file, b"hello world\n").unwrap();
 
@@ -2179,7 +2179,7 @@ mod tests {
 
     #[test]
     fn test_verify_temp_file_sha256_preserves_io_error() {
-        let test_dir = std::env::temp_dir().join(format!("sayit_sha256_dir_{}", std::process::id()));
+        let test_dir = std::env::temp_dir().join(format!("sayforge_sha256_dir_{}", std::process::id()));
         std::fs::create_dir(&test_dir).unwrap();
 
         let err = verify_temp_file_sha256(&test_dir, "0").unwrap_err();
@@ -2192,15 +2192,15 @@ mod tests {
     #[test]
     fn test_inspect_resume_state() {
         let ok_res = Ok(());
-        let hash_err = Err("sayit_error:download_checksum: bad hash".to_string());
-        let io_err = Err("sayit_error:download_permission: Access denied".to_string());
+        let hash_err = Err("sayforge_error:download_checksum: bad hash".to_string());
+        let io_err = Err("sayforge_error:download_permission: Access denied".to_string());
 
         assert_eq!(inspect_resume_state(1000, 1000, Some(ok_res)).unwrap(), ResumeDecision::Finalize);
         assert_eq!(inspect_resume_state(1000, 1000, None).unwrap(), ResumeDecision::Finalize);
 
         assert_eq!(inspect_resume_state(1000, 1000, Some(hash_err)).unwrap(), ResumeDecision::Restart);
 
-        assert_eq!(inspect_resume_state(1000, 1000, Some(io_err)).unwrap_err(), "sayit_error:download_permission: Access denied");
+        assert_eq!(inspect_resume_state(1000, 1000, Some(io_err)).unwrap_err(), "sayforge_error:download_permission: Access denied");
 
         assert_eq!(inspect_resume_state(1200, 1000, None).unwrap(), ResumeDecision::Restart);
 

@@ -78,17 +78,17 @@ impl GgufWeight {
     }
 }
 
-// Existing transcribe.cpp-compatible weight mirrors, unchanged byte-for-byte.
-// They preserve upstream hashes so downloads continue to be integrity-checked.
+// Download directly from the original transcribe.cpp-compatible GGUF conversion
+// repositories. Their Q4_K_M files match the existing pinned SHA-256 checksums.
 const PARAKEET_UNIFIED_EN_Q4: GgufWeight = GgufWeight {
-    repo: "cswk/sayit-asr-gguf",
+    repo: "handy-computer/parakeet-unified-en-0.6b-gguf",
     file: "parakeet-unified-en-0.6b-Q4_K_M.gguf",
     size: 477_274_496,
     sha256: "a8bf3de2b393bd14ead5a858c3748d5e3b07a20fdeabdd3b498fba4f463fa929",
 };
 
 const NEMOTRON_STREAMING_Q4: GgufWeight = GgufWeight {
-    repo: "cswk/sayit-asr-gguf",
+    repo: "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf",
     file: "nemotron-3.5-asr-streaming-0.6b-Q4_K_M.gguf",
     size: 495_831_520,
     sha256: "41c99fa5fb6f3d35f68e79adc3e755eca2232a8d921178bd647b71194792b8fd",

@@ -40,7 +40,7 @@ export function close() {
 
 /**
  * Bug 003 diagnostic helper — log overlay IPC failures to runtime events
- * (which mirror to sayit.log via appendDebugLog).
+ * (which mirror to sayforge.log via appendDebugLog).
  */
 function logOverlayIpcError(op: string, err: unknown) {
   try {
@@ -257,7 +257,7 @@ export function saveExportBundle(payload: {
 
 // ─── Shortcuts ───
 
-export const SHORTCUTS_CHANGED_EVENT = 'sayit:shortcuts-changed'
+export const SHORTCUTS_CHANGED_EVENT = 'sayforge:shortcuts-changed'
 
 export function notifyShortcutsChanged() {
   invoke('shortcuts_changed')
@@ -462,7 +462,7 @@ export function asrHotwordCapabilityMatrix() {
     .catch(() => null)
 }
 
-export const ASR_CAPABILITY_MAYBE_CHANGED_EVENT = 'sayit:asr-capability-maybe-changed'
+export const ASR_CAPABILITY_MAYBE_CHANGED_EVENT = 'sayforge:asr-capability-maybe-changed'
 
 export function notifyAsrCapabilityMaybeChanged() {
   if (typeof window !== 'undefined') {

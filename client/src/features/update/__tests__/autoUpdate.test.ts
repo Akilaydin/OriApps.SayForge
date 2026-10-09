@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   recorder: vi.fn(),
   check: vi.fn(),
 }))
-const pending = { version: '0.2.2', filePath: 'C:/Temp/SayIt-0.2.2.exe', sha512: 'verified' }
+const pending = { version: '0.2.2', filePath: 'C:/Temp/SayForge-0.2.2.exe', sha512: 'verified' }
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }))
 vi.mock('@/services/recorder', () => ({ getState: mocks.recorder }))

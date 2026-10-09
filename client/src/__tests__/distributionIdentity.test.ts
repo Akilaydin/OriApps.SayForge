@@ -27,7 +27,7 @@ describe('independent SayForge distribution', () => {
     expect(ico.readUInt16LE(4)).toBeGreaterThan(1)
   })
 
-  it('never activates the original SayIt installer or update service', () => {
+  it('never activates a retired automatic installer or update service', () => {
     const app = text('src/App.tsx')
     const main = text('src-tauri/src/main.rs')
     expect(app).not.toMatch(/\bstartUpdateService\s*\(/)
@@ -35,14 +35,19 @@ describe('independent SayForge distribution', () => {
     expect(app).not.toContain('<UpdateDialog')
     expect(main).not.toMatch(/\binstall_pending_update_on_exit\s*\(/)
     expect(text('src/pages/About.tsx')).toContain('https://github.com/Akilaydin/OriApps.SayForge')
-    expect(text('src/services/runtimeConfig.ts')).not.toContain('sayitapp.site')
-    expect(text('.env.development')).not.toContain('sayitapp.site')
-    expect(text('src-tauri/src/providers/asr_openrouter.rs')).not.toContain('https://sayitapp.site')
+    expect(text('src/services/runtimeConfig.ts')).toContain('127.0.0.1:8000')
+    expect(text('.env.development')).toContain('127.0.0.1:8000')
+    expect(text('src-tauri/src/providers/asr_openrouter.rs')).toContain('https://github.com/Akilaydin/OriApps.SayForge')
   })
 
   it('keeps explicit credit and licensing for the original project', () => {
-    expect(text('../README.md')).toContain('https://github.com/crosswk/SayIt')
-    expect(text('../README.md')).toContain('based on')
+    const readme = text('../README.md')
+    const heading = '## License and third-party notices'
+    expect(readme).toContain(heading)
+    const [publicDescription, legalSection] = readme.split(heading)
+    expect(publicDescription).not.toContain('github.com/crosswk/')
+    expect(legalSection).toContain('github.com/crosswk/')
+    expect(legalSection).toContain('based on')
     expect(text('../THIRD_PARTY_NOTICES.md')).toContain('LGPL-3.0')
   })
 })

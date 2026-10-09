@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn legacy_detection_requires_onnx_and_rejects_gguf() {
-        let tmp = std::env::temp_dir().join(format!("sayit-legacy-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("sayforge-legacy-test-{}", std::process::id()));
         let onnx_dir = tmp.join("old");
         let gguf_dir = tmp.join("new");
         let mixed_dir = tmp.join("mixed");

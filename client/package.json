@@ -1,7 +1,7 @@
 {
   "name": "oriapps-sayforge",
   "version": "0.2.2",
-  "description": "SayForge - open-source voice typing for Windows (based on SayIt)",
+  "description": "SayForge - open-source Windows voice typing (Tauri)",
   "type": "module",
   "scripts": {
     "dev": "vite",

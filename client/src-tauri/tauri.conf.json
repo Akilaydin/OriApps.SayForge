@@ -46,8 +46,8 @@
       "icons/128x128@2x.png"
     ],
     "shortDescription": "Voice typing and optional AI cleanup",
-    "longDescription": "SayForge by OriApps: open-source voice typing for Windows. Based on SayIt (AGPL-3.0).",
-    "copyright": "© 2026 OriApps; based on SayIt © 2026 Liu Qianglong & contributors",
+    "longDescription": "SayForge by OriApps: open-source voice typing for Windows, distributed under AGPL-3.0.",
+    "copyright": "© 2026 OriApps; portions © 2026 Liu Qianglong and contributors",
     "category": "Productivity",
     "windows": {
       "nsis": {

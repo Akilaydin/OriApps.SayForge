@@ -4,7 +4,7 @@
 //! different languages, and our own diagnostics can be reworded. The frontend classifies by
 //! `code` and only shows `detail` as secondary diagnostic text.
 
-const PREFIX: &str = "sayit_error:";
+const PREFIX: &str = "sayforge_error:";
 
 pub fn encode(code: &str, detail: impl AsRef<str>) -> String {
     format!("{}{}:{}", PREFIX, code, detail.as_ref())
@@ -18,7 +18,7 @@ mod tests {
     fn keeps_colons_and_unicode_in_detail() {
         assert_eq!(
             encode("provider_bad_key", "HTTP 401: 密钥无效"),
-            "sayit_error:provider_bad_key:HTTP 401: 密钥无效"
+            "sayforge_error:provider_bad_key:HTTP 401: 密钥无效"
         );
     }
 }

@@ -34,7 +34,7 @@ const ENABLE_INFO_CONSOLE = false
 const RECORDER_KEY_EVENT = /(Recording started|Recording stopped|Entered processing|Final result received|External text insertion succeeded|External text insertion failed|Processing timed out|Showing fallback card)/i
 const WEBSOCKET_KEY_EVENT = /(Connection closed|Connection timed out|Failed to send start|Failed to send stop|Connecting|Connected|Reconnected|Ready received|disconnect)/i
 const AUDIO_KEY_EVENT = /(Microphone capture started|AudioContext|First PCM frame received|First RMS received|ScriptProcessorNode fallback activated|Capture stop summary)/i
-const INSERTION_EVENT = /(Paste decision|External text insertion|fallback|Target is SayIt|Target is not editable)/i
+const INSERTION_EVENT = /(Paste decision|External text insertion|fallback|Target is SayForge|Target is not editable)/i
 
 export const AI_LOG_SOURCE = 'ai'
 export const AI_EVENT_REQUEST = 'ai.request'

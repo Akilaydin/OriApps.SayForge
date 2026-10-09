@@ -1,7 +1,7 @@
 //! Identity of this independent SayForge distribution.
 //!
-//! Keep app data paths separate from the original SayIt distribution. Changing
-//! the Tauri identifier alone is not enough because some paths are explicit.
+//! Keep app data paths isolated from other applications. Changing the Tauri
+//! identifier alone is not enough because some paths are explicit.
 pub const APP_ID: &str = "com.oriapps.sayforge";
 pub const APP_NAME: &str = "SayForge";
 pub const DATABASE_FILE: &str = "sayforge.db";
@@ -12,9 +12,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn independent_identity_cannot_use_the_upstream_data_directory() {
-        assert_ne!(APP_ID, "com.sayit.app");
-        assert_ne!(DATABASE_FILE, "sayit.db");
-        assert_ne!(LOG_FILE, "sayit.log");
+    fn identity_has_independent_names() {
+        assert_eq!(APP_ID, "com.oriapps.sayforge");
+        assert_eq!(APP_NAME, "SayForge");
+        assert_eq!(DATABASE_FILE, "sayforge.db");
+        assert_eq!(LOG_FILE, "sayforge.log");
     }
 }

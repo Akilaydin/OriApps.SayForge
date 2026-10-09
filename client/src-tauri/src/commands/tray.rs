@@ -20,7 +20,7 @@ pub fn create_tray_menu_window(app: &AppHandle) -> tauri::Result<()> {
         TRAY_MENU_LABEL,
         WebviewUrl::App("tray-menu.html".into()),
     )
-    .title("SayIt")
+    .title(crate::identity::APP_NAME)
     .inner_size(TRAY_MENU_WIDTH, TRAY_MENU_HEIGHT)
     .decorations(false)
     .transparent(true)

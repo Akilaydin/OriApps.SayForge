@@ -8,20 +8,20 @@ import {
 
 describe('restoreHotwordSpacing', () => {
   it('restores spaces added in technical identifiers', () => {
-    expect(restoreHotwordSpacing('I use Say It daily', ['SayIt'])).toBe('I use SayIt daily')
+    expect(restoreHotwordSpacing('I use Say Forge daily', ['SayForge'])).toBe('I use SayForge daily')
     expect(restoreHotwordSpacing('Type less is useful', ['Typeless'])).toBe('Typeless is useful')
   })
   it('corrects the capitalization of recognized terms', () => {
-    expect(restoreHotwordSpacing('Say it', ['SayIt'])).toBe('SayIt')
+    expect(restoreHotwordSpacing('Say forge', ['SayForge'])).toBe('SayForge')
     expect(restoreHotwordSpacing('I use typeless', ['Typeless'])).toBe('I use Typeless')
   })
   it('preserves ordinary phrases and word boundaries', () => {
-    expect(restoreHotwordSpacing('I say it loudly', ['SayIt'])).toBe('I say it loudly')
-    expect(restoreHotwordSpacing('Say Item here', ['SayIt'])).toBe('Say Item here')
+    expect(restoreHotwordSpacing('I say it loudly', ['SayForge'])).toBe('I say it loudly')
+    expect(restoreHotwordSpacing('Say Item here', ['SayForge'])).toBe('Say Item here')
   })
   it('handles empty strings and nonexistent hotwords', () => {
     expect(restoreHotwordSpacing('Say It', [])).toBe('Say It')
-    expect(restoreHotwordSpacing('', ['SayIt'])).toBe('')
+    expect(restoreHotwordSpacing('', ['SayForge'])).toBe('')
   })
   it('ignores hotwords containing spaces or punctuation', () => {
     expect(restoreHotwordSpacing('a b', ['a b'])).toBe('a b')

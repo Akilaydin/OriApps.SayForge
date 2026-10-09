@@ -7,7 +7,7 @@ import { useT } from '@/i18n/useT'
 
 const REPO_URL = 'https://github.com/Akilaydin/OriApps.SayForge'
 const RELEASES_URL = `${REPO_URL}/releases`
-const UPSTREAM_URL = 'https://github.com/crosswk/SayIt'
+const ATTRIBUTION_URL = `\${REPO_URL}/blob/main/README.md#license-and-third-party-notices`
 const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`
 
 export default function About() {
@@ -44,10 +44,9 @@ export default function About() {
 
           <div className="mt-5 border-t border-border pt-5">
             <h3 className="mb-2 text-sm font-medium">{t('about.acknowledgements')}</h3>
-            <p className="mb-2 text-sm text-muted-foreground">{t('about.basedOnSayIt')}</p>
-            <Button variant="ghost" size="sm" onClick={() => void shellOpen(UPSTREAM_URL)}>
+            <Button variant="ghost" size="sm" onClick={() => void shellOpen(ATTRIBUTION_URL)}>
               <ExternalLink className="mr-1.5 h-4 w-4" />
-              {t('about.originalProject')}
+              {t('about.viewAttributions')}
             </Button>
             <p className="mt-2 text-xs text-muted-foreground">
               GNU Affero General Public License v3.0 (AGPL-3.0). {t('about.noWarranty')}

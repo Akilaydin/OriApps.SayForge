@@ -97,7 +97,7 @@ export default function PTTLab() {
     })
 
     if (probe.isCurrentAppProcess) {
-      appendLog('Target is the SayIt process; using Rust paste', { hwnd: probe.hwnd })
+      appendLog('Target is the SayForge process; using Rust paste', { hwnd: probe.hwnd })
       // Fall through to normal editable / not_editable flow
     }
 

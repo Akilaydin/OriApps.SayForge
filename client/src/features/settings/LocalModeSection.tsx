@@ -23,7 +23,7 @@ import {
   localModelDisplayName,
 } from '@/i18n/displayNames'
 
-const MODELS_DIR_CHANGED_EVENT = 'sayit:models-dir-changed'
+const MODELS_DIR_CHANGED_EVENT = 'sayforge:models-dir-changed'
 
 function formatList(items: string[]): string {
   return items.join(t('common.listSeparator'))

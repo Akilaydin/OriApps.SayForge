@@ -412,9 +412,9 @@ mod tests {
 
     #[test]
     fn hotwords_go_into_the_prompt_deduped_and_capped() {
-        let words = vec!["SayIt".to_string(), "sayit".to_string(), " Kiro ".to_string()];
+        let words = vec!["SayForge".to_string(), "sayforge".to_string(), " Kiro ".to_string()];
         let prompt = build_prompt(&config(serde_json::json!({})), &words);
-        assert!(prompt.contains("SayIt, Kiro"));
+        assert!(prompt.contains("SayForge, Kiro"));
 
         let many: Vec<String> = (0..HOTWORD_LIMIT + 20).map(|i| format!("w{}", i)).collect();
         let capped = build_prompt(&config(serde_json::json!({})), &many);

@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for SayIt",
+  "description": "Default capabilities for SayForge",
   "windows": ["main", "overlay", "tray-menu", "update-notification"],
   "permissions": [
     "core:default",

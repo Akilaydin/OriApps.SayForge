@@ -54,7 +54,7 @@ fn rotate_if_needed(file: &mut Option<std::fs::File>) {
 
     *file = None;
 
-    // Rotate: sayit.log -> sayit.1.log, sayit.1.log -> sayit.2.log, etc.
+    // Rotate: sayforge.log -> sayforge.1.log, sayforge.1.log -> sayforge.2.log, etc.
     let dir = log_dir();
     for i in (1..ROTATED_FILES_KEEP).rev() {
         let from = dir.join(format!("sayforge.{}.log", i));
@@ -185,12 +185,12 @@ pub fn get_client_runtime_info(storage: State<Storage>) -> Result<ClientRuntimeI
         if !id.is_empty() {
             id.to_string()
         } else {
-            let new_id = format!("sayit-{}", uuid::Uuid::new_v4());
+            let new_id = format!("sayforge-{}", uuid::Uuid::new_v4());
             let _ = storage.set("deviceId", &serde_json::json!(new_id));
             new_id
         }
     } else {
-        let new_id = format!("sayit-{}", uuid::Uuid::new_v4());
+        let new_id = format!("sayforge-{}", uuid::Uuid::new_v4());
         let _ = storage.set("deviceId", &serde_json::json!(new_id));
         new_id
     };
@@ -308,7 +308,7 @@ pub async fn download_update(app: AppHandle, url: String, sha512: Option<String>
     use std::io::Write;
 
     let client = reqwest::Client::builder()
-        .user_agent(concat!("SayIt/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("SayForge/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| format!("Failed to initialize download client: {}", e))?;
 
@@ -333,8 +333,8 @@ pub async fn download_update(app: AppHandle, url: String, sha512: Option<String>
 
     let total = resp.content_length().unwrap_or(0);
 
-    let filename = url.split('/').last().unwrap_or("SayIt-Setup.exe").to_string();
-    let temp_dir = std::env::temp_dir().join("sayit-update");
+    let filename = url.split('/').last().unwrap_or("SayForge-Setup.exe").to_string();
+    let temp_dir = std::env::temp_dir().join("sayforge-update");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temporary directory: {}", e))?;
     let file_path = temp_dir.join(&filename);
 
@@ -440,7 +440,7 @@ fn spawn_installer(installer_path: &str, relaunch: bool) -> Result<(), String> {
         installer = installer_path,
         relaunch = relaunch_line,
     );
-    let script_path = std::env::temp_dir().join("sayit-update-relaunch.bat");
+    let script_path = std::env::temp_dir().join("sayforge-update-relaunch.bat");
     std::fs::write(&script_path, script)
         .map_err(|e| format!("Failed to write the update restart script: {}", e))?;
 

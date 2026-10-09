@@ -25,8 +25,8 @@ describe('describeServerError', () => {
     expect(result.message).toContain('403')
   })
 
-  it('404 指出这里要填服务根地址', () => {
-    expect(describeServerError(new Error('HTTP 404'), true).message).toContain('service root')
+  it('404 suggests verifying the endpoint URL', () => {
+    expect(describeServerError(new Error('HTTP 404'), true).message).toContain('endpoint URL')
   })
 
   it('5xx 把责任指向服务端', () => {
@@ -46,7 +46,7 @@ describe('describeServerError', () => {
 
 describe('describeProviderError', () => {
   it('优先使用 Rust 稳定错误码，并从 detail 中剥掉协议前缀', () => {
-    const result = describeProviderError('sayit_error:provider_bad_key:HTTP 418 translated detail')
+    const result = describeProviderError('sayforge_error:provider_bad_key:HTTP 418 translated detail')
     expect(result.code).toBe('provider_bad_key')
     expect(result.action).toBe('check_key')
     expect(result.detail).toBe('HTTP 418 translated detail')
@@ -74,7 +74,7 @@ describe('describeProviderError', () => {
     expect(raw.action).toBe('check_key')
     expect(raw.detail).toContain('$0.50')
 
-    const tagged = describeProviderError('sayit_error:provider_insufficient_balance:HTTP 402')
+    const tagged = describeProviderError('sayforge_error:provider_insufficient_balance:HTTP 402')
     expect(tagged.code).toBe('provider_insufficient_balance')
   })
 
@@ -86,7 +86,7 @@ describe('describeProviderError', () => {
   })
 
   it('403 不报成密钥问题，而是指出可能是地区或权限', () => {
-    const tagged = describeProviderError('sayit_error:provider_forbidden:API error 403 Forbidden [http=403]')
+    const tagged = describeProviderError('sayforge_error:provider_forbidden:API error 403 Forbidden [http=403]')
     expect(tagged.code).toBe('provider_forbidden')
     expect(tagged.message).not.toContain('key was rejected')
     expect(tagged.action).toBe('switch_source')
@@ -106,7 +106,7 @@ describe('describeProviderError', () => {
 
 describe('describeDownloadError', () => {
   it('错误分类不依赖 Rust detail 使用哪种语言', () => {
-    const result = describeDownloadError('sayit_error:download_no_space:write failed')
+    const result = describeDownloadError('sayforge_error:download_no_space:write failed')
     expect(result.code).toBe('download_no_space')
     expect(result.action).toBe('none')
     expect(result.detail).toBe('write failed')
@@ -131,13 +131,13 @@ describe('describeDownloadError', () => {
   })
 
   it('重复下载只建议稍后重试，不误导用户切换下载源', () => {
-    const result = describeDownloadError('sayit_error:download_busy:already downloading')
+    const result = describeDownloadError('sayforge_error:download_busy:already downloading')
     expect(result.code).toBe('download_busy')
     expect(result.action).toBe('retry')
   })
 
   it('远端大小与目录不一致时建议切换下载源', () => {
-    const result = describeDownloadError('sayit_error:download_source_mismatch:size changed')
+    const result = describeDownloadError('sayforge_error:download_source_mismatch:size changed')
     expect(result.code).toBe('download_source_mismatch')
     expect(result.action).toBe('switch_source')
   })

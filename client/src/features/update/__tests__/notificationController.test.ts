@@ -32,7 +32,7 @@ function fixture() {
   }
 }
 
-const pending = { version: '0.2.2', filePath: 'C:/Temp/SayIt-0.2.2.exe' }
+const pending = { version: '0.2.2', filePath: 'C:/Temp/SayForge-0.2.2.exe' }
 
 beforeEach(() => {
   vi.useFakeTimers()

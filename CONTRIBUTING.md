@@ -2,8 +2,7 @@
 
 Issues, bug reports, documentation improvements and pull requests are welcome.
 SayForge is independently maintained at
-[Akilaydin/OriApps.SayForge](https://github.com/Akilaydin/OriApps.SayForge);
-the original SayIt maintainer's PR policy does not apply here.
+[Akilaydin/OriApps.SayForge](https://github.com/Akilaydin/OriApps.SayForge).
 
 ## Before opening a PR
 
@@ -23,5 +22,4 @@ All source-code contributions are made under the project's existing
 identify your own changes. Do not add new third-party dependencies without
 checking their licenses and binary-distribution requirements.
 
-The maintainers will review PRs here; they will not automatically forward them
-to [crosswk/SayIt](https://github.com/crosswk/SayIt).
+The maintainers review contributions and manage issues in this repository.

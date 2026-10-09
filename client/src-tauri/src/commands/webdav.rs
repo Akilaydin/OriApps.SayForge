@@ -742,7 +742,7 @@ mod tests {
     #[test]
     fn rejects_plain_http_and_other_schemes() {
         assert_eq!(
-            normalize_dir_url("http://dav.jianguoyun.com/dav/SayIt").unwrap_err(),
+            normalize_dir_url("http://dav.jianguoyun.com/dav/SayForge").unwrap_err(),
             "WEBDAV_URL_INSECURE"
         );
         assert_eq!(
@@ -755,8 +755,8 @@ mod tests {
 
     #[test]
     fn strips_trailing_slashes_so_children_do_not_double_up() {
-        let url = normalize_dir_url("https://dav.jianguoyun.com/dav/SayIt/").unwrap();
-        assert_eq!(url, "https://dav.jianguoyun.com/dav/SayIt");
+        let url = normalize_dir_url("https://dav.jianguoyun.com/dav/SayForge/").unwrap();
+        assert_eq!(url, "https://dav.jianguoyun.com/dav/SayForge");
         let target = Target {
             dir_url: url,
             username: "u".into(),
@@ -764,14 +764,14 @@ mod tests {
         };
         assert_eq!(
             target.child("sayforge-backup-x.zip"),
-            "https://dav.jianguoyun.com/dav/SayIt/sayforge-backup-x.zip"
+            "https://dav.jianguoyun.com/dav/SayForge/sayforge-backup-x.zip"
         );
     }
 
     #[test]
     fn credentials_must_not_be_blank() {
         let err = Target::from_config(&WebDavConfig {
-            url: "https://dav.jianguoyun.com/dav/SayIt".into(),
+            url: "https://dav.jianguoyun.com/dav/SayForge".into(),
             username: "  ".into(),
             password: "p".into(),
         })
@@ -784,15 +784,15 @@ mod tests {
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:multistatus xmlns:d="DAV:">
   <d:response>
-    <d:href>/dav/SayIt/</d:href>
+    <d:href>/dav/SayForge/</d:href>
     <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>
   </d:response>
   <d:response>
-    <d:href>/dav/SayIt/sayforge-backup-2026-08-26_10-00-00-000.zip</d:href>
+    <d:href>/dav/SayForge/sayforge-backup-2026-08-26_10-00-00-000.zip</d:href>
     <d:propstat><d:prop><d:getcontentlength>4096</d:getcontentlength></d:prop></d:propstat>
   </d:response>
   <d:response>
-    <d:href>/dav/SayIt/sayforge-backup-2026-08-25_10-00-00-000.zip</d:href>
+    <d:href>/dav/SayForge/sayforge-backup-2026-08-25_10-00-00-000.zip</d:href>
     <d:propstat><d:prop><d:getcontentlength>2048</d:getcontentlength></d:prop></d:propstat>
   </d:response>
 </d:multistatus>"#;
@@ -806,7 +806,7 @@ mod tests {
             #[test]
     fn parses_listing_regardless_of_prefix_case_or_absence() {
         let xml = r#"<D:multistatus xmlns:D="DAV:">
-  <D:response><D:href>/dav/SayIt/sayforge-backup-a.zip</D:href>
+  <D:response><D:href>/dav/SayForge/sayforge-backup-a.zip</D:href>
     <D:propstat><D:prop><lp1:getcontentlength>11</lp1:getcontentlength></D:prop></D:propstat>
   </D:response>
 </D:multistatus>"#;
@@ -815,7 +815,7 @@ mod tests {
         assert_eq!(entries[0].size, 11);
 
         let no_prefix = r#"<multistatus xmlns="DAV:">
-  <response><href>/dav/SayIt/sayforge-backup-b.zip</href>
+  <response><href>/dav/SayForge/sayforge-backup-b.zip</href>
     <propstat><prop><getcontentlength>22</getcontentlength></prop></propstat>
   </response>
 </multistatus>"#;
@@ -828,10 +828,10 @@ mod tests {
     #[test]
     fn ignores_directories_and_foreign_files() {
         let xml = r#"<d:multistatus xmlns:d="DAV:">
-  <d:response><d:href>/dav/SayIt/</d:href></d:response>
-  <d:response><d:href>/dav/SayIt/notes.txt</d:href></d:response>
-  <d:response><d:href>/dav/SayIt/sayit-config-2026.json</d:href></d:response>
-  <d:response><d:href>/dav/SayIt/sayforge-backup-x.zip.part</d:href></d:response>
+  <d:response><d:href>/dav/SayForge/</d:href></d:response>
+  <d:response><d:href>/dav/SayForge/notes.txt</d:href></d:response>
+  <d:response><d:href>/dav/SayForge/sayforge-config-2026.json</d:href></d:response>
+  <d:response><d:href>/dav/SayForge/sayforge-backup-x.zip.part</d:href></d:response>
 </d:multistatus>"#;
         assert!(parse_backup_entries(xml).is_empty());
     }
@@ -849,7 +849,7 @@ mod tests {
         ///
                 #[test]
     fn scope_defaults_to_config_only_when_unset() {
-        let dir = std::env::temp_dir().join(format!("sayit-webdav-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("sayforge-webdav-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let storage = Storage::new(dir.join("test.db")).unwrap();
 

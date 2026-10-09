@@ -75,16 +75,16 @@ fn copy_to(src: &Path, dir: &Path, name: &str) {
 ///
 ///
 fn stage_vc_redist(profile_dir: &Path, staging: &Path) -> usize {
-    println!("cargo:rerun-if-env-changed=SAYIT_VC_REDIST_DIRS");
-    println!("cargo:rerun-if-env-changed=SAYIT_SKIP_VC_REDIST");
+    println!("cargo:rerun-if-env-changed=SAYFORGE_VC_REDIST_DIRS");
+    println!("cargo:rerun-if-env-changed=SAYFORGE_SKIP_VC_REDIST");
     println!("cargo:rerun-if-env-changed=VCToolsRedistDir");
 
     if std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() != "msvc" {
         return 0;
     }
-    if std::env::var_os("SAYIT_SKIP_VC_REDIST").is_some() {
+    if std::env::var_os("SAYFORGE_SKIP_VC_REDIST").is_some() {
         println!(
-            "cargo:warning=SAYIT_SKIP_VC_REDIST is set; VC++ runtime DLLs will not be bundled.\
+            "cargo:warning=SAYFORGE_SKIP_VC_REDIST is set; VC++ runtime DLLs will not be bundled.\
              The application may crash on machines with older VC++ runtimes. Do not release this package."
         );
         return 0;
@@ -95,8 +95,8 @@ fn stage_vc_redist(profile_dir: &Path, staging: &Path) -> usize {
             "Could not locate the VC++ redistributable directory required to bundle MSVCP140 and VCRUNTIME140.\
              Without these libraries, init_backends() may crash (0xc0000005) on other machines.\n\
              Fix the installation using the MSVC v143 build tools in Visual Studio Installer,\
-             or set SAYIT_VC_REDIST_DIRS to the CRT/OpenMP DLL folders.\
-             For local testing only, set SAYIT_SKIP_VC_REDIST=1 to build without redistribution."
+             or set SAYFORGE_VC_REDIST_DIRS to the CRT/OpenMP DLL folders.\
+             For local testing only, set SAYFORGE_SKIP_VC_REDIST=1 to build without redistribution."
         )
     });
 
@@ -126,7 +126,7 @@ fn stage_vc_redist(profile_dir: &Path, staging: &Path) -> usize {
 
 ///
 fn resolve_vc_redist_dirs() -> Option<Vec<PathBuf>> {
-    if let Some(v) = std::env::var_os("SAYIT_VC_REDIST_DIRS") {
+    if let Some(v) = std::env::var_os("SAYFORGE_VC_REDIST_DIRS") {
         let list: Vec<PathBuf> = v
             .to_string_lossy()
             .split(';')

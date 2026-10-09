@@ -194,14 +194,14 @@ export async function exportHistory(query: HistoryListQuery = {}, format: Export
 
   if (format === 'csv') {
     return saveTextFile(
-      `sayit-history-${stamp}.csv`,
+      `sayforge-history-${stamp}.csv`,
       historyToCsv(payload.records),
       [{ name: 'CSV Files', extensions: ['csv'] }],
     )
   }
 
   return saveTextFile(
-    `sayit-history-${stamp}.json`,
+    `sayforge-history-${stamp}.json`,
     JSON.stringify(payload, null, 2),
     [{ name: 'JSON Files', extensions: ['json'] }],
   )
@@ -213,14 +213,14 @@ export async function exportFavorites(format: ExportFormat = 'json') {
 
   if (format === 'csv') {
     return saveTextFile(
-      `sayit-favorites-${stamp}.csv`,
+      `sayforge-favorites-${stamp}.csv`,
       historyToCsv(payload.records),
       [{ name: 'CSV Files', extensions: ['csv'] }],
     )
   }
 
   return saveTextFile(
-    `sayit-favorites-${stamp}.json`,
+    `sayforge-favorites-${stamp}.json`,
     JSON.stringify(payload, null, 2),
     [{ name: 'JSON Files', extensions: ['json'] }],
   )
@@ -229,7 +229,7 @@ export async function exportFavorites(format: ExportFormat = 'json') {
 export async function exportSettings() {
   const payload = await buildSettingsPayload()
   return saveTextFile(
-    `sayit-settings-${slugTimestamp()}.json`,
+    `sayforge-settings-${slugTimestamp()}.json`,
     JSON.stringify(payload, null, 2),
     [{ name: 'JSON Files', extensions: ['json'] }],
   )
@@ -238,7 +238,7 @@ export async function exportSettings() {
 export async function exportHotwords() {
   const payload = await buildHotwordsPayload()
   return saveTextFile(
-    `sayit-hotwords-${slugTimestamp()}.json`,
+    `sayforge-hotwords-${slugTimestamp()}.json`,
     JSON.stringify(payload, null, 2),
     [{ name: 'JSON Files', extensions: ['json'] }],
   )
@@ -273,7 +273,7 @@ export async function exportAllDataBundle() {
     { name: 'hotwords.json', content: JSON.stringify(hotwords, null, 2) },
   ]
 
-  const defaultPath = `sayit-export-${slugTimestamp()}.zip`
+  const defaultPath = `sayforge-export-${slugTimestamp()}.zip`
   const filePath = await invoke<string | null>('save_full_export', {
     payload: { defaultPath, files },
   })

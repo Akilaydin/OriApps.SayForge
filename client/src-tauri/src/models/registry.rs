@@ -276,7 +276,7 @@ pub async fn set_models_dir(
         tokio::task::spawn_blocking(move || -> Result<(), String> {
             std::fs::create_dir_all(&new_for_task)
                 .map_err(|e| format!("Failed to create directory: {}", e))?;
-            let probe = new_for_task.join(".sayit_write_test");
+            let probe = new_for_task.join(".sayforge_write_test");
             std::fs::write(&probe, b"ok").map_err(|e| format!("Directory is not writable: {}", e))?;
             let _ = std::fs::remove_file(&probe);
             if move_existing && old_for_task.exists() {

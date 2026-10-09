@@ -1,9 +1,11 @@
 # Third-party licenses and attribution
 
-## Original SayIt project
+## Upstream application source
 
-- Source: https://github.com/crosswk/SayIt
-- Original project by Liu Qianglong (crosswk) and contributors.
+- Source and copyright attribution: see the
+  [License and third-party notices](README.md#license-and-third-party-notices)
+  section in the README.
+- Original application by Liu Qianglong (crosswk) and contributors.
 - License: GNU Affero General Public License v3.0 (`LICENSE`).
 - SayForge is a modified distribution of the original source. Git history
   and copyright attribution are deliberately preserved.
@@ -27,10 +29,8 @@ repository alone may not satisfy the LGPL static-linking obligations.
 - Native transcribe.cpp bindings (`transcribe-cpp`) identify as MIT-licensed.
 - Other JavaScript, Rust and Python dependencies retain their own licenses.
   Review the resolved dependency lists before distribution.
-- The current microphone artwork is placeholder branding and replaces the
-  original SayIt icons. Future icon assets can be supplied directly as files.
-- Existing documentation screenshots are inherited from SayIt and may show
-  the original user interface. They are historical reference material, not
-  screenshots of the current SayForge identity.
+- The current icon artwork is maintained with its design source files under
+  `assets/branding`.
+- Historic source and acknowledgements remain available in the Git history.
 
 This notice is not a substitute for a complete distributable license inventory.

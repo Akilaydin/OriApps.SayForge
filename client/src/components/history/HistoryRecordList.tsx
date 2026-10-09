@@ -166,7 +166,7 @@ function HistoryItem({
 
       const ts = new Date(record.timestamp)
       const dateStr = `${ts.getFullYear()}${String(ts.getMonth() + 1).padStart(2, '0')}${String(ts.getDate()).padStart(2, '0')}_${String(ts.getHours()).padStart(2, '0')}${String(ts.getMinutes()).padStart(2, '0')}${String(ts.getSeconds()).padStart(2, '0')}`
-      const filename = `sayit_${dateStr}.wav`
+      const filename = `sayforge_${dateStr}.wav`
 
       // Extract base64 from data URL
       const base64Data = dataUrl.split(',')[1]

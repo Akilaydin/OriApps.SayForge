@@ -36,7 +36,7 @@ function isSameRule(left: AppPromptRule, right: AppPromptRule) {
 }
 
 type DetectHint =
-  | { kind: 'missing' | 'sayit' | 'failed' }
+  | { kind: 'missing' | 'ownApp' | 'failed' }
   | { kind: 'found'; process: string; title: string }
   | null
 
@@ -151,7 +151,7 @@ export default function AppPromptRulesSection({
         return
       }
       if (raw.toLowerCase() === 'sayforge.exe') {
-        setDetectHint({ kind: 'sayit' })
+        setDetectHint({ kind: 'ownApp' })
         return
       }
       setNewRule((current) => (current ? { ...current, processName: raw } : current))
@@ -263,8 +263,8 @@ export default function AppPromptRulesSection({
                       title: detectHint.title ? t('appPrompt.detectTitle', { title: detectHint.title }) : '',
                     })
                     : detectHint
-                      ? t(detectHint.kind === 'sayit'
-                        ? 'appPrompt.detectSayIt'
+                      ? t(detectHint.kind === 'ownApp'
+                        ? 'appPrompt.detectOwnApp'
                         : detectHint.kind === 'missing' ? 'appPrompt.detectMissing' : 'appPrompt.detectFailed')
                       : t('appPrompt.detectHint', { seconds: DETECT_COUNTDOWN_SEC })}
               </p>

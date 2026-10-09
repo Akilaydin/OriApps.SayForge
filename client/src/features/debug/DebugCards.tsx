@@ -128,7 +128,7 @@ export function AudioPlayer({ session }: { session: DebugSession }) {
     const objectUrl = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = objectUrl
-    anchor.download = `sayit-debug-${session.id}.wav`
+    anchor.download = `sayforge-debug-${session.id}.wav`
     anchor.click()
     URL.revokeObjectURL(objectUrl)
   }, [session])

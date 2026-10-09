@@ -212,7 +212,7 @@ async fn open_session(
         .insert("openai-beta", HeaderValue::from_static("realtime=v1"));
     request.headers_mut().insert(
         USER_AGENT,
-        HeaderValue::from_static(concat!("SayIt/", env!("CARGO_PKG_VERSION"))),
+        HeaderValue::from_static(concat!("SayForge/", env!("CARGO_PKG_VERSION"))),
     );
 
     let (mut ws, response) = tokio_tungstenite::connect_async(request)
@@ -612,10 +612,10 @@ mod tests {
 
     #[test]
     fn hotwords_become_keywords() {
-        let words = vec!["SayIt".to_string(), " Kiro ".to_string()];
+        let words = vec!["SayForge".to_string(), " Kiro ".to_string()];
         let payload = session_update_payload(DEFAULT_MODEL, &words);
         let keywords = &payload["session"]["audio"]["input"]["transcription"]["keywords"];
-        assert_eq!(keywords[0], "SayIt");
+        assert_eq!(keywords[0], "SayForge");
         assert_eq!(keywords[1], "Kiro");
     }
 
@@ -632,7 +632,7 @@ mod tests {
 
     #[test]
     fn keywords_are_deduped_and_capped() {
-        let words = vec!["SayIt".to_string(), "sayit".to_string()];
+        let words = vec!["SayForge".to_string(), "sayforge".to_string()];
         assert_eq!(build_keywords(&words).len(), 1);
         let many: Vec<String> = (0..KEYWORD_LIMIT + 50).map(|i| format!("w{}", i)).collect();
         assert_eq!(build_keywords(&many).len(), KEYWORD_LIMIT);

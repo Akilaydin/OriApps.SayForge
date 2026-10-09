@@ -226,7 +226,7 @@ async fn open_session(config: &AsrProviderConfig) -> Result<(WsStream, String), 
     })?;
     request.headers_mut().insert(
         USER_AGENT,
-        HeaderValue::from_static(concat!("SayIt/", env!("CARGO_PKG_VERSION"))),
+        HeaderValue::from_static(concat!("SayForge/", env!("CARGO_PKG_VERSION"))),
     );
 
     let (mut ws, response) = tokio_tungstenite::connect_async(request)

@@ -31,7 +31,7 @@ export default function App() {
     void initActivePreset()
     initRecorder()
     // SayForge releases are installed manually until we have our own signed updater.
-    // Never start the upstream SayIt manifest/downloader/installer.
+    // This independent distribution does not launch an automatic update installer.
     void startWebDavBackupService()
 
       ; (async () => {
