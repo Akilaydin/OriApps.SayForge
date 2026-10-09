@@ -104,6 +104,7 @@ try {
     $msi = "$fixture/SayForge_0.2.3_x64_en-US.msi"
     'Synthetic EXE' | Set-Content $exe
     'Synthetic MSI' | Set-Content $msi
+    $sig = "$exe.sig"
     $env:TAURI_ARTIFACT_PATHS = '[]'
     Assert-Fails { Run-Stage Prepare } 'Exactly one'
     $env:TAURI_ARTIFACT_PATHS = ConvertTo-Json @($msi)
@@ -124,8 +125,28 @@ try {
     $env:TAURI_APP_VERSION = '0.2.2'
     Assert-Fails { Run-Stage Prepare } 'Tauri build version'
     $env:TAURI_APP_VERSION = '0.2.3'
+    Assert-Fails { Run-Stage Prepare } 'Updater signature missing'
+    [IO.File]::WriteAllText($sig, [Convert]::ToBase64String([byte[]]::new(180)))
     Run-Stage Prepare
-    if (@(Get-ChildItem "$fixture/release-assets" -File).Count -ne 4) { throw 'Missing prepared assets.' }
+    if (@(Get-ChildItem "$fixture/release-assets" -File).Count -ne 6) { throw 'Missing prepared assets.' }
+    $manifestPath = "$fixture/release-assets/latest.json"
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.version -cne '0.2.3' -or $manifest.platforms.'windows-x86_64'.signature -cne (Get-Content $sig -Raw).Trim() -or
+        $manifest.platforms.'windows-x86_64'.url -cne 'https://github.com/synthetic/sayforge/releases/download/v0.2.3/SayForge_0.2.3_x64-setup.exe') {
+        throw 'Prepared updater manifest is incorrect.'
+    }
+    $originalManifest = Get-Content $manifestPath -Raw
+    $originalSig = Get-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig" -Raw
+    $manifest.platforms.'windows-x86_64'.url = 'https://example.invalid/wrong-installer.exe'
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content $manifestPath
+    Assert-Fails { Run-Stage Publish } 'Updater manifest does not match'
+    Set-Content $manifestPath -Value $originalManifest -NoNewline
+    'corrupted signature' | Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig"
+    Assert-Fails { Run-Stage Publish } 'Updater signature is incomplete'
+    Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe.sig" -Value $originalSig -NoNewline
+    Rename-Item -LiteralPath $manifestPath -NewName 'latest-missing.json'
+    Assert-Fails { Run-Stage Publish } 'signed NSIS installer'
+    Rename-Item -LiteralPath "$fixture/release-assets/latest-missing.json" -NewName 'latest.json'
     'Tampered synthetic EXE' | Set-Content "$fixture/release-assets/SayForge_0.2.3_x64-setup.exe"
     Assert-Fails { Run-Stage Publish } 'checksum verification failed'
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Guard tests wrote to GitHub.' }
@@ -142,7 +163,8 @@ try {
     Assert-Fails { Run-Stage Publish } 'metadata is incorrect'
     $mock.invalidMetadata = $false
     Run-Stage Publish
-    Write-Host 'Release tests passed: version/tag guards, API/permission denial, missing/empty/wrong installers, checksum tampering, upload cleanup, metadata and public publication at the tested SHA.'
+    if (@($mock.apiCalls | Where-Object { $_ -like '*release upload*latest.json*' }).Count -lt 1) { throw 'Updater manifest was not published.' }
+    Write-Host 'Release tests passed: version/tag guards, signed installer and manifest, checksum tampering, publication order, upload cleanup, metadata and public publication at the tested SHA.'
 } finally {
     foreach ($name in $previousEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name]) }
     $resolvedFixture = [System.IO.Path]::GetFullPath($fixture)

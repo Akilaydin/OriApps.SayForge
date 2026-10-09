@@ -32,12 +32,16 @@ for the Windows NSIS `.exe` installer. It offers installation for the current us
 or all users; the built-in Tauri `both` mode requests administrator access in
 either case. Settings, API keys and history remain separate for each Windows user.
 
-Until a verified SayForge update channel exists, **updates are manual only**.
-The application does not automatically download or install updates.
+Signed releases support **optional in-app updates**. SayForge checks for a new
+stable GitHub Release at startup and offers **Update** or **Later**. Nothing is
+downloaded or installed without confirmation; use **About → Check for updates**
+to check manually. Older versions without the updater require one manual install
+from GitHub Releases before they can update in-app.
 
 Releases are built and published automatically when a new version reaches the
 `release` branch. See [Releasing SayForge](docs/releasing.md). Initial CI installers
-are unsigned; Windows SmartScreen may warn about an unrecognized publisher.
+are unsigned for Windows Authenticode; Windows SmartScreen may warn about an
+unrecognized publisher. Updater signatures use a separate Tauri signing key.
 
 ### First run
 
@@ -89,6 +93,10 @@ npm run i18n:check
 npm run build
 npm run tauri -- build --bundles nsis
 ```
+
+Local NSIS builds now require the Tauri updater signing key and passphrase in
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (see
+[`docs/releasing.md`](docs/releasing.md)); `npm run tauri -- dev` does not.
 
 Source artwork is maintained in `assets/branding/`. Platform-specific PNG,
 ICO assets are checked into `client/src-tauri/icons/`,

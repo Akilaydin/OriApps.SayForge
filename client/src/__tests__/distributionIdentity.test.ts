@@ -27,7 +27,7 @@ describe('independent SayForge distribution', () => {
     expect(ico.readUInt16LE(4)).toBeGreaterThan(1)
   })
 
-  it('never activates a retired automatic installer or update service', () => {
+  it('uses the official signed updater without restoring the retired installer service', () => {
     const app = text('src/App.tsx')
     const main = text('src-tauri/src/main.rs')
     expect(app).not.toMatch(/\bstartUpdateService\s*\(/)
@@ -40,12 +40,33 @@ describe('independent SayForge distribution', () => {
     }
     expect(text('vite.config.ts')).not.toMatch(/SAYFORGE_DEFAULT_SERVER_URL|updateNotification|FAKE_APP_VERSION/)
     expect(main).not.toMatch(/commands::(?:update_notification|system::(?:download_update|verify_update_package|install_downloaded_update))/)
-    expect(text('src-tauri/Cargo.toml')).not.toMatch(/tauri-plugin-(?:updater|process)/)
+    expect(text('src-tauri/Cargo.toml')).toContain('tauri-plugin-updater')
+    expect(text('src-tauri/Cargo.toml')).not.toContain('tauri-plugin-process')
     const dependencies = JSON.parse(text('package.json')).dependencies
-    expect(dependencies).not.toHaveProperty('@tauri-apps/plugin-updater')
+    expect(dependencies).toHaveProperty('@tauri-apps/plugin-updater')
     expect(dependencies).not.toHaveProperty('@tauri-apps/plugin-process')
+    const apiVersion = dependencies['@tauri-apps/api'] as string
+    const updaterVersion = dependencies['@tauri-apps/plugin-updater'] as string
+    const rustUpdater = text('src-tauri/Cargo.toml').match(/^tauri-plugin-updater\s*=\s*"=([^\"]+)"/m)?.[1]
+    const rustCore = text('src-tauri/Cargo.lock').match(/\[\[package\]\]\s+name = "tauri"\s+version = "([^\"]+)"/)?.[1]
+    expect(apiVersion).toMatch(/^2\.10\./)
+    expect(rustCore).toMatch(/^2\.10\./)
+    expect(updaterVersion.split('.').slice(0, 2)).toEqual(rustUpdater?.split('.').slice(0, 2))
     const capabilities = JSON.parse(text('src-tauri/capabilities/default.json'))
     expect(capabilities.windows).not.toContain('update-notification')
+    expect(capabilities.permissions).not.toContain('updater:default')
+    const updaterCapability = JSON.parse(text('src-tauri/capabilities/updater.json'))
+    expect(updaterCapability.windows).toEqual(['main'])
+    expect(updaterCapability.permissions).toEqual(['updater:default'])
+    const config = JSON.parse(text('src-tauri/tauri.conf.json'))
+    expect(config.bundle.createUpdaterArtifacts).toBe(true)
+    expect(config.plugins.updater.pubkey).toMatch(/^[A-Za-z0-9+/=]+$/)
+    expect(config.plugins.updater.endpoints).toEqual([
+      'https://github.com/Akilaydin/OriApps.SayForge/releases/latest/download/latest.json',
+    ])
+    expect(config.plugins.updater.windows.installMode).toBe('passive')
+    expect(app).toContain('checkForUpdates()')
+    expect(text('src/services/appUpdates.ts')).toContain('postponeUpdate()')
     const about = text('src/pages/About.tsx')
     expect(about).toContain('v{__APP_VERSION__}')
     expect(about).toContain('shellOpen(RELEASES_URL)')

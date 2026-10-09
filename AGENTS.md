@@ -31,7 +31,7 @@ Read the relevant documents and actual code before changing behavior. Report con
 - Optional AI refinement may send text and editor context to a remote provider independently of ASR.
 - Protect audio, transcripts, editor text, API keys and backup credentials. Use synthetic test data; do not expose real content in logs or commits.
 - Configure WebView2 browser arguments globally for windows sharing one environment.
-- Updates are manual until a verified signed release channel exists.
+- The new optional updater requires a signed published release channel; never download/install without user consent. Preserve existing NSIS installation modes and release signing-key secrecy.
 - Respect AGPL-3.0 and third-party redistribution requirements, including LAME/LGPL.
 
 ## Validation

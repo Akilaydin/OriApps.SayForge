@@ -5,6 +5,12 @@ source history remains available in Git.
 
 ## Unreleased
 
+## 0.2.5
+
+- Add optional, signed in-app GitHub Release updates, a manual check in About,
+  download progress and safe waiting until dictation is finished.
+- Add signed NSIS assets, `latest.json` and updater-manifest verification to the
+  existing automatic Windows release pipeline.
 - Established an independent Windows application identity and branding.
 - Added direct cloud ASR via custom OpenAI-compatible endpoints, including WAV
   and MP3 audio and configurable transcription instructions.

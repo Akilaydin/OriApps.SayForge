@@ -3,7 +3,7 @@
 Development goes into `main`. Only a push to the long-lived `release` branch runs
 `.github/workflows/release.yml`; pushes to `main`, tags and PRs do not publish.
 Successful CI publishes a public, non-prerelease GitHub Release automatically.
-There is no draft, approval step or in-app updater.
+There is no draft or approval step. Signed releases support an optional in-app updater.
 
 ## Prepare a version
 
@@ -17,11 +17,12 @@ There is no draft, approval step or in-app updater.
    create `release` from the reviewed stable `main` and push it.
 4. Follow **Actions → Windows release**. After tests, packaging and verification,
    CI creates `v<version>` at the exact tested push commit and publishes
-   **SayForge v<version>** with one NSIS `.exe` installer, `SHA256SUMS.txt`, `LICENSE`
-   and `THIRD_PARTY_NOTICES.md`. GitHub also provides corresponding source archives.
+   **SayForge v<version>** with one NSIS `.exe` installer, its `.exe.sig`,
+   `latest.json`, `SHA256SUMS.txt`, `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+   GitHub also provides corresponding source archives.
 5. Check the run, tag commit and Release assets. Download the installer and
    manually verify both installation scopes, shortcuts, recording and text insertion
-   on Windows, including upgrades of existing current-user installs.
+   on Windows, including updater-driven upgrades of existing current-user and all-users installs.
 
 The installer uses Tauri's built-in NSIS `installMode: "both"` page: current user
 or all users. This mode requests administrator access even for current-user
@@ -42,9 +43,13 @@ starting with v0.2.4; the already published v0.2.3 assets remain unchanged.
   Its absence is not a successful lint result.
 - Exactly one NSIS installer must exist, be nonempty and match the
   product/version/x64 name returned by Tauri. Additional installers, including MSI,
-  are rejected. The publish job rechecks SHA-256 after artifact transfer.
+  are rejected. The bundle produces a matching `.exe.sig`; `latest.json` embeds
+  that signature and an exact release asset URL for `windows-x86_64`. The publish
+  job validates all six expected assets and rechecks SHA-256 after transfer.
 - Build has `contents: read`; only publish has `contents: write`. Both use the
-  built-in `GITHUB_TOKEN`; no PAT or certificate secret is required. Repository
+  built-in `GITHUB_TOKEN`; no PAT or Windows certificate secret is required. **Two
+  Actions secrets** provide the updater private signing key/password as described
+  below. Repository
   **Settings → Actions → General** must allow these actions and job-level write
   permission. A default read-only workflow token is compatible with this override.
 - Repository-wide release concurrency queues publication with
@@ -63,8 +68,10 @@ Test, build and package verification failures cannot create a tag or release.
 Publication first reserves a new tag using the tested commit SHA; creating an
 existing ref fails rather than overwriting it. The release is created with
 `draft=false` and `prerelease=false`, then assets are uploaded without `--clobber`.
-GitHub release creation and asset upload are separate API operations, so assets
-may appear gradually during publication. A caught upload/verification failure
+GitHub release creation and asset upload are separate API operations. Installer,
+signature, checksums and notices are uploaded first; the `latest.json` discovery
+manifest is uploaded **last**, once its referenced asset has been uploaded.
+A caught upload/verification failure
 deletes only the release created by that run and leaves the tag reserved.
 
 If publication is interrupted, or release creation/cleanup fails, inspect the
@@ -73,11 +80,37 @@ skip. Prefer fixing the cause and releasing a higher version; remove an incomple
 release/tag only after confirming its ownership and state. Existing successful
 releases are never modified automatically.
 
-## Signing and licenses
+## Signing and key recovery
+
+Tauri 2 updater signatures are mandatory and **separate from Windows code
+signing**. Generate a unique keypair once with `npm run tauri signer generate --
+-w <secure-path> -p <password> --ci` from `client/`. Embed the public `.pub` key
+**contents**, not its file path, in `client/src-tauri/tauri.conf.json` under
+`plugins.updater.pubkey`. Do not regenerate the key for subsequent releases:
+installed builds will trust the original public key.
+
+Store the **encrypted private key contents** as GitHub Actions repository secret
+`TAURI_SIGNING_PRIVATE_KEY` and its passphrase as
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The secrets are exposed only to the Windows
+release build steps; they must never enter source control, release assets or
+logs. A missing secret or signature fails the build; the release is not published.
+
+Keep an **off-machine encrypted backup of the private key and a separately
+recoverable passphrase**. A copy of a password protected only by the Windows
+account's DPAPI is not an off-machine backup and may be unreadable after
+reinstallation. Losing either the signing key or its password prevents future
+in-app upgrades of already installed versions without a manual transition.
+
+Starting from the first release with this updater, each subsequent **higher
+stable version** may be installed from the app. Already released `v0.2.4` and
+older versions do not know how to check for updates; users must install the first
+signed-updater-enabled release manually. Never modify old tags or assets.
+
+## Windows code signing and licenses
 
 The first CI installers are **unsigned**. Windows SmartScreen may warn about an
-unrecognized publisher. Code signing needs a separately configured certificate;
-it does not enable automatic app updates.
+unrecognized publisher. Windows Authenticode signing needs a separately configured
+certificate and is not supplied by the Tauri update signing key.
 
 Preserve AGPL-3.0 attribution and corresponding source access. The existing
 LAME/LGPL-3.0 static-linking notices and redistribution obligations in

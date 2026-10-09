@@ -151,6 +151,7 @@ export class RecorderOrchestrator {
   private activeFallbackToken = 0
   /** Guard against re-entrant startRecording calls during async setup */
   private startRecordingLock = false
+  private updaterInstalling = false
   /** PTT up arrived while startRecording was still initializing — stop immediately after setup */
   private pendingStopWhileStarting = false
   private processingTimeoutId: ReturnType<typeof setTimeout> | null = null
@@ -229,6 +230,21 @@ export class RecorderOrchestrator {
 
   getState() {
     return this.state
+  }
+
+  // Atomically reserve the idle recorder before Tauri starts an installer that exits the app.
+  // This also protects late results and copyable fallback cards from being discarded.
+  beginUpdateInstallation(): boolean {
+    if (this.updaterInstalling || this.state !== 'idle' || this.startRecordingLock
+      || this.activeRunId !== 0 || this.textInsertionInFlight || this.finalizingLateRunId !== 0
+      || this.timedOutProcessingContext !== null || this.lateResultRunId !== 0
+      || this.activeFallbackToken !== 0) return false
+    this.updaterInstalling = true
+    return true
+  }
+
+  endUpdateInstallation() {
+    this.updaterInstalling = false
   }
 
   private isRunCurrent(runId: number) {
@@ -1360,6 +1376,7 @@ export class RecorderOrchestrator {
   private async startRecording() {
     if (
       this.state !== 'idle'
+      || this.updaterInstalling
       || this.startRecordingLock
       || this.textInsertionInFlight
       || this.finalizingLateRunId !== 0
