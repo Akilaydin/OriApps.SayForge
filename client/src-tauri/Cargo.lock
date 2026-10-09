@@ -3995,7 +3995,6 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "tokio-tungstenite",
- "tokio-util",
  "transcribe-cpp",
  "uuid",
  "webview2-com",

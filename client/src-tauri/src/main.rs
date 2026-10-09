@@ -583,10 +583,6 @@ fn main() {
             commands::backup::import_config,
             commands::backup::import_full,
             commands::backup::restart_app,
-            commands::webdav::webdav_test,
-            commands::webdav::webdav_list,
-            commands::webdav::webdav_backup_now,
-            commands::webdav::webdav_restore,
             // Diagnostics
             commands::diagnostics::collect_settings,
             commands::diagnostics::get_diagnostics_preview,

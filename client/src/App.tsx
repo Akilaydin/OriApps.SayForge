@@ -17,7 +17,6 @@ import { initTheme } from './stores/theme'
 import { initAiEnabled } from './stores/aiEnabled'
 import { initActivePreset } from './stores/activePreset'
 import { getSetting, setSetting } from './services/store'
-import { startWebDavBackupService } from './features/backup/autoWebdavBackup'
 import * as bridge from './services/bridge'
 
 export default function App() {
@@ -32,7 +31,6 @@ export default function App() {
     initRecorder()
     // SayForge releases are installed manually until we have our own signed updater.
     // This independent distribution does not launch an automatic update installer.
-    void startWebDavBackupService()
 
       ; (async () => {
         const onboardedVersion = await getSetting('onboardingVersion', '')

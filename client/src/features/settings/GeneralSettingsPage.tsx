@@ -15,7 +15,6 @@ import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
 import AppSection from './AppSection'
 import BackupSection from './BackupSection'
-import WebDavSection from './WebDavSection'
 import MicrophoneSection from './MicrophoneSection'
 import type { MicVolumeLevel } from './MicrophoneSection'
 import { ComboShortcutInput, PTTShortcutInput } from './ShortcutInputs'
@@ -454,8 +453,6 @@ export default function GeneralSettingsPage() {
         </Card>
 
         <BackupSection />
-
-        <WebDavSection />
       </div>
     </div>
   )

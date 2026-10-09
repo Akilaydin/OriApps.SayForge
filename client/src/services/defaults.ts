@@ -65,17 +65,6 @@ export const DEFAULTS: Record<string, unknown> = {
   audioRetentionDays: -1,
   logRetentionDays: 30,
 
-  'webdav.enabled': false,
-  'webdav.url': '',
-  'webdav.username': '',
-  'webdav.password': '',
-  'webdav.includeHistory': false,
-  'webdav.includeAudio': false,
-  'webdav.intervalHours': 24,
-  'webdav.keepCount': 5,
-  'webdav.lastBackupAt': 0,
-  'webdav.lastAttemptAt': 0,
-  'webdav.lastResult': null,
 
   textPostProcess: {
     autoSegment: true,

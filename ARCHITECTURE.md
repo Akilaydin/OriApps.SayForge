@@ -49,14 +49,14 @@ Paths below are relative to `client/`.
 - `providers/` — cloud ASR, realtime transport, optional AI cleanup and capability reporting.
 - `models/` — local GGUF model catalog, downloads, integrity checks and inference via `transcribe-cpp`/Vulkan.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
-- `commands/backup.rs` and `commands/webdav.rs` — local exports/imports and optional WebDAV backup/restore.
+- `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.
 
 ## Storage
 
 - SQLite: `%LOCALAPPDATA%\com.oriapps.sayforge\sayforge.db`, using WAL and versioned migrations.
 - `app_settings` holds JSON settings; `history_records` stores transcription records. Prompt presets, app rules, corrections and feedback use dedicated tables.
 - Audio files and logs reside in app-specific directories; cleanup follows retention settings.
-- A settings-only export excludes history and audio. Full backups and optional WebDAV backups are separate operations.
+- A settings-only export excludes history and audio. Full backups are a separate local operation. Retired WebDAV settings remain stored and included in settings exports for compatibility.
 
 ## Invariants
 

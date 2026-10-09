@@ -1297,6 +1297,24 @@ pub fn restart_app(app: tauri::AppHandle) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn local_settings_round_trip_keeps_retired_webdav_values() {
+        let (source, source_dir) = temp_storage("retired-webdav-source");
+        let (destination, destination_dir) = temp_storage("retired-webdav-destination");
+        source.set("webdav.url", &json!("https://backup.example.invalid/dav")).unwrap();
+        source.set("webdav.enabled", &json!(true)).unwrap();
+        source.set("cloudAsr.apiUrl", &json!("https://asr.example.invalid/v1")).unwrap();
+        let config = build_config_value(&source);
+        apply_config_part(&destination, &config, &[]).unwrap();
+        for key in ["webdav.url", "webdav.enabled", "cloudAsr.apiUrl"] {
+            assert_eq!(destination.get(key, None), source.get(key, None));
+        }
+        drop(source);
+        drop(destination);
+        fs::remove_dir_all(source_dir).unwrap();
+        fs::remove_dir_all(destination_dir).unwrap();
+    }
+
     fn temp_storage(tag: &str) -> (Storage, PathBuf) {
         let dir = std::env::temp_dir().join(format!("sayforge-backup-test-{}-{}", tag, uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
