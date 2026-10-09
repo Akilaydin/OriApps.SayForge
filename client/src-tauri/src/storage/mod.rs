@@ -31,6 +31,58 @@ fn is_collection_key(key: &str) -> bool {
     COLLECTION_KEYS.contains(&key)
 }
 
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn opens_v1_database_and_preserves_legacy_data_when_editing_text_history() {
+        let dir = std::env::temp_dir().join(format!("sayforge-compat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("sayforge.db");
+        let audio_path = dir.join("old.wav");
+        fs::write(&audio_path, b"synthetic archived bytes").unwrap();
+        let history = json!({ "id": "old", "timestamp": 1, "favorite": true,
+            "asrText": "Synthetic old text", "llmText": "", "charCount": 18,
+            "durationSec": 2, "audioFilePath": audio_path.to_string_lossy(),
+            "legacyMetadata": { "preserved": true } });
+        let stats = json!({ "totalDurationSec": 2, "totalChars": 18 });
+        {
+            let db = Connection::open(&db_path).unwrap();
+            db.execute_batch(include_str!("migration_001.sql")).unwrap();
+            db.execute_batch("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL);
+                INSERT INTO schema_migrations VALUES (1, 'init-sqlite-storage', 0);").unwrap();
+            db.execute("INSERT INTO history_records (id, list_order, timestamp, favorite, raw_json) VALUES ('old', 0, 1, 1, ?1)", params![history.to_string()]).unwrap();
+            for (key, value) in [("workMode", json!("local")), ("cloudAsr.apiUrl", json!("https://synthetic.invalid/v1")),
+                ("audioRetentionDays", json!(7)), ("stats", stats.clone())] {
+                db.execute("INSERT INTO app_settings VALUES (?1, ?2, 0)", params![key, value.to_string()]).unwrap();
+            }
+            db.execute("INSERT INTO prompt_presets (id, list_order, name, raw_json) VALUES ('legacy', 0, 'Legacy', ?1)",
+                params![json!({ "id": "legacy", "name": "Legacy", "systemPrompt": "Synthetic prompt" }).to_string()]).unwrap();
+        }
+        {
+            let storage = Storage::new(db_path.clone()).unwrap();
+            assert_eq!(storage.get("history", None), json!([history.clone()]));
+            assert_eq!(storage.history_list(Some("Synthetic"), true, None, None), vec![history.clone()]);
+            assert_eq!(storage.get("workMode", None), json!("local"));
+            assert_eq!(storage.get("cloudAsr.apiUrl", None), json!("https://synthetic.invalid/v1"));
+            assert_eq!(storage.get("audioRetentionDays", None), json!(7));
+            assert_eq!(storage.get("promptPresets", None)[0]["systemPrompt"], json!("Synthetic prompt"));
+            storage.history_add(&json!({ "id": "new", "timestamp": 2, "asrText": "Synthetic new", "charCount": 13, "durationSec": 1 })).unwrap();
+            storage.history_update("new", &json!({ "llmText": "Synthetic edit", "charCount": 14 })).unwrap();
+            storage.history_delete("new").unwrap();
+            assert_eq!(storage.get("history", None), json!([history.clone()]));
+            assert_eq!(storage.get("stats", None), stats);
+        }
+        let reopened = Storage::new(db_path).unwrap();
+        assert_eq!(reopened.get("history", None), json!([history]));
+        assert_eq!(fs::read(&audio_path).unwrap(), b"synthetic archived bytes");
+        drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+}
+
 fn collection_table(key: &str) -> Option<&'static str> {
     match key {
         "history" => Some("history_records"),
