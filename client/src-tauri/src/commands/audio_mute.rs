@@ -144,6 +144,20 @@ fn normalize_mic_label(label: &str) -> String {
         .to_lowercase()
 }
 
+/// Chromium may prefix a device name with the localized default/communications
+/// route. Match the unmodified endpoint name after a separator without keeping
+/// a per-language list of browser strings.
+fn mic_labels_match(browser_label: &str, endpoint_label: &str) -> bool {
+    let browser = normalize_mic_label(browser_label);
+    let endpoint = normalize_mic_label(endpoint_label);
+    if endpoint.is_empty() { return false; }
+    if browser == endpoint { return true; }
+    browser.strip_suffix(&endpoint).is_some_and(|prefix| {
+        prefix.trim_end().chars().last()
+            .is_some_and(|c| matches!(c, '-' | '–' | '—' | ':' | '：'))
+    })
+}
+
 #[cfg(windows)]
 unsafe fn get_device_friendly_name(
     device: &windows::Win32::Media::Audio::IMMDevice,
@@ -200,7 +214,6 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
         let device: IMMDevice = if let Some(target_label) =
             label.map(str::trim).filter(|s| !s.is_empty())
         {
-            let target = normalize_mic_label(target_label);
             let devices = enumerator
                 .EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
                 .map_err(|e| format!("EnumAudioEndpoints(eCapture): {}", e))?;
@@ -217,7 +230,7 @@ unsafe fn query_mic_mute(label: Option<&str>) -> Result<MicMuteState, String> {
                     Ok(name) => name,
                     Err(_) => continue,
                 };
-                if normalize_mic_label(&friendly_name) != target {
+                if !mic_labels_match(target_label, &friendly_name) {
                     continue;
                 }
                 if matched.is_some() {
@@ -285,7 +298,7 @@ pub fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_mic_label;
+    use super::{mic_labels_match, normalize_mic_label};
 
     #[test]
     fn browser_route_prefix_does_not_change_endpoint_identity() {
@@ -302,5 +315,15 @@ mod tests {
     #[test]
     fn ordinary_device_name_is_preserved_for_matching() {
         assert_eq!(normalize_mic_label("  Studio   Mic  "), "studio mic");
+    }
+
+    #[test]
+    fn localized_browser_route_prefixes_do_not_require_ui_translations() {
+        assert!(mic_labels_match("默认值 - USB 麦克风", "USB 麦克风"));
+        assert!(mic_labels_match("По умолчанию - USB Microphone", "USB Microphone"));
+        assert!(mic_labels_match("Communications: Studio Mic", "Studio Mic"));
+        assert!(!mic_labels_match("Another Studio Mic", "Studio Mic"));
+        assert!(!mic_labels_match("USB Microphone", "Microphone"));
+        assert!(!mic_labels_match("USB Microphone", ""));
     }
 }

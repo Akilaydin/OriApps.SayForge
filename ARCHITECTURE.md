@@ -46,6 +46,7 @@ Paths below are relative to `client/`.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
 - `stores/language.ts` — fixed English UI locale; `stores/providerDefaults.ts` — provider startup defaults and preservation of retired runtime credentials, independent of UI language.
+- Unmodified historical selection-edit instructions are upgraded by exact prompt fingerprints; saved custom prompts and transcription languages are preserved.
 - `services/debugLog.ts` — bounded runtime diagnostics mirrored to native logs; no experimental session/audio viewer or separate PTT laboratory hook.
 
 ### Rust (`src-tauri/src/`)
@@ -62,6 +63,8 @@ Paths below are relative to `client/`.
 - `app_settings` holds JSON settings; `history_records` stores transcription records. Legacy prompt presets, app rules, corrections and feedback retain their existing tables for compatibility.
 - Recording PCM lives only in the cloud provider buffer; no second archive buffer or audio retention cleanup runs. Older audio files remain on disk. Log cleanup still follows its retention setting.
 - Settings JSON export/import excludes history and audio. Legacy selected settings and full ZIP imports remain compatible; preview tokens protect settings import confirmation. Retired settings and SQLite columns/tables remain intact. History favorites and statistics have no active UI; recording no longer updates statistics.
+- Old full backups with multiple built-in prompt variants are imported with unique stable IDs, keeping the English variant under its original ID and preserving every stored instruction. Custom duplicate IDs are still invalid in JSON configuration imports.
+- Retired provider records and flat runtime credentials remain available for recovery; subsequent imports keep additional snapshots rather than overwriting the first backup. These settings do not re-enable unsupported providers.
 
 ## Invariants
 

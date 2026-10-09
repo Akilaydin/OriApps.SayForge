@@ -21,7 +21,9 @@ export function getCurrentThemeId(): string {
   return currentThemeId
 }
 
-const DEFAULT_FONT_BODY = '"Microsoft YaHei", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif'
+// Match the English UI's CSS default; allow Windows to fall back to a CJK font
+// when displaying user-authored text in any language.
+const DEFAULT_FONT_BODY = '"Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei", sans-serif'
 
 export function applyTheme(id: string): string {
   const theme = getTheme(id)

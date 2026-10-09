@@ -85,6 +85,7 @@ git clone https://github.com/Akilaydin/OriApps.SayForge.git
 cd OriApps.SayForge/client
 npm ci
 npm run test -- --run
+npm run i18n:check
 npm run build
 npm run tauri -- build --bundles nsis
 ```

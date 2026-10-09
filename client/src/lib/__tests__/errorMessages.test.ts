@@ -113,11 +113,11 @@ describe('describeDownloadError', () => {
   })
 
   it('network interruption suggests another download source', () => {
-    const result = describeDownloadError('error sending request for url (https://hf-mirror.com/...)')
+    const result = describeDownloadError('error sending request for url (https://cdn.example.invalid/...)')
     expect(result.message).toContain('another download source')
     expect(result.action).toBe('switch_source')
     expect(result.code).toBe('download_network')
-    expect(result.detail).toContain('hf-mirror.com')
+    expect(result.detail).toContain('cdn.example.invalid')
   })
 
   it('disk-full recovery does not suggest another source', () => {

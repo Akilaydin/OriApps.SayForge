@@ -49,6 +49,8 @@ describe('provider defaults and retired settings preservation', () => {
     bridgeState.values.set('cloudAsr.apiKey', 'PRIVATE')
     bridgeState.values.set('cloudAsr.model', 'old-asr')
     bridgeState.values.set('cloudAsr.systemInstruction', 'Preserve the original')
+    bridgeState.values.set('cloudAsr.qwen.workspaceId', 'retired-workspace-secret')
+    bridgeState.values.set('cloudAsr.omniSystemPrompt', 'Custom user instructions')
     await initProviderDefaults()
     expect(bridgeState.values.get('cloudAsr.provider')).toBe('')
     expect(bridgeState.values.get('cloudAsr.apiKey')).toBe('')
@@ -56,7 +58,55 @@ describe('provider defaults and retired settings preservation', () => {
     expect(bridgeState.values.get('cloudAsr.unsupportedRuntimeBackup')).toMatchObject({
       provider: 'retired-vendor', apiKey: 'PRIVATE', model: 'old-asr',
       systemInstruction: 'Preserve the original',
+      'qwen.workspaceId': 'retired-workspace-secret',
+      omniSystemPrompt: 'Custom user instructions',
     })
+    expect(bridgeState.values.get('cloudAsr.qwen.workspaceId')).toBe('retired-workspace-secret')
+    expect(bridgeState.values.get('cloudAsr.omniSystemPrompt')).toBe('Custom user instructions')
+  })
+
+  it('retains a previous snapshot and backs up newly imported unsupported credentials', async () => {
+    const original = { provider: 'earlier-vendor', apiKey: 'previous-secret' }
+    bridgeState.values.set('cloudAsr.unsupportedRuntimeBackup', original)
+    bridgeState.values.set('cloudAsr.provider', 'retired-vendor')
+    bridgeState.values.set('cloudAsr.apiKey', 'new-secret')
+
+    await initProviderDefaults()
+
+    expect(bridgeState.values.get('cloudAsr.unsupportedRuntimeBackup')).toBe(original)
+    expect(bridgeState.values.get('cloudAsr.unsupportedRuntimeAdditionalBackups')).toEqual([
+      expect.objectContaining({ provider: 'retired-vendor', apiKey: 'new-secret' }),
+    ])
+    expect(bridgeState.values.get('cloudAsr.provider')).toBe('')
+    expect(bridgeState.values.get('cloudAsr.apiKey')).toBe('')
+  })
+
+  it('does not duplicate snapshots when an imported unsupported configuration repeats', async () => {
+    bridgeState.values.set('cloudAsr.unsupportedRuntimeBackup', {
+      provider: 'old-vendor', apiKey: 'original',
+    })
+    for (let i = 0; i < 2; i += 1) {
+      bridgeState.values.set('cloudAsr.provider', 'retired-vendor')
+      bridgeState.values.set('cloudAsr.apiKey', 'secret')
+      await initProviderDefaults()
+    }
+    expect((bridgeState.values.get('cloudAsr.unsupportedRuntimeAdditionalBackups') as unknown[])).toHaveLength(1)
+  })
+
+  it('recognizes persisted snapshots even when the JSON object key order changed', async () => {
+    bridgeState.values.set('cloudAsr.unsupportedRuntimeBackup', { provider: 'first-vendor' })
+    bridgeState.values.set('cloudAsr.provider', 'retired-vendor')
+    bridgeState.values.set('cloudAsr.apiKey', 'new-key')
+    await initProviderDefaults()
+
+    const snapshots = bridgeState.values.get('cloudAsr.unsupportedRuntimeAdditionalBackups') as Record<string, unknown>[]
+    bridgeState.values.set('cloudAsr.unsupportedRuntimeAdditionalBackups', [
+      Object.fromEntries(Object.entries(snapshots[0]).reverse()),
+    ])
+    bridgeState.values.set('cloudAsr.provider', 'retired-vendor')
+    bridgeState.values.set('cloudAsr.apiKey', 'new-key')
+    await initProviderDefaults()
+    expect((bridgeState.values.get('cloudAsr.unsupportedRuntimeAdditionalBackups') as unknown[])).toHaveLength(1)
   })
 
   it.each(['groq_whisper','openai_transcribe'])('keeps migratable HTTP credentials %s available for profile migration', async (provider) => {

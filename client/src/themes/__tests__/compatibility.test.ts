@@ -22,6 +22,8 @@ describe('retained themes and legacy settings',()=>{
     expect(Object.fromEntries(properties)).toMatchObject(getTheme(id).vars)
     expect(classes.has('dark')).toBe(getTheme(id).isDark)
     expect(themeList.map(theme=>theme.id)).toEqual(['light','dark','claude'])
+    expect(document.body.style.fontFamily).toMatch(/^"Segoe UI"/)
+    expect(document.body.style.fontFamily).toContain('Microsoft YaHei')
   })
   it('does not overwrite a stored legacy value during initialization',async()=>{
     getSetting.mockResolvedValue('teal-dark')

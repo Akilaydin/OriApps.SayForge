@@ -12,7 +12,11 @@ export async function getAiPrompt(): Promise<string> {
     getSetting<unknown>('aiPromptAppend', ''),
   ])
   const preset = Array.isArray(raw) ? raw.find((p) => p && p.id === activeId && typeof p.systemPrompt === 'string') : undefined
-  const prompt = [preset?.systemPrompt ?? DEFAULT_AI_PROMPT, typeof append === 'string' ? append : ''].filter(Boolean).join('\n\n')
+  // An explicitly unmodified bundled preset belongs to a retired locale, not
+  // to the user. Preserve every other preset, including edits in any language.
+  const base = preset?.builtin === true && preset?.builtinPromptModified === false
+    ? DEFAULT_AI_PROMPT : preset?.systemPrompt ?? DEFAULT_AI_PROMPT
+  const prompt = [base, typeof append === 'string' ? append : ''].filter(Boolean).join('\n\n')
   await setSetting(AI_PROMPT_KEY, prompt)
   return prompt
 }

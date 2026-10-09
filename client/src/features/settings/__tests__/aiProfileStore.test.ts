@@ -15,6 +15,7 @@ import {
   AI_PROFILES_KEY,
   AI_PROFILES_MIGRATED_KEY,
   AI_UNSUPPORTED_RUNTIME_BACKUP_KEY,
+  AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY,
   loadAiProfiles,
   saveAiProfiles,
 } from '../aiProfileStore'
@@ -102,5 +103,26 @@ describe('removed AI provider migration', () => {
     expect(state.values.get(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY)).toEqual({
       provider: 'deepseek', apiKey: 'ORIGINAL',
     })
+    expect(state.values.get(AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY)).toEqual([
+      expect.objectContaining({ provider: 'another-retired-vendor', apiKey: 'OTHER' }),
+    ])
+    expect(state.values.get('cloudAi.provider')).toBe('')
+    expect(state.values.get('cloudAi.apiKey')).toBe('')
+  })
+  it('deduplicates imported credentials even if SQLite returns reordered fields', async () => {
+    state.values.set(AI_PROFILES_MIGRATED_KEY, true)
+    state.values.set(AI_PROFILES_KEY, [])
+    state.values.set(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY, { provider: 'first-vendor' })
+    state.values.set(AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY, [
+      { model: 'old-model', apiKey: 'new-secret', apiUrl: 'https://old.example/v1', provider: 'second-vendor' },
+    ])
+    state.values.set('cloudAi.provider', 'second-vendor')
+    state.values.set('cloudAi.apiUrl', 'https://old.example/v1')
+    state.values.set('cloudAi.apiKey', 'new-secret')
+    state.values.set('cloudAi.model', 'old-model')
+
+    await loadAiProfiles()
+
+    expect(state.values.get(AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY)).toHaveLength(1)
   })
 })

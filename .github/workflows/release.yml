@@ -60,12 +60,14 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Frontend tests
+      - name: Frontend tests and English UI verification
         if: steps.preflight.outputs.release_needed == 'true'
         working-directory: client
         run: |
           npm test
           if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
+          npm run i18n:check
+          if ($LASTEXITCODE -ne 0) { throw 'English UI verification failed.' }
 
       - name: Rust tests
         if: steps.preflight.outputs.release_needed == 'true'

@@ -36,7 +36,7 @@ starting with v0.2.4; the already published v0.2.3 assets remain unchanged.
 - Version and duplicate-tag checks run before dependency installation/build.
   An existing tag skips publication without changing that tag or any assets.
   A lower version, inconsistent manifest/lock or orphaned release fails.
-- Frontend tests, strict i18n and locked Rust tests must pass. One Tauri release
+- Frontend tests, English UI/installer checks and locked Rust tests must pass. One Tauri release
   build runs TypeScript/Vite via `beforeBuildCommand` and packages only NSIS.
   ESLint is excluded: ESLint 10 currently has no compatible flat config in this repo.
   Its absence is not a successful lint result.

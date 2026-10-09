@@ -35,8 +35,18 @@ describe('context-aware editing instructions', () => {
   it('handles empty or custom selection instructions safely', () => {
     expect(normalizeContextSelectionEditPrompt('')).toBe(CONTEXT_SELECTION_EDIT_PROMPT)
     expect(normalizeContextSelectionEditPrompt('My customized prompt')).toBe('My customized prompt')
+    expect(normalizeContextSelectionEditPrompt('  Измени текст на русском  ')).toBe('Измени текст на русском')
     expect(withContextAwareInstructions('base', makeContext('input'), '  custom prompt  ')).toBe('custom prompt')
     expect(withContextAwareInstructions('base', makeContext('input'), '  ')).toBe(CONTEXT_SELECTION_EDIT_PROMPT)
+  })
+
+  it('migrates both archived default fingerprints without bundling obsolete prompt text', () => {
+    // Synthetic collisions with the old defaults' fingerprints and lengths.
+    const archivedDefaults = ['A'.repeat(585) + '2I6cjM', 'B'.repeat(511) + 'yNHbXu']
+    for (const prompt of archivedDefaults) {
+      expect(normalizeContextSelectionEditPrompt(prompt)).toBe(CONTEXT_SELECTION_EDIT_PROMPT)
+      expect(normalizeContextSelectionEditPrompt(prompt + 'custom')).toBe(prompt + 'custom')
+    }
   })
 
   it('supports no-selection context without adding untrusted document content', () => {

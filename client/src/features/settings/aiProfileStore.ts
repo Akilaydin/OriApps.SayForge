@@ -19,6 +19,7 @@ export const AI_PROFILES_KEY = 'cloudAi.profiles'
 export const AI_ACTIVE_PROFILE_KEY = 'cloudAi.activeProfileId'
 export const AI_PROFILES_MIGRATED_KEY = 'cloudAi.profilesMigrated'
 export const AI_UNSUPPORTED_RUNTIME_BACKUP_KEY = 'cloudAi.unsupportedRuntimeBackup'
+export const AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY = 'cloudAi.unsupportedRuntimeAdditionalBackups'
 
 /** Opaque legacy profiles are preserved byte-for-byte across supported profile saves. */
 let orphanProfiles: unknown[] = []
@@ -120,15 +121,26 @@ export async function loadAiProfiles(): Promise<AiProfileState> {
   }
   if (runtimeProvider && !AI_PROVIDERS.some((p) => p.value === runtimeProvider)) {
     const existingBackup = await getSetting(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY, null)
+    const [apiUrl, apiKey, model] = await Promise.all([
+      getSetting('cloudAi.apiUrl', ''),
+      getSetting('cloudAi.apiKey', ''),
+      getSetting('cloudAi.model', ''),
+    ])
+    const snapshot = { provider: runtimeProvider, apiUrl, apiKey, model }
     if (existingBackup === null || existingBackup === undefined) {
-      const [apiUrl, apiKey, model] = await Promise.all([
-        getSetting('cloudAi.apiUrl', ''),
-        getSetting('cloudAi.apiKey', ''),
-        getSetting('cloudAi.model', ''),
-      ])
-      await setSetting(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY, {
-        provider: runtimeProvider, apiUrl, apiKey, model,
-      })
+      await setSetting(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY, snapshot)
+    } else {
+      // A second imported legacy configuration must not silently overwrite
+      // or vanish behind the first retained recovery snapshot.
+      const saved = await getSetting<unknown>(AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY, null)
+      const additional = Array.isArray(saved) ? saved : []
+      const identical = [existingBackup, ...additional].some((item) =>
+        item !== null && typeof item === 'object' &&
+        Object.entries(snapshot).every(([key, value]) => (item as Record<string, unknown>)[key] === value),
+      )
+      if (!identical) {
+        await setSetting(AI_UNSUPPORTED_RUNTIME_ADDITIONAL_BACKUPS_KEY, [...additional, snapshot])
+      }
     }
     needsWrite = true
   }

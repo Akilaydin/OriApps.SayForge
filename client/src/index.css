@@ -80,7 +80,7 @@
 
   body {
     @apply bg-background text-foreground text-base leading-relaxed;
-    font-family: "Microsoft YaHei", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
@@ -88,9 +88,6 @@
     transition: background-color 200ms ease, color 200ms ease;
   }
 
-  html[lang="en"] body {
-    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Microsoft YaHei", sans-serif;
-  }
 }
 
 @layer utilities {

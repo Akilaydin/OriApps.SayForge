@@ -156,10 +156,6 @@ export function getClientRuntimeInfo() {
   }>('get_client_runtime_info')
 }
 
-export function getSystemUiLanguage() {
-  return invoke<string>('get_system_ui_language')
-}
-
 export function copyText(text: string) {
   return invoke('copy_text', { text })
 }

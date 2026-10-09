@@ -209,12 +209,6 @@ pub fn get_client_runtime_info(storage: State<Storage>) -> Result<ClientRuntimeI
     })
 }
 
-///
-#[tauri::command]
-pub fn get_system_ui_language() -> String {
-    crate::locale::system_ui_lang().tag().to_string()
-}
-
 #[tauri::command]
 pub fn get_auto_launch(app: AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;

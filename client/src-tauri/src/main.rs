@@ -3,7 +3,6 @@
 
 mod commands;
 mod error_protocol;
-mod locale;
 mod storage;
 mod window;
 mod keyboard;
@@ -458,7 +457,6 @@ fn main() {
             commands::paste::copy_text,
             // System
             commands::system::get_client_runtime_info,
-            commands::system::get_system_ui_language,
             commands::system::get_auto_launch,
             commands::system::set_auto_launch,
             commands::system::append_debug_log,

@@ -42,6 +42,7 @@ From `client/`:
 npm ci
 npm run test
 npm run lint
+npm run i18n:check
 npm run build
 ```
 
