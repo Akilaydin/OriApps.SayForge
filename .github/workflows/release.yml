@@ -81,7 +81,7 @@ jobs:
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         with:
           projectPath: client
-          args: --locked --target x86_64-pc-windows-msvc --bundles nsis,msi
+          args: --target x86_64-pc-windows-msvc --bundles nsis,msi -- --locked
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
