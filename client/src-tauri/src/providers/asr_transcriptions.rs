@@ -216,9 +216,7 @@ pub async fn transcribe(
         scope,
         "start",
         &format!(
-            "model={} url={} wav_bytes={} audio_sec={:.1} rate={} language={}",
-            model,
-            url,
+            "wav_bytes={} audio_sec={:.1} rate={} language={}",
             wav.len(),
             audio_sec,
             sample_rate,
@@ -239,43 +237,36 @@ pub async fn transcribe(
             .timeout(std::time::Duration::from_secs(60))
             .send()
             .await
-            .map_err(|e| diag::fail(scope, "http_send", format!("Request failed: {}", e)))?;
+            .map_err(|e| diag::request_failure(scope, "http_send", &e))?;
 
         let elapsed_ms = start.elapsed().as_millis() as u64;
         let http_summary = diag::http_summary(resp.status(), resp.headers());
 
         if resp.status().is_success() {
             let body_text = resp.text().await.map_err(|e| {
-                diag::fail(scope, "read_body", format!("Failed to read response: {}", e))
+                diag::request_failure(scope, "read_body", &e)
             })?;
             break (body_text, http_summary, elapsed_ms);
         }
 
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        if with_prompt && endpoint.retry_without_prompt && complains_about_prompt(&body) {
+        let body = resp.text().await.map_err(|e| diag::request_failure(scope, "read_body", &e))?;
+        if with_prompt && endpoint.retry_without_prompt
+            && matches!(status, reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNPROCESSABLE_ENTITY)
+            && complains_about_prompt(&body) {
             diag::log(
                 scope,
                 "retry_without_prompt",
                 &format!(
                     "The endpoint rejected the prompt field; retrying without it \
                      (Chinese punctuation may be missing). {}",
-                    diag::truncate(&body, 200)
+                    "prompt field unsupported"
                 ),
             );
             with_prompt = false;
             continue;
         }
-        return Err(diag::fail(
-            scope,
-            "http_status",
-            format!(
-                "Transcription error {} [{}]: {}",
-                status,
-                http_summary,
-                diag::truncate(&body, 300)
-            ),
-        ));
+        return Err(diag::http_failure(scope, status, &body));
     };
 
     //
@@ -287,10 +278,7 @@ pub async fn transcribe(
                 scope,
                 "parse_json",
                 format!(
-                    "Failed to parse response: {} [{}] response excerpt: {}",
-                    e,
-                    http_summary,
-                    diag::truncate(&body_text, 200)
+                    "Invalid response JSON: {} [{}]", e, http_summary
                 ),
             )
         })?;
@@ -366,31 +354,15 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         },
         Ok(resp) => {
             let status = resp.status();
-            let summary = diag::http_summary(status, resp.headers());
-            let body = resp.text().await.unwrap_or_default();
-            TestResult {
-                ok: false,
-                message: diag::fail(
-                    &format!("{}-test", endpoint.scope),
-                    "http_status",
-                    format!(
-                        "API error {} [{}]: {}",
-                        status,
-                        summary,
-                        diag::truncate(&body, 100)
-                    ),
-                ),
-                elapsed_ms,
-                detail: String::new(),
-            }
+            let message = match resp.text().await {
+                Ok(body) => diag::http_failure(endpoint.scope, status, &body),
+                Err(e) => diag::request_failure(endpoint.scope, "read_body", &e),
+            };
+            TestResult { ok: false, message, elapsed_ms, detail: String::new() }
         }
         Err(e) => TestResult {
             ok: false,
-            message: diag::fail(
-                &format!("{}-test", endpoint.scope),
-                "http_send",
-                format!("Connection failed: {}", e),
-            ),
+            message: diag::request_failure(endpoint.scope, "http_send", &e),
             elapsed_ms,
             detail: String::new(),
         },

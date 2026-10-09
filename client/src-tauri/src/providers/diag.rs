@@ -43,6 +43,59 @@ pub fn fail(scope: &str, stage: &str, user_msg: String) -> String {
     error_protocol::encode(classify_failure(stage, &user_msg), user_msg)
 }
 
+/// Classify actual HTTP status and structured validation fields, never arbitrary prose.
+pub fn http_failure(scope: &str, status: reqwest::StatusCode, body: &str) -> String {
+    let code = http_failure_code(status, body);
+    log(scope, "http_status", &format!("FAILED code={code} http={}", status.as_u16()));
+    // Provider errors can echo credentials, prompts or transcripts. Do not log their body.
+    error_protocol::encode(code, format!("HTTP {status}"))
+}
+
+fn http_failure_code(status: reqwest::StatusCode, body: &str) -> &'static str {
+    use reqwest::StatusCode;
+    let data = serde_json::from_str::<serde_json::Value>(body).unwrap_or_default();
+    let error = &data["error"];
+    let code = error.get("code").or_else(|| data.get("code")).and_then(serde_json::Value::as_str);
+    match status {
+        StatusCode::UNAUTHORIZED => "provider_bad_key",
+        StatusCode::FORBIDDEN => "provider_forbidden",
+        StatusCode::PAYMENT_REQUIRED => "provider_insufficient_balance",
+        StatusCode::TOO_MANY_REQUESTS => "provider_rate_limit",
+        StatusCode::REQUEST_TIMEOUT | StatusCode::GATEWAY_TIMEOUT => "provider_timeout",
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => "asr_audio_unsupported",
+        status if status.is_server_error() => "provider_internal",
+        StatusCode::METHOD_NOT_ALLOWED => "asr_route_unsupported",
+        StatusCode::NOT_FOUND => {
+            if code == Some("model_not_found") || error["param"] == "model" {
+                "provider_no_model"
+            } else if body.trim().is_empty() || data["detail"] == "Not Found"
+                || matches!(code, Some("route_not_found" | "endpoint_not_found")) {
+                "asr_route_unsupported"
+            } else {
+                "connect_failed"
+            }
+        }
+        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
+            let wrong_audio_shape = data["detail"].as_array().is_some_and(|errors| errors.iter().any(|e| {
+                matches!(e["type"].as_str(), Some("string_type" | "dict_type"))
+                    && e["loc"].as_array().and_then(|loc| loc.last()).and_then(serde_json::Value::as_str) == Some("input_audio")
+            }));
+            if wrong_audio_shape || matches!(code, Some("invalid_input_audio_type" | "unsupported_audio_payload")) {
+                "asr_protocol_unsupported"
+            } else {
+                "connect_failed"
+            }
+        }
+        _ => "connect_failed",
+    }
+}
+
+pub fn request_failure(scope: &str, stage: &str, error: &reqwest::Error) -> String {
+    let code = if error.is_timeout() { "provider_timeout" } else { "provider_unreachable" };
+    log(scope, stage, &format!("FAILED code={code}"));
+    error_protocol::encode(code, if error.is_timeout() { "Request timed out" } else { "Network request failed" })
+}
+
 fn contains_http_status(message: &str, expected: &[u16]) -> bool {
     message
         .split(|ch: char| !ch.is_ascii_digit())
@@ -191,6 +244,22 @@ pub fn http_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn http_classification_uses_status_and_structured_fields() {
+        use reqwest::StatusCode;
+        for status in [401, 403, 429, 500, 502, 504, 415] {
+            let error = http_failure("synthetic", StatusCode::from_u16(status).unwrap(), "404 not found; prompt unsupported; synthetic secret");
+            assert!(!super::super::asr_openai_compat::may_probe_next(&error));
+            assert!(!error.contains("secret"));
+        }
+        assert_eq!(http_failure_code(StatusCode::NOT_FOUND, r#"{"error":{"code":"model_not_found"}}"#), "provider_no_model");
+        assert_eq!(http_failure_code(StatusCode::NOT_FOUND, r#"{"error":{"message":"model not found"}}"#), "connect_failed");
+        assert_eq!(http_failure_code(StatusCode::NOT_FOUND, r#"{"detail":"Not Found"}"#), "asr_route_unsupported");
+        assert_eq!(http_failure_code(StatusCode::METHOD_NOT_ALLOWED, ""), "asr_route_unsupported");
+        assert_eq!(http_failure_code(StatusCode::BAD_REQUEST, r#"{"error":{"code":"invalid_input_audio_type"}}"#), "asr_protocol_unsupported");
+        assert_eq!(http_failure_code(StatusCode::BAD_REQUEST, "input_audio unsupported"), "connect_failed");
+    }
 
     #[test]
     fn classifies_provider_failures_before_the_detail_is_translated() {

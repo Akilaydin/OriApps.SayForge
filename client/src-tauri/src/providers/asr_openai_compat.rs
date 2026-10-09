@@ -29,7 +29,7 @@ fn cache_key_from_extra(extra: &serde_json::Value) -> String {
             .trim()
             .to_string()
     };
-    format!("{}|{}", field("baseUrl"), field("model"))
+    serde_json::to_string(&(field("baseUrl").trim_end_matches('/'), field("model"))).unwrap()
 }
 
 fn cache_key(config: &AsrProviderConfig) -> String {
@@ -73,13 +73,23 @@ fn with_provider(config: &AsrProviderConfig, provider: &str) -> AsrProviderConfi
     }
 }
 
-///
-fn looks_like_wrong_route(error: &str) -> bool {
-    let lower = error.to_lowercase();
-    lower.contains("404")
-        || lower.contains("405")
-        || lower.contains("not found")
-        || lower.contains("method not allowed")
+pub(super) fn may_probe_next(error: &str) -> bool {
+    matches!(crate::error_protocol::code(error), Some("asr_route_unsupported" | "asr_protocol_unsupported"))
+}
+
+fn forget_protocol(key: &str) {
+    if let Ok(mut guard) = PROTOCOL_CACHE.lock() {
+        if let Some(cache) = guard.as_mut() { cache.remove(key); }
+    }
+}
+
+fn candidates(key: &str) -> Vec<&'static str> {
+    let mut result = Vec::with_capacity(3);
+    if let Some(cached) = cached_protocol(key) { result.push(cached); }
+    for protocol in [AS_TRANSCRIPTIONS, AS_CHAT_STANDARD, AS_CHAT] {
+        if !result.contains(&protocol) { result.push(protocol); }
+    }
+    result
 }
 
 async fn run(
@@ -103,101 +113,50 @@ pub async fn transcribe(
     config: &AsrProviderConfig,
     hotwords: &[String],
 ) -> Result<AsrResult, String> {
+    if audio_pcm_b64.is_empty() {
+        return Ok(AsrResult { text: String::new(), elapsed_ms: 0 });
+    }
     if let Some(chosen) = explicit_protocol(config) {
         diag::log(SCOPE, "manual", &format!("protocol={}", chosen));
         return run(chosen, audio_pcm_b64, sample_rate, config, hotwords).await;
     }
 
     let key = cache_key(config);
-    if let Some(chosen) = cached_protocol(&key) {
-        diag::log(SCOPE, "cached", &format!("protocol={}", chosen));
-        return run(chosen, audio_pcm_b64, sample_rate, config, hotwords).await;
-    }
-
-    diag::log(SCOPE, "probe", "trying /audio/transcriptions first");
-    let first = run(AS_TRANSCRIPTIONS, audio_pcm_b64, sample_rate, config, hotwords).await;
-    let first_error = match first {
-        Ok(result) => {
-            remember_protocol(&key, AS_TRANSCRIPTIONS);
-            diag::log(SCOPE, "detected", "protocol=transcriptions");
-            return Ok(result);
-        }
-        Err(error) => error,
-    };
-
-    diag::log(
-        SCOPE,
-        "probe",
-        &format!(
-            "/audio/transcriptions failed, trying /chat/completions: {}",
-            diag::truncate(&first_error, 200)
-        ),
-    );
-    // Prefer the standard OpenAI object. A strict gateway may discard the Bailian
-    // string payload; when a custom user prompt is present it could otherwise
-    // return a plausible text answer and be incorrectly cached as transcription.
-    match run(AS_CHAT_STANDARD, audio_pcm_b64, sample_rate, config, hotwords).await {
-        Ok(result) => {
-            remember_protocol(&key, AS_CHAT_STANDARD);
-            diag::log(SCOPE, "detected", "protocol=chat_standard");
-            Ok(result)
-        }
-        Err(standard_error) => {
-            // Bailian/legacy services accept data URL strings instead.
-            match run(AS_CHAT, audio_pcm_b64, sample_rate, config, hotwords).await {
-                Ok(result) => {
-                    remember_protocol(&key, AS_CHAT);
-                    diag::log(SCOPE, "detected", "protocol=chat");
-                    Ok(result)
-                }
-                Err(data_url_error) => {
-                    let error = if !looks_like_wrong_route(&standard_error) {
-                        standard_error
-                    } else if !looks_like_wrong_route(&data_url_error) {
-                        data_url_error
-                    } else {
-                        first_error
-                    };
-                    diag::log(SCOPE, "all_failed", &format!("error={}", diag::truncate(&error, 200)));
-                    Err(error)
-                }
+    let mut last_error = String::new();
+    for (index, chosen) in candidates(&key).into_iter().enumerate() {
+        diag::log(SCOPE, "attempt", &format!("number={} protocol={chosen}", index + 1));
+        match run(chosen, audio_pcm_b64, sample_rate, config, hotwords).await {
+            Ok(result) => {
+                remember_protocol(&key, chosen);
+                return Ok(result);
+            }
+            Err(error) => {
+                if !may_probe_next(&error) { return Err(error); }
+                forget_protocol(&key);
+                last_error = error;
             }
         }
     }
+    Err(last_error)
 }
 
 pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
     if let Some(chosen) = explicit_protocol(config) {
         return labelled(chosen, run_test(chosen, config).await);
     }
-
     let key = cache_key(config);
-    if let Some(chosen) = cached_protocol(&key) {
-        return labelled(chosen, run_test(chosen, config).await);
+    let mut last = None;
+    for chosen in candidates(&key) {
+        let result = run_test(chosen, config).await;
+        if result.ok {
+            remember_protocol(&key, chosen);
+            return labelled(chosen, result);
+        }
+        if !may_probe_next(&result.message) { return result; }
+        forget_protocol(&key);
+        last = Some(result);
     }
-
-    let first = run_test(AS_TRANSCRIPTIONS, config).await;
-    if first.ok {
-        remember_protocol(&key, AS_TRANSCRIPTIONS);
-        return labelled(AS_TRANSCRIPTIONS, first);
-    }
-    let second = run_test(AS_CHAT_STANDARD, config).await;
-    if second.ok {
-        remember_protocol(&key, AS_CHAT_STANDARD);
-        return labelled(AS_CHAT_STANDARD, second);
-    }
-    let third = run_test(AS_CHAT, config).await;
-    if third.ok {
-        remember_protocol(&key, AS_CHAT);
-        return labelled(AS_CHAT, third);
-    }
-    if !looks_like_wrong_route(&second.message) {
-        second
-    } else if !looks_like_wrong_route(&third.message) {
-        third
-    } else {
-        first
-    }
+    last.expect("protocol candidates are nonempty")
 }
 
 async fn run_test(provider: &str, config: &AsrProviderConfig) -> TestResult {
@@ -284,14 +243,15 @@ mod tests {
 
         ///
             #[test]
-    fn wrong_route_detection_stays_narrow() {
-        assert!(looks_like_wrong_route("Transcription error 404 [http=404]: not found"));
-        assert!(looks_like_wrong_route("error 405 Method Not Allowed"));
-
-        assert!(!looks_like_wrong_route("Invalid API key"));
-        assert!(!looks_like_wrong_route("model not_a_model does not exist"));
-        assert!(!looks_like_wrong_route("Transcription error 401 [http=401]: unauthorized"));
-        assert!(!looks_like_wrong_route("insufficient balance"));
+    fn protocol_probe_requires_a_structured_compatibility_error() {
+        for code in ["asr_route_unsupported", "asr_protocol_unsupported"] {
+            assert!(may_probe_next(&crate::error_protocol::encode(code, "synthetic")));
+        }
+        for code in ["provider_bad_key", "provider_forbidden", "provider_rate_limit", "provider_timeout",
+            "provider_unreachable", "provider_internal", "asr_audio_unsupported", "connect_failed"] {
+            assert!(!may_probe_next(&crate::error_protocol::encode(code, "404 not found")));
+        }
+        assert!(!may_probe_next("404 not found"));
     }
 
         #[test]
@@ -311,5 +271,146 @@ mod tests {
             detail: String::new(),
         });
         assert_eq!(failed.message, "Invalid API key");
+    }
+
+    fn mock_http(responses: Vec<(u16, &'static str)>) -> (
+        String, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<Vec<String>>,
+    ) {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/v1", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let done = stop.clone();
+        let handle = std::thread::spawn(move || {
+            let mut paths = Vec::new();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !done.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(pair) => pair,
+                    Err(_) => { std::thread::sleep(std::time::Duration::from_millis(1)); continue; }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(1))).unwrap();
+                let mut request = Vec::new();
+                let header_end = loop {
+                    let mut chunk = [0u8; 4096];
+                    let n = stream.read(&mut chunk).unwrap();
+                    assert!(n > 0);
+                    request.extend_from_slice(&chunk[..n]);
+                    if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") { break end + 4; }
+                };
+                let header = String::from_utf8_lossy(&request[..header_end]);
+                let path = header.lines().next().unwrap().split_whitespace().nth(1).unwrap().to_string();
+                let length = header.lines().find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").map(|n| n.trim().parse::<usize>().unwrap())).unwrap_or(0);
+                while request.len() < header_end + length {
+                    let mut chunk = [0u8; 4096];
+                    let n = stream.read(&mut chunk).unwrap();
+                    assert!(n > 0);
+                    request.extend_from_slice(&chunk[..n]);
+                }
+                let (status, body) = responses.get(paths.len()).copied().unwrap_or((500, "unexpected request"));
+                paths.push(path);
+                if status != 0 {
+                    write!(stream, "HTTP/1.1 {status} Synthetic\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                }
+            }
+            paths
+        });
+        (url, stop, handle)
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+    }
+
+    fn stop_server(stop: std::sync::Arc<std::sync::atomic::AtomicBool>, handle: std::thread::JoinHandle<Vec<String>>) -> Vec<String> {
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        handle.join().unwrap()
+    }
+
+    #[test]
+    fn normal_api_and_network_failures_make_exactly_one_attempt() {
+        use base64::Engine;
+        let audio = base64::engine::general_purpose::STANDARD.encode([0u8; 320]);
+        for (status, body) in [
+            (401, r#"{"error":{"message":"prompt unsupported 404 not found"}}"#),
+            (403, "404 not found"), (429, "prompt unsupported"), (500, "prompt unsupported"),
+            (502, "404"), (415, "unsupported MP3"), (400, "unknown error"),
+            (404, r#"{"error":{"code":"model_not_found"}}"#), (0, ""),
+        ] {
+            for connection_test in [false, true] {
+                let (url, stop, server) = mock_http(vec![(status, body)]);
+                let cfg = config(serde_json::json!({"baseUrl": url, "model": "synthetic"}));
+                runtime().block_on(async {
+                    if connection_test { assert!(!test_connection(&cfg).await.ok); }
+                    else { assert!(transcribe(&audio, 16000, &cfg, &[]).await.is_err()); }
+                });
+                assert_eq!(stop_server(stop, server), ["/v1/audio/transcriptions"], "status={status} test={connection_test}");
+            }
+        }
+    }
+
+    #[test]
+    fn detects_caches_and_invalidates_only_an_incompatible_cached_protocol() {
+        use base64::Engine;
+        let audio = base64::engine::general_purpose::STANDARD.encode([0u8; 320]);
+        let (url, stop, server) = mock_http(vec![
+            (404, r#"{"detail":"Not Found"}"#),
+            (200, r#"{"choices":[{"message":{"content":"Synthetic"}}]}"#),
+            (405, ""), (200, r#"{"text":"Synthetic"}"#),
+        ]);
+        let cfg = config(serde_json::json!({"baseUrl": url, "model": "synthetic"}));
+        runtime().block_on(async {
+            assert_eq!(transcribe(&audio, 16000, &cfg, &[]).await.unwrap().text, "Synthetic");
+            assert_eq!(detected_protocol(&cfg.extra), Some(AS_CHAT_STANDARD));
+            assert_eq!(transcribe(&audio, 16000, &cfg, &[]).await.unwrap().text, "Synthetic");
+            assert_eq!(detected_protocol(&cfg.extra), Some(AS_TRANSCRIPTIONS));
+        });
+        assert_eq!(stop_server(stop, server), ["/v1/audio/transcriptions", "/v1/chat/completions", "/v1/chat/completions", "/v1/audio/transcriptions"]);
+    }
+
+    #[test]
+    fn explicit_protocol_never_falls_back_and_empty_audio_never_sets_detection() {
+        use base64::Engine;
+        let (url, stop, server) = mock_http(vec![(405, "")]);
+        let cfg = config(serde_json::json!({"baseUrl": url, "model": "synthetic", "protocol": "chat_standard"}));
+        runtime().block_on(async {
+            assert!(transcribe(&base64::engine::general_purpose::STANDARD.encode([0u8; 320]), 16000, &cfg, &[]).await.is_err());
+            assert!(transcribe("", 16000, &cfg, &[]).await.unwrap().text.is_empty());
+            assert_eq!(detected_protocol(&cfg.extra), None);
+        });
+        assert_eq!(stop_server(stop, server), ["/v1/chat/completions"]);
+    }
+
+    #[test]
+    fn only_a_structured_audio_shape_error_tries_legacy_chat() {
+        use base64::Engine;
+        let (url, stop, server) = mock_http(vec![
+            (404, r#"{"detail":"Not Found"}"#),
+            (422, r#"{"detail":[{"type":"string_type","loc":["messages",1,"content",0,"input_audio"]}]}"#),
+            (200, r#"{"choices":[{"message":{"content":"Synthetic"}}]}"#),
+        ]);
+        let cfg = config(serde_json::json!({"baseUrl": url, "model": "synthetic"}));
+        runtime().block_on(async {
+            assert!(test_connection(&cfg).await.ok);
+            assert_eq!(detected_protocol(&cfg.extra), Some(AS_CHAT));
+        });
+        assert_eq!(stop_server(stop, server), ["/v1/audio/transcriptions", "/v1/chat/completions", "/v1/chat/completions"]);
+    }
+
+    #[test]
+    fn a_real_request_timeout_is_not_a_protocol_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        runtime().block_on(async {
+            let error = reqwest::Client::new().get(url).timeout(std::time::Duration::from_millis(10)).send().await.unwrap_err();
+            assert!(error.is_timeout());
+            let encoded = diag::request_failure("synthetic", "http_send", &error);
+            assert_eq!(crate::error_protocol::code(&encoded), Some("provider_timeout"));
+            assert!(!may_probe_next(&encoded));
+        });
     }
 }

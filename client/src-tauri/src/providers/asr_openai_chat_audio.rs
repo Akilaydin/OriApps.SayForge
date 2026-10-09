@@ -315,9 +315,7 @@ pub async fn transcribe(
         scope,
         "start",
         &format!(
-            "model={} url={} audio_sec={:.1} encoding={:?} upload_bytes={} language={} instruction={} user_prompt={} hotwords={}",
-            model,
-            url,
+            "audio_sec={:.1} encoding={:?} upload_bytes={} language={} instruction={} user_prompt={} hotwords={}",
             audio_sec,
             encoding,
             audio.len(),
@@ -341,39 +339,27 @@ pub async fn transcribe(
         .timeout(std::time::Duration::from_secs(120))
         .send()
         .await
-        .map_err(|e| diag::fail(scope, "http_send", format!("Request failed: {}", e)))?;
+        .map_err(|e| diag::request_failure(scope, "http_send", &e))?;
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
     let http_summary = diag::http_summary(resp.status(), resp.headers());
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body_text = resp.text().await.unwrap_or_default();
-        return Err(diag::fail(
-            scope,
-            "http_status",
-            format!(
-                "Transcription error {} [{}]: {}",
-                status,
-                http_summary,
-                diag::truncate(&body_text, 300)
-            ),
-        ));
+        let body_text = resp.text().await.map_err(|e| diag::request_failure(scope, "read_body", &e))?;
+        return Err(diag::http_failure(scope, status, &body_text));
     }
 
     let body_text = resp
         .text()
         .await
-        .map_err(|e| diag::fail(scope, "read_body", format!("Failed to read response: {}", e)))?;
+        .map_err(|e| diag::request_failure(scope, "read_body", &e))?;
     let data: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| {
         diag::fail(
             scope,
             "parse_json",
             format!(
-                "Failed to parse response: {} [{}] response excerpt: {}",
-                e,
-                http_summary,
-                diag::truncate(&body_text, 200)
+                "Invalid response JSON: {} [{}]", e, http_summary
             ),
         )
     })?;
@@ -383,10 +369,9 @@ pub async fn transcribe(
         diag::empty_result(
             scope,
             &format!(
-                "Response contained no transcript audio_sec={:.1} elapsed={}ms model={} [{}] {}",
+                "Response contained no transcript audio_sec={:.1} elapsed={}ms [{}] {}",
                 audio_sec,
                 elapsed_ms,
-                model,
                 http_summary,
                 diag::describe_json(&body_text)
             ),
@@ -441,22 +426,15 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         },
         Ok(resp) => {
             let status = resp.status();
-            let summary = diag::http_summary(status, resp.headers());
-            let body_text = resp.text().await.unwrap_or_default();
-            TestResult {
-                ok: false,
-                message: diag::fail(
-                    endpoint.scope,
-                    "http_status",
-                    format!("Connection failed {} [{}]: {}", status, summary, diag::truncate(&body_text, 300)),
-                ),
-                elapsed_ms,
-                detail: String::new(),
-            }
+            let message = match resp.text().await {
+                Ok(body) => diag::http_failure(endpoint.scope, status, &body),
+                Err(e) => diag::request_failure(endpoint.scope, "read_body", &e),
+            };
+            TestResult { ok: false, message, elapsed_ms, detail: String::new() }
         }
         Err(e) => TestResult {
             ok: false,
-            message: diag::fail(endpoint.scope, "http_send", format!("Request failed: {}", e)),
+            message: diag::request_failure(endpoint.scope, "http_send", &e),
             elapsed_ms,
             detail: String::new(),
         },

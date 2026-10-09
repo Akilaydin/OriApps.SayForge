@@ -10,6 +10,10 @@ pub fn encode(code: &str, detail: impl AsRef<str>) -> String {
     format!("{}{}:{}", PREFIX, code, detail.as_ref())
 }
 
+pub fn code(error: &str) -> Option<&str> {
+    error.strip_prefix(PREFIX)?.split_once(':').map(|(code, _)| code)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -66,6 +66,17 @@ Paths below are relative to `client/`.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.
 
+## ASR protocol selection
+
+Explicit protocols bypass detection. Auto tries the cached protocol first, then each remaining
+HTTP protocol once. Only structured route/audio-payload compatibility failures permit another
+protocol; authentication, rate limit, network, timeout, 5xx, ambiguous 4xx and 415 stop immediately.
+Successful endpoint/model choices are cached in-process and invalidated only by incompatibility.
+No persistent cache was added: it would persist private endpoint metadata, require invalidation
+across credential/provider changes, and add SQLite work to the path. Unknown gateway errors require
+the user to choose a protocol explicitly. Diagnostic attempts include only protocol/count/status;
+provider response bodies, model names and endpoint URLs are excluded from ASR failure/start logs.
+
 ## WebView content policy
 
 Release CSP permits bundled resources and Tauri IPC, data/blob PCM AudioWorklet modules,

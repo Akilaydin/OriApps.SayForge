@@ -28,6 +28,18 @@ Rust: 109 tests passed, including actual Tauri config parsing, permission decisi
 protected browser arguments. `git diff --check` passed. Runtime dev/release WebView,
 microphone and all-window CSP smoke checks remain unverified; no release build was run.
 
+## 3. ASR protocol detection
+
+Reused the stable error envelope with actual HTTP/network classification. Automatic protocol
+fallback now requires a known route/payload incompatibility; 401/403/429/5xx, network/timeout,
+ambiguous errors and 415 stop immediately. Explicit selection bypasses fallback. Cached choices
+are invalidated after incompatibility, without duplicate protocol attempts. No persistent cache
+was added; its metadata/invalidation/SQLite costs are not justified at this stage.
+Prompt-field retries are limited to 400/422. ASR error bodies and private endpoints are not logged.
+Local socket tests check exact attempts, explicit selection, cache reuse/invalidation, payload
+shape fallback and actual timeout. Live gateways remain unverified.
+Validation: 115 Rust tests and `git diff --check` passed.
+
 ## Remaining checks
 
 ESLint remains blocked by its existing ESLint 10/configuration mismatch.
