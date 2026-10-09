@@ -1,20 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import en from '../locales/en.json'
-import { getLocale, isLocale, normalizePreference, resolveLocale, setLocale, t, LOCALES } from '..'
+import { getLocale, isLocale, setLocale, t } from '..'
 import {
   historyFailureReasonDisplay,
   promptPresetDisplayName, recordedAppDisplayName, recordedPromptPresetDisplayName,
 } from '../displayNames'
 
 describe('English-only UI locale', () => {
-  it('has only one supported locale and rejects old language settings', () => {
-    expect(LOCALES).toEqual(['en'])
+  it('accepts only the English UI locale', () => {
     expect(isLocale('en')).toBe(true)
-    for (const legacy of ['zh-CN', 'zh', 'de-DE', null]) expect(isLocale(legacy)).toBe(false)
-    expect(resolveLocale('zh-CN')).toBe('en')
-    expect(resolveLocale('ru-RU')).toBe('en')
-    expect(normalizePreference('zh-CN')).toBe('en')
-    expect(normalizePreference('auto')).toBe('auto')
+    for (const unsupported of ['fr', 'de-DE', null]) expect(isLocale(unsupported)).toBe(false)
     setLocale('en')
     expect(getLocale()).toBe('en')
   })

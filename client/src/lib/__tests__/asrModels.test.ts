@@ -47,7 +47,7 @@ describe('OpenAI-compatible audio request construction', () => {
       .toEqual({model:'whisper-large-v3'})
   })
   it('does not silently infer models from removed vendor-specific provider IDs', () => {
-    expect(buildAsrExtra('qwen_omni_35_plus')).toBeUndefined()
-    expect(buildAsrExtra('doubao_v2')).toBeUndefined()
+    expect(buildAsrExtra('retired-provider')).toBeUndefined()
+    expect(buildAsrExtra('unsupported-provider')).toBeUndefined()
   })
 })

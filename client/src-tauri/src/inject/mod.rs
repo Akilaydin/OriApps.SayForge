@@ -1400,13 +1400,13 @@ mod tests {
             #[test]
     fn describe_editability_never_leaks_title_or_path() {
         let mut ctx = weixin_4x_ctx("Weixin.exe");
-        ctx.window_title = "文件传输助手 - 季度奖金方案".to_string();
-        ctx.exe_path = r"C:\Users\zhangsan\AppData\Local\Programs\Weixin.exe".to_string();
+        ctx.window_title = "Confidential quarter-end bonuses".to_string();
+        ctx.exe_path = r"C:\Users\sample-user\AppData\Local\Programs\Weixin.exe".to_string();
 
         let line = describe_editability(&ctx, editability_gate(&ctx));
 
-        assert!(!line.contains("季度奖金"), "window title leaked: {line}");
-        assert!(!line.contains("zhangsan"), "exe path leaked: {line}");
+        assert!(!line.contains("quarter-end bonuses"), "window title leaked: {line}");
+        assert!(!line.contains("sample-user"), "exe path leaked: {line}");
         assert!(line.contains("gate=process_allowlist"), "{line}");
         assert!(line.contains("process=Weixin.exe"), "{line}");
         assert!(line.contains("focusClass=Qt51514QWindowIcon"), "{line}");

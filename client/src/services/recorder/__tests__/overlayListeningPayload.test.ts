@@ -17,7 +17,7 @@ vi.mock('../../store', () => ({
   getSetting: vi.fn((_key: string, fallback: unknown) => Promise.resolve(fallback)),
 }))
 vi.mock('@/i18n', () => ({
-  getLocale: () => 'zh-CN',
+  getLocale: () => 'en',
   t: (key: string) => key,
 }))
 

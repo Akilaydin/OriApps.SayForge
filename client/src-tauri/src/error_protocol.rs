@@ -21,8 +21,8 @@ mod tests {
     #[test]
     fn keeps_colons_and_unicode_in_detail() {
         assert_eq!(
-            encode("provider_bad_key", "HTTP 401: 密钥无效"),
-            "sayforge_error:provider_bad_key:HTTP 401: 密钥无效"
+            encode("provider_bad_key", "HTTP 401: Clé invalide"),
+            "sayforge_error:provider_bad_key:HTTP 401: Clé invalide"
         );
     }
 }

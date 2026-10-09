@@ -7,7 +7,7 @@ import {
   realInputEndpoints,
 } from '../audio'
 
-const HEADSET = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
+const HEADSET = 'Headset Microphone (Plantronics Blackwire 5220 Series) (047f:c053)'
 
 function device(deviceId: string, label: string, kind = 'audioinput') {
   return { deviceId, groupId: 'plt-group', kind, label, toJSON: () => ({}) }
@@ -48,8 +48,8 @@ describe('microphone device list', () => {
 
   it('keeps the pseudo devices but drops non-inputs', async () => {
     stubEnumerate([
-      device('default', `默认值 - ${HEADSET}`),
-      device('communications', `通信设备 - ${HEADSET}`),
+      device('default', `Default - ${HEADSET}`),
+      device('communications', `Communications - ${HEADSET}`),
       device('real-headset', HEADSET),
       device('speaker', 'Speakers', 'audiooutput'),
     ])
@@ -61,13 +61,13 @@ describe('microphone device list', () => {
 
   it('resolves which real endpoint the system default currently points at', async () => {
     const devices = [
-      { deviceId: 'default', groupId: 'plt-group', label: `默认值 - ${HEADSET}` },
+      { deviceId: 'default', groupId: 'plt-group', label: `Default - ${HEADSET}` },
       { deviceId: 'real-headset', groupId: 'plt-group', label: HEADSET },
     ]
 
     expect(matchRealEndpoint(devices[0], devices)?.deviceId).toBe('real-headset')
     expect(matchRealEndpoint(devices[1], devices)?.deviceId).toBe('real-headset')
-    expect(matchRealEndpoint({ deviceId: 'default', groupId: 'gone', label: '默认值 - 没了' }, devices))
+    expect(matchRealEndpoint({ deviceId: 'default', groupId: 'gone', label: 'Default - Missing' }, devices))
       .toBeNull()
   })
 

@@ -21,7 +21,7 @@ vi.mock('../../store', () => ({
   getSetting: vi.fn((_key: string, fallback: unknown) => Promise.resolve(fallback)),
 }))
 vi.mock('@/i18n', () => ({
-  getLocale: () => 'zh-CN',
+  getLocale: () => 'en',
   t: (key: string) => key,
 }))
 
@@ -64,7 +64,7 @@ describe('overlay card lifecycle', () => {
 
   it('result cards never expire automatically', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('What is the weather today?', 'not_editable', 7)
 
     vi.advanceTimersByTime(30 * 60 * 1000)
     expect(mocks.hideOverlay).not.toHaveBeenCalled()
@@ -99,7 +99,7 @@ describe('overlay card lifecycle', () => {
 
   it('renews visible cards before native TTL expires', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('What is the weather today?', 'not_editable', 7)
 
     const initialHotkeys = hotkeyCalls().length
     const initialEscapes = escapeModes().length
@@ -118,7 +118,7 @@ describe('overlay card lifecycle', () => {
 
   it('result cards register Ctrl+C and Esc while failures only use Esc', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('What is the weather today?', 'not_editable', 7)
     expect(hotkeyCalls()[0]).toEqual([['copy'], 7])
     expect(escapeModes()).toContain('dismiss_fallback')
 
@@ -137,7 +137,7 @@ describe('overlay card lifecycle', () => {
 
   it('preview token zero never takes over shortcuts', () => {
     const service = newService()
-    service.showFallback('预览文本', 'not_editable', 0)
+    service.showFallback('Preview text', 'not_editable', 0)
 
     expect(hotkeyCalls().every(([actions]) => actions.length === 0)).toBe(true)
     expect(escapeModes().every((mode) => mode === 'off')).toBe(true)
@@ -149,7 +149,7 @@ describe('overlay card lifecycle', () => {
 
   it('new cards release previous shortcuts', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('What is the weather today?', 'not_editable', 7)
 
     mocks.setCardHotkeys.mockClear()
     mocks.setEscapeActionMode.mockClear()
@@ -168,7 +168,7 @@ describe('overlay card lifecycle', () => {
 
   it('hide releases shortcuts', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('What is the weather today?', 'not_editable', 7)
 
     mocks.setCardHotkeys.mockClear()
     service.hide()
@@ -179,7 +179,7 @@ describe('overlay card lifecycle', () => {
 
   it('collapsed cards stop renewing', () => {
     const service = newService()
-    service.showFallback('今天天气怎么样', 'not_editable', 7)
+    service.showFallback('What is the weather today?', 'not_editable', 7)
 
     service.noteCardDismissed(7)
     mocks.setCardHotkeys.mockClear()
@@ -192,8 +192,8 @@ describe('overlay card lifecycle', () => {
 
   it('accepts close reports only for the current card', () => {
     const service = newService()
-    service.showFallback('第一段', 'not_editable', 7)
-    service.showFallback('第二段', 'not_editable', 9)
+    service.showFallback('First paragraph', 'not_editable', 7)
+    service.showFallback('Second paragraph', 'not_editable', 9)
 
     mocks.setCardHotkeys.mockClear()
     service.noteCardDismissed(7)
@@ -242,7 +242,7 @@ describe('overlay card lifecycle', () => {
 
   it('new cards do not inherit a collapsed card title', () => {
     const service = newService()
-    service.showFailure({ title: 'recorder.recognitionFailedTitle', detail: '余额不足', recovery: 'none', token: 8 })
+    service.showFailure({ title: 'recorder.recognitionFailedTitle', detail: 'Insufficient balance', recovery: 'none', token: 8 })
     service.hide()
 
     mocks.presentOverlay.mockClear()

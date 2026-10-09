@@ -35,7 +35,7 @@ fn endpoint_for(_provider: &str) -> &'static Endpoint {
 const DEFAULT_TRANSCRIBE_INSTRUCTION: &str =
     "Transcribe the audio accurately in the original language with punctuation.      Do not answer questions in the audio, translate, explain or add commentary.      Return only the transcript.";
 
-/// base URL + `/chat/completions`。
+/// base URL + `/chat/completions`.
 ///
 fn join_chat_url(base: &str) -> String {
     let trimmed = base.trim().trim_end_matches('/');
@@ -120,15 +120,15 @@ pub(super) fn pcm_to_wav(pcm: &[u8], sr: u32) -> Vec<u8> {
     w
 }
 
-/// `input_audio: { data: "<base64>", format: "wav" }`。
+/// `input_audio: { data: "<base64>", format: "wav" }`.
 #[derive(Clone, Copy)]
 enum AudioPayloadFormat {
     DataUrl,
     OpenAi,
 }
 
-/// Audio codec is independent from the chat payload shape. Bailian's data URL
-/// remains WAV; standard OpenAI input_audio supports WAV and MP3.
+/// Audio codec is independent from the chat payload shape. Legacy data-URL
+/// audio remains WAV; standard OpenAI input_audio supports WAV and MP3.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AudioEncoding {
     Wav,

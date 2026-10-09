@@ -1,9 +1,4 @@
-/** Language-independent transcription post-processing.
- *
- * Numeral conversion and punctuation normalization previously assumed Chinese
- * dictation. They are intentionally removed; the ASR provider now decides how
- * to format numbers and punctuation in the spoken language.
- */
+/** Language-independent transcription post-processing. */
 import { getSetting, setSetting } from './store'
 import { applyTextReplacements } from './textReplacement'
 import { segmentAsrText } from './textSegmenter'
@@ -69,7 +64,7 @@ export const DEFAULT_POST_PROCESS: TextPostProcessOptions = {
   punctuationToSpace: false,
 }
 
-/** Discard obsolete Chinese-specific toggles without erasing other saved preferences. */
+/** Read current formatting options with safe defaults. */
 export async function getTextPostProcessOptions(): Promise<TextPostProcessOptions> {
   const saved = await getSetting<Partial<TextPostProcessOptions>>(STORAGE_KEY, {})
   return {

@@ -8,7 +8,7 @@ SayForge is independently maintained at
 
 - Search existing issues and explain the goal and expected behavior.
 - Keep changes focused; include regression tests for fixes.
-- Run `cd client && npm ci && npm run test -- --run && npm run build && npm run i18n:check`.
+- Run `cd client && npm ci && npm run test -- --run && npm run build`.
 - Rust changes should pass `cargo test --manifest-path client/src-tauri/Cargo.toml`
   on a configured Windows development environment.
 - Never commit API keys, private endpoints, user audio or personal settings.

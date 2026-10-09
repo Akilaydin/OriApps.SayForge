@@ -20,29 +20,10 @@ Rules:
 
 export const CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY = 'contextSelectionEditPrompt'
 
-/** Fingerprints of two previously shipped Chinese built-in prompts (not user-authored prompts).
- * Keep the fingerprints instead of shipping obsolete Chinese source text.
- */
-const LEGACY_PROMPT_FINGERPRINTS: ReadonlySet<string> = new Set([
-  '7c4a6ddf:591',
-  '5e35fe77:517',
-])
-
-function promptFingerprint(value: string): string {
-  let hash = 0x811c9dc5
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return `${(hash >>> 0).toString(16)}:${value.length}`
-}
-
-/** Migrate only previously published defaults, preserving customized user instructions. */
+/** Use the default for empty instructions; preserve user-supplied text. */
 export function normalizeContextSelectionEditPrompt(value: unknown): string {
   const prompt = String(value || '').trim()
-  return !prompt || LEGACY_PROMPT_FINGERPRINTS.has(promptFingerprint(prompt))
-    ? CONTEXT_SELECTION_EDIT_PROMPT
-    : prompt
+  return prompt || CONTEXT_SELECTION_EDIT_PROMPT
 }
 
 /** Reject incomplete captures and bound input sizes before sending text to a provider. */

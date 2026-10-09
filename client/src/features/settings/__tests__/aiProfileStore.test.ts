@@ -50,7 +50,7 @@ describe('removed AI provider migration', () => {
   })
 
   it('preserves unsupported profiles when no supported profile is configured', async () => {
-    const legacy = { id: 'old', provider: 'qwen', apiUrl: 'https://old.example', apiKey: 'LEGACY-SECRET', model: 'model' }
+    const legacy = { id: 'old', provider: 'retired-vendor', apiUrl: 'https://old.example', apiKey: 'LEGACY-SECRET', model: 'model' }
     state.values.set(AI_PROFILES_MIGRATED_KEY, true)
     state.values.set(AI_PROFILES_KEY, [legacy])
     state.values.set(AI_ACTIVE_PROFILE_KEY, 'old')
@@ -61,7 +61,7 @@ describe('removed AI provider migration', () => {
     expect(state.values.get(AI_PROFILES_KEY)).toEqual([legacy])
     expect(state.values.get('cloudAi.provider')).toBe('')
     expect(state.values.get(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY)).toMatchObject({
-      provider: 'qwen', apiKey: 'LEGACY-SECRET',
+      provider: 'retired-vendor', apiKey: 'LEGACY-SECRET',
     })
   })
 
@@ -84,7 +84,7 @@ describe('removed AI provider migration', () => {
     expect(parseProfilesDetailed([old])).toEqual({profiles:[],orphans:[old]})
   })
   it('does not treat a removed provider as the default supported provider', () => {
-    const legacy = { id: 'old', provider: 'mimo', apiKey: 'DO-NOT-LOSE' }
+    const legacy = { id: 'old', provider: 'removed-vendor', apiKey: 'DO-NOT-LOSE' }
     const result = parseProfilesDetailed([legacy])
     expect(result.profiles).toEqual([])
     expect(result.orphans).toEqual([legacy])
@@ -93,7 +93,7 @@ describe('removed AI provider migration', () => {
   it('does not overwrite a saved backup of old runtime credentials', async () => {
     state.values.set(AI_PROFILES_MIGRATED_KEY, true)
     state.values.set(AI_PROFILES_KEY, [])
-    state.values.set('cloudAi.provider', 'zhipu')
+    state.values.set('cloudAi.provider', 'another-retired-vendor')
     state.values.set('cloudAi.apiKey', 'OTHER')
     state.values.set(AI_UNSUPPORTED_RUNTIME_BACKUP_KEY, {
       provider: 'deepseek', apiKey: 'ORIGINAL',

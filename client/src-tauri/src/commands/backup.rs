@@ -13,7 +13,7 @@ use crate::storage::Storage;
 const FORMAT_VERSION: i64 = 1;
 const SELECTED_CONFIG_FORMAT_VERSION: i64 = 2;
 const MAX_HOTWORDS: usize = 1000;
-const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "zh2en", "casual"];
+const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "casual"];
 const MAX_LEGACY_JSON_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_LEGACY_AUDIO_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_LEGACY_TOTAL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
@@ -229,7 +229,10 @@ fn build_selected_config_value(
             .filter_map(|preset| {
                 let obj = preset.as_object()?;
                 let id = obj.get("id")?.as_str()?;
-                if !selected_preset_ids.contains(id) || BUILTIN_PRESET_IDS.contains(&id) {
+                if !selected_preset_ids.contains(id)
+                    || BUILTIN_PRESET_IDS.contains(&id)
+                    || obj.get("builtin").and_then(Value::as_bool) == Some(true)
+                {
                     return None;
                 }
                 let name = obj.get("name")?.as_str()?.trim();
@@ -719,23 +722,7 @@ fn validate_config_collection(key: &str, items: &[Value]) -> Result<(), String> 
             .filter(|value| !value.is_empty())
             .ok_or_else(|| format!("Item {} in {} is missing id", index + 1, key))?;
 
-        let unique_id = if key == "promptPresets" && BUILTIN_PRESET_IDS.contains(&id) {
-            let language = object
-                .get("builtinPromptLanguage")
-                .and_then(Value::as_str)
-                .unwrap_or("zh-CN");
-            if language != "zh-CN" && language != "en" {
-                return Err(format!(
-                    "Item {} in {} has an invalid language",
-                    index + 1,
-                    key
-                ));
-            }
-            format!("{}:{}", id, language)
-        } else {
-            id.to_string()
-        };
-        if !ids.insert(unique_id) {
+        if !ids.insert(id) {
             return Err(format!("{} contains a duplicate id: {}", key, id));
         }
 
@@ -1347,19 +1334,17 @@ mod tests {
     }
 
     #[test]
-    fn prompt_overrides_allow_one_entry_per_builtin_language() {
+    fn prompt_overrides_allow_distinct_ids() {
         let items = vec![
             json!({
                 "id": "intent",
                 "name": "Intent cleanup",
-                "systemPrompt": "中文自定义",
-                "builtinPromptLanguage": "zh-CN",
+                "systemPrompt": "Custom cleanup",
             }),
             json!({
-                "id": "intent",
-                "name": "Intent cleanup",
-                "systemPrompt": "English custom",
-                "builtinPromptLanguage": "en",
+                "id": "faithful",
+                "name": "Faithful transcription",
+                "systemPrompt": "Custom transcription",
             }),
         ];
 
@@ -1367,17 +1352,40 @@ mod tests {
     }
 
     #[test]
-    fn prompt_overrides_reject_duplicate_builtin_language() {
+    fn prompt_overrides_reject_duplicate_ids() {
         let items = vec![
             json!({ "id": "intent", "name": "Intent cleanup", "systemPrompt": "First" }),
             json!({
                 "id": "intent",
                 "name": "Intent cleanup",
                 "systemPrompt": "Second",
-                "builtinPromptLanguage": "zh-CN",
             }),
         ];
 
         assert!(validate_config_collection("promptPresets", &items).is_err());
+    }
+
+    #[test]
+    fn selected_export_skips_builtin_prompts_even_for_unknown_legacy_ids() {
+        let (storage, dir) = temp_storage("selected-prompt-export");
+        storage.set("promptPresets", &json!([
+            { "id": "intent", "name": "Default", "systemPrompt": "Built in" },
+            { "id": "retired-builtin", "builtin": true, "name": "Legacy default", "systemPrompt": "Old built in" },
+            { "id": "custom", "name": "Custom", "systemPrompt": "My instructions" }
+        ])).unwrap();
+        let selection = ConfigExportSelection {
+            mode: "selected".to_string(),
+            hotword_group_ids: vec![],
+            include_text_replacements: false,
+            text_replacements: None,
+            prompt_preset_ids: ["intent", "retired-builtin", "custom"].map(str::to_string).to_vec(),
+        };
+
+        let export = build_selected_config_value(&storage, &selection).unwrap();
+        assert_eq!(export["items"]["promptPresets"], json!([
+            { "name": "Custom", "systemPrompt": "My instructions" }
+        ]));
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
     }
 }

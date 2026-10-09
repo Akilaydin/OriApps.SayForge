@@ -45,7 +45,7 @@ describe('sanitizeObject', () => {
     const input = {
       theme: 'dark',
       cloudAsr: {
-        provider: 'doubao',
+        provider: 'legacy-asr',
         apiKey: 'sk-1234567890abcdef',
         appId: 'app-9876543210',
       },
@@ -57,7 +57,7 @@ describe('sanitizeObject', () => {
     const result = sanitizeObject(input)
 
     expect(result.theme).toBe('dark')
-    expect(result.cloudAsr.provider).toBe('doubao')
+    expect(result.cloudAsr.provider).toBe('legacy-asr')
     expect(result.cloudAi.model).toBe('deepseek-chat')
 
     expect(result.cloudAsr.apiKey).toBe('sk-***ef')

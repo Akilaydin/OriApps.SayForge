@@ -21,10 +21,10 @@ describe('international ASR profile auto-creation', () => {
     expect(r.profiles.map(p=>p.provider)).toEqual(ASR_PROVIDERS.map(p=>p.id))
     expect(r.profiles.every(p=>p.model.trim().length>0)).toBe(true)
   })
-  it('ignores missing or blank API keys, and never creates a card for a removed provider', () => {
+  it('ignores missing or blank API keys, and only uses the supported catalog', () => {
     expect(topUpProfiles([], {}).profiles).toEqual([])
     expect(topUpProfiles([], {openai_compat:creds('  ')}).profiles).toEqual([])
-    expect(ASR_PROVIDERS.some(p=>['doubao','qwen','mimo'].includes(p.id))).toBe(false)
+    expect(ASR_PROVIDERS.map(p=>p.id)).toEqual(['openai_compat'])
   })
   it('preserves an existing profile object and does not duplicate it', () => {
     const existing=[profile('openai_compat',{id:'a',apiKey:'my-key'})]
@@ -47,7 +47,7 @@ describe('ASR profile persistence and orphan protection', () => {
   beforeEach(() => store.clear())
 
   it('retains raw unsupported vendor profiles and their secrets on load and save', async () => {
-    const retired={id:'old',provider:'qwen',model:'old-model',apiKey:'SECRET',otherKey:'SECONDARY'}
+    const retired={id:'old',provider:'retired-vendor',model:'old-model',apiKey:'SECRET',otherKey:'SECONDARY'}
     const valid={id:'active',provider:'openai_compat',model:'gateway-asr',apiUrl:'https://private.example/v1',apiKey:'current'}
     const alien={id:'alien',provider:'future-provider',model:'next',apiKey:'FUTURE'}
     store.set(ASR_PROFILES_KEY,[retired,valid,alien])
@@ -103,12 +103,12 @@ describe('ASR profile persistence and orphan protection', () => {
   })
   it('normalizes the active ID to the first supported profile if previous selection was removed', async () => {
     const active=profile('openai_compat',{id:'survivor',apiKey:'key'})
-    store.set(ASR_PROFILES_KEY,[{id:'old',provider:'doubao_v2',model:'old',apiKey:'OLD-SECRET'},active])
+    store.set(ASR_PROFILES_KEY,[{id:'old',provider:'retired-vendor',model:'old',apiKey:'OLD-SECRET'},active])
     store.set(ASR_ACTIVE_PROFILE_KEY,'old')
     const loaded=await loadAsrProfiles()
     expect(loaded.activeId).toBe('survivor')
     expect(store.get(ASR_ACTIVE_PROFILE_KEY)).toBe('survivor')
-    expect(store.get(ASR_PROFILES_KEY)).toContainEqual({id:'old',provider:'doubao_v2',model:'old',apiKey:'OLD-SECRET'})
+    expect(store.get(ASR_PROFILES_KEY)).toContainEqual({id:'old',provider:'retired-vendor',model:'old',apiKey:'OLD-SECRET'})
   })
   it('never discards unknown records when all active profiles disappear', async () => {
     const alien={id:'unknown',provider:'future',apiKey:'SECRET'}

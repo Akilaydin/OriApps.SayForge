@@ -3,18 +3,18 @@ import type { MicEndpoint } from '@/services/audio'
 import { buildMicOptions } from '../utils'
 
 const labels = {
-  systemDefault: '系统默认',
-  systemDefaultWith: (device: string) => `系统默认（${device}）`,
-  unnamed: (idPrefix: string) => `麦克风 ${idPrefix}`,
-  unavailable: '上次选的麦克风当前不可用',
+  systemDefault: 'System default',
+  systemDefaultWith: (device: string) => `System default (${device})`,
+  unnamed: (idPrefix: string) => `Microphone ${idPrefix}`,
+  unavailable: 'Previously selected microphone is unavailable',
 }
 
-const RAW = '耳机式麦克风 (Plantronics Blackwire 5220 Series) (047f:c053)'
-const SHOWN = '耳机式麦克风 (Plantronics Blackwire 5220 Series)'
+const RAW = 'Headset Microphone (Plantronics Blackwire 5220 Series) (047f:c053)'
+const SHOWN = 'Headset Microphone (Plantronics Blackwire 5220 Series)'
 
 const snapshot: MicEndpoint[] = [
-  { deviceId: 'default', groupId: 'plt-group', label: `默认值 - ${RAW}` },
-  { deviceId: 'communications', groupId: 'plt-group', label: `通信设备 - ${RAW}` },
+  { deviceId: 'default', groupId: 'plt-group', label: `Default - ${RAW}` },
+  { deviceId: 'communications', groupId: 'plt-group', label: `Communications - ${RAW}` },
   { deviceId: 'real-headset', groupId: 'plt-group', label: RAW },
 ]
 
@@ -31,8 +31,8 @@ describe('microphone options', () => {
     const options = buildMicOptions(snapshot, '', labels)
     expect(options[0]).toEqual({
       value: '',
-      label: `系统默认（${SHOWN}）`,
-      title: `系统默认（${SHOWN}）`,
+      label: `System default (${SHOWN})`,
+      title: `System default (${SHOWN})`,
     })
   })
 
@@ -44,18 +44,18 @@ describe('microphone options', () => {
 
   it('matches default by label suffix when groupId is empty', () => {
     const noGroup: MicEndpoint[] = [
-      { deviceId: 'default', groupId: '', label: `默认值 - ${RAW}` },
+      { deviceId: 'default', groupId: '', label: `Default - ${RAW}` },
       { deviceId: 'real-headset', groupId: 'plt-group', label: RAW },
     ]
-    expect(buildMicOptions(noGroup, '', labels)[0].label).toBe(`系统默认（${SHOWN}）`)
+    expect(buildMicOptions(noGroup, '', labels)[0].label).toBe(`System default (${SHOWN})`)
   })
 
   it('uses a plain default label for an unresolved endpoint', () => {
     const orphan: MicEndpoint[] = [
-      { deviceId: 'default', groupId: 'gone', label: '默认值 - 某个已消失的设备' },
+      { deviceId: 'default', groupId: 'gone', label: 'Default - Missing device' },
     ]
-    expect(buildMicOptions(orphan, '', labels)[0].label).toBe('系统默认')
-    expect(buildMicOptions([], '', labels)[0].label).toBe('系统默认')
+    expect(buildMicOptions(orphan, '', labels)[0].label).toBe('System default')
+    expect(buildMicOptions([], '', labels)[0].label).toBe('System default')
   })
 
   it('retains full labels in option titles', () => {
@@ -71,8 +71,8 @@ describe('microphone options', () => {
     const selected = buildMicOptions(unnamed, 'abcdef1234567890', labels)
     expect(selected[selected.length - 1]).toEqual({
       value: 'abcdef1234567890',
-      label: '上次选的麦克风当前不可用',
-      title: '上次选的麦克风当前不可用',
+      label: 'Previously selected microphone is unavailable',
+      title: 'Previously selected microphone is unavailable',
     })
   })
 
@@ -80,7 +80,7 @@ describe('microphone options', () => {
     const options = buildMicOptions(snapshot, 'gone-device', labels)
 
     expect(options.map((option) => option.value)).toEqual(['', 'real-headset', 'gone-device'])
-    expect(options[2].label).toBe('上次选的麦克风当前不可用')
+    expect(options[2].label).toBe('Previously selected microphone is unavailable')
   })
 
   it('does not add a placeholder for valid selections', () => {
@@ -90,7 +90,7 @@ describe('microphone options', () => {
 
   it('keeps system default selectable before devices load', () => {
     expect(buildMicOptions([], '', labels)).toEqual([
-      { value: '', label: '系统默认', title: '系统默认' },
+      { value: '', label: 'System default', title: 'System default' },
     ])
   })
 })

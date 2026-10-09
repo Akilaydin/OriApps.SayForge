@@ -125,7 +125,7 @@ pub fn restore_system_output() -> Result<bool, String> {
 fn normalize_mic_label(label: &str) -> String {
     let trimmed = label.trim();
     let lower = trimmed.to_lowercase();
-    let without_route_prefix = ["default", "communications", "默认值", "默认", "通信"]
+    let without_route_prefix = ["default", "communications"]
         .iter()
         .find_map(|prefix| {
             let prefix_lower = prefix.to_lowercase();

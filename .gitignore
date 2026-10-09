@@ -23,7 +23,6 @@ server/mytestwav.txt
 
 # ── Client dev artifacts ──
 client/scripts/*
-!client/scripts/check-i18n.mjs
 !client/scripts/audit-i18n.mjs
 client/dist/
 # Generated native transcription DLLs.

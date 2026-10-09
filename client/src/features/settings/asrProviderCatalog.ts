@@ -50,7 +50,6 @@ export interface AsrProviderEntry {
   label: string
   platform: AsrPlatform
   blurb: string
-  availability: 'mainland_china' | 'global'
   models: AsrModelOption[]
   customEndpoint?: boolean
   urlPlaceholder?: string
@@ -61,7 +60,6 @@ export const ASR_PROVIDERS: AsrProviderEntry[] = [
     id: 'openai_compat',
     get label() { return t('asrProvider.openaiCompat') },
     platform: 'openai_compat',
-    availability: 'global',
     customEndpoint: true,
     urlPlaceholder: 'http://127.0.0.1:8000/v1',
     get blurb() { return t('asrProvider.openaiCompatBlurb') },
@@ -152,14 +150,6 @@ export function groupAsrModelsByVendor(
 
 export function findAsrProvider(id: string): AsrProviderEntry | undefined {
   return ASR_PROVIDERS.find((p) => p.id === id)
-}
-
-export function asrAvailabilityLabel(entry: AsrProviderEntry): string {
-  if (entry.customEndpoint) return ''
-  switch (entry.availability) {
-    case 'global': return t('asrProvider.regionGlobal')
-    default: return ''
-  }
 }
 
 export function asrEndpointUrl(profile: AsrProfile): string {

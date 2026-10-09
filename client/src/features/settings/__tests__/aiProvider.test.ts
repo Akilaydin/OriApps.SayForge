@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   AI_PROVIDERS,
   aiProvidersForDisplay,
@@ -21,7 +21,6 @@ import {
   type AiProfile,
   type LegacyProviderData,
 } from '../aiProviderCatalog'
-import { setLocale } from '@/i18n'
 
 describe('AI_PROVIDERS catalog', () => {
   it('each provider has a default URL and candidate models', () => {
@@ -42,17 +41,8 @@ describe('AI_PROVIDERS catalog', () => {
   })
 })
 
-describe('provider defaults by locale', () => {
-  afterEach(() => setLocale('en'))
-
-  it('English UI prefers OpenAI-compatible', () => {
-    setLocale('en')
-    expect(preferredAiProviderValue()).toBe('openai_compat')
-    expect(aiProvidersForDisplay()[0].value).toBe('openai_compat')
-    expect(blankProfile().provider).toBe('openai_compat')
-  })
-
-  it('stays on international providers even for a legacy Chinese system preference', () => {
+describe('provider defaults', () => {
+  it('prefers OpenAI-compatible', () => {
     expect(preferredAiProviderValue()).toBe('openai_compat')
     expect(aiProvidersForDisplay()[0].value).toBe('openai_compat')
     expect(blankProfile().provider).toBe('openai_compat')
@@ -133,9 +123,9 @@ describe('formatLatency', () => {
 
 describe('parseLegacyLatencies', () => {
   it('parses model=ms latency entries', () => {
-    expect(parseLegacyLatencies('deepseek-v4-flash=1240,qwen-plus=2380')).toEqual({
-      'deepseek-v4-flash': 1240,
-      'qwen-plus': 2380,
+    expect(parseLegacyLatencies('model-alpha=1240,model-beta=2380')).toEqual({
+      'model-alpha': 1240,
+      'model-beta': 2380,
     })
   })
 
@@ -191,9 +181,9 @@ describe('parseProfiles', () => {
     const ok = parseProfiles([profile({ check: { ok: true, at: 1000, latencyMs: 1200 } })])[0].check
     expect(ok).toEqual({ ok: true, at: 1000, latencyMs: 1200, reason: undefined })
 
-    const failed = parseProfiles([profile({ check: { ok: false, at: 1000, reason: '密钥被拒绝' } })])[0].check
+    const failed = parseProfiles([profile({ check: { ok: false, at: 1000, reason: 'Key rejected' } })])[0].check
     expect(failed?.ok).toBe(false)
-    expect(failed?.reason).toBe('密钥被拒绝')
+    expect(failed?.reason).toBe('Key rejected')
 
     expect(parseProfiles([{ ...profile(), check: { latencyMs: 1200 } }])[0].check).toBeUndefined()
     expect(parseProfiles([{ ...profile(), check: 'ok' }])[0].check).toBeUndefined()
@@ -276,7 +266,7 @@ describe('resolveActiveProfile', () => {
   it('falls back to the first profile for a deleted ID', () => {
     const list = [profile({ id: 'a' }), profile({ id: 'b' })]
     expect(resolveActiveProfile(list, 'b')?.id).toBe('b')
-    expect(resolveActiveProfile(list, '已删掉的 id')?.id).toBe('a')
+    expect(resolveActiveProfile(list, 'deleted id')?.id).toBe('a')
     expect(resolveActiveProfile(list, '')?.id).toBe('a')
   })
 

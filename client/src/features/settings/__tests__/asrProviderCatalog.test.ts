@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ASR_PLATFORMS, ASR_PROVIDERS, ASR_COMPAT_PROTOCOLS,
-  asrAvailabilityLabel, asrCardIdOfLegacyProvider, asrCardTitle,
+  asrCardIdOfLegacyProvider, asrCardTitle,
   asrEndpointHost, asrEndpointUrl, asrModelsOf,
   describeAsrMissing, effectiveAsrCredentials,
   emptyAsrProfile, findAsrProvider, gradeAsrLatency,
@@ -65,7 +65,7 @@ describe('OpenAI-compatible protocol, credentials and validation', () => {
 
 describe('safe parsing and migration from older releases', () => {
   it('does not parse unknown or removed vendor profiles, but retains every byte via orphans', () => {
-    const retired={id:'legacy',provider:'qwen',model:'old',apiKey:'SECRET',workspaceId:'private'}
+    const retired={id:'legacy',provider:'retired-vendor',model:'old',apiKey:'SECRET',extraKey:'private'}
     const alien={id:'next',provider:'future',model:'new',apiKey:'FUTURE'}
     const active={id:'a',provider:'groq',model:'whisper-large-v3',apiKey:'key'}
     const result=parseAsrProfilesDetailed([retired,alien,active])
@@ -77,7 +77,7 @@ describe('safe parsing and migration from older releases', () => {
     const parsed=parseAsrProfiles([{id:'o',provider:'openai_transcribe',model:'gpt-transcribe',apiKey:'x'}])
     expect(parsed[0]).toMatchObject({id:'o',provider:'openai_compat',model:'gpt-transcribe',apiKey:'x',apiUrl:'https://api.openai.com/v1',protocol:'transcriptions'})
     expect(asrCardIdOfLegacyProvider('groq_whisper')).toBe('openai_compat')
-    expect(asrCardIdOfLegacyProvider('qwen')).toBe('qwen')
+    expect(asrCardIdOfLegacyProvider('retired-vendor')).toBe('retired-vendor')
   })
   it('retains unsupported Gemini, OpenRouter and realtime profiles as raw records', () => {
     const retired = [
@@ -121,9 +121,6 @@ describe('display and latency quality', () => {
     ]
     expect(groupAsrModelsByVendor(models)?.map(([key])=>key)).toEqual(['openai','x-ai'])
     expect(groupAsrModelsByVendor([{id:'whisper-1',provider:'groq_whisper'}])).toBeNull()
-  })
-  it('avoids unsupported geographic claims about an arbitrary endpoint', () => {
-    expect(asrAvailabilityLabel(findAsrProvider('openai_compat')!)).toBe('')
   })
   it('classifies speed by real-time factor, not absolute latency alone', () => {
     expect(gradeAsrLatency(300,10).tier).toBe('instant')

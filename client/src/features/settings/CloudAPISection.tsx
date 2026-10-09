@@ -21,7 +21,6 @@ import { describeProviderError } from '@/lib/errorMessages'
 import {
   ASR_PLATFORMS,
   ASR_PROVIDERS,
-  asrAvailabilityLabel,
   asrModelsOf,
   describeAsrMissing,
   effectiveAsrCredentials,
@@ -429,7 +428,6 @@ export default function CloudAPISection() {
     const status = describeCard(profile)
     const siblings = profiles.filter((p) => p.provider === profile.provider).length
     const title = asrCardTitle(profile, siblings)
-    const availability = asrAvailabilityLabel(entry)
     //
     const option = resolveAsrModelOption(profile)
     const model = option ? option.id : resolveAsrModel(profile)
@@ -510,7 +508,6 @@ export default function CloudAPISection() {
         </div>
         <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground/80">
           {entry.blurb}
-          {availability !== '' && <> <span className="font-medium">{availability}</span></>}
         </p>
       </div>
     )
@@ -521,7 +518,6 @@ export default function CloudAPISection() {
     if (!draft) return null
     const platformInfo = ASR_PLATFORMS[draftPlatform]
     const draftEntry = findAsrProvider(draft.provider)
-    const draftAvailability = draftEntry ? asrAvailabilityLabel(draftEntry) : ''
     const draftModels = draftEntry ? asrModelsOf(draftEntry) : []
     const draftModelGroups = groupAsrModelsByVendor(draftModels)
     const draftModelOption = resolveAsrModelOption(draft)
@@ -555,7 +551,6 @@ export default function CloudAPISection() {
             </select>
             <p className="mt-1 text-xs text-muted-foreground">
               {draftEntry?.blurb}
-              {draftAvailability !== '' && <> <span className="font-medium">{draftAvailability}</span></>}
             </p>
           </div>
 

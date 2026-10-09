@@ -460,8 +460,8 @@ mod tests {
     #[test]
     fn explicit_language_is_passed_through() {
         assert_eq!(
-            resolve_language(&config_with_language(serde_json::json!({"language": "zh"}))),
-            Some("zh".to_string())
+            resolve_language(&config_with_language(serde_json::json!({"language": "fr"}))),
+            Some("fr".to_string())
         );
     }
 

@@ -113,7 +113,7 @@ fn classify_failure(stage: &str, message: &str) -> &'static str {
         return "provider_bad_key";
     }
     //
-    // `This request requires at least $0.50 in balance for audio`。
+    // `This request requires at least $0.50 in balance for audio`.
     if contains_http_status(message, &[402])
         || lower.contains("payment required")
         || lower.contains("insufficient balance")

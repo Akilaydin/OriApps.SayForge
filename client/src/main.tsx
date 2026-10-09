@@ -6,7 +6,8 @@ import App from './App'
 import './index.css'
 import { addRuntimeEvent } from './services/debugLog'
 import { initProviderFromStore } from './services/transcription'
-import { initLanguage, initLocaleDefaults } from './stores/language'
+import { initLanguage } from './stores/language'
+import { initProviderDefaults } from './stores/providerDefaults'
 
 window.addEventListener('error', (event) => {
   addRuntimeEvent('error', 'window', event.message || 'Uncaught error', {
@@ -23,8 +24,8 @@ window.addEventListener('unhandledrejection', (event) => {
 })
 
 async function bootstrap() {
-  const locale = await initLanguage()
-  await initLocaleDefaults(locale)
+  await initLanguage()
+  await initProviderDefaults()
   await initProviderFromStore()
   void startWebviewKeyboardFallback()
   ReactDOM.createRoot(document.getElementById('root')!).render(

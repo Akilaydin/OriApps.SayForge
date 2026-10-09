@@ -19,7 +19,6 @@ export const DEFAULTS: Record<string, unknown> = {
   aiMinDurationSec: 0,
   contextAwareWritingEnabled: false,
   aiPromptAppend: '',
-  'ai.builtinPromptLanguage': 'en',
 
   'cloudAi.provider': 'openai_compat',
   'cloudAi.apiUrl': '',
@@ -29,9 +28,6 @@ export const DEFAULTS: Record<string, unknown> = {
   'cloudAi.activeProfileId': '',
   'cloudAi.profilesMigrated': false,
 
-  // 'doubao_v2' | 'qwen' | 'qwen_audio_stream' | 'qwen_realtime' | 'qwen_omni_35_*'
-  // | 'mimo' | 'groq_whisper' | 'openai_transcribe' | 'openai_live_transcribe'
-  // | 'gemini_transcribe' | 'gemini_live_transcribe' | 'openrouter_transcribe'
   'cloudAsr.provider': 'openai_compat',
   'cloudAsr.model': '',
   'cloudAsr.apiKey': '',

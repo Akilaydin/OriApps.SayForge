@@ -68,13 +68,7 @@ export interface PromptPreset {
   name: string
   systemPrompt: string
   builtin?: boolean  // built-in presets can't be deleted
-  builtinPromptLanguage?: BuiltinPromptLanguage
-  builtinPromptBaseHash?: string
-  builtinPromptModified?: boolean
-  builtinPromptUpdateAvailable?: boolean
 }
-
-export type BuiltinPromptLanguage = 'en'
 
 // Default English cleanup instruction for all builtin presets.
 export const USER_PROMPT_PREFIX = 'Process the following speech transcript:\n\n'

@@ -21,7 +21,6 @@ module.exports = {
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
-          // strong = 直接画在页面底色上的文字色（对比度达标版），见 src/themes/types.ts
           strong: "hsl(var(--destructive-strong))",
         },
         muted: {
@@ -36,7 +35,6 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // 区域色
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-bg))",
           border: "hsl(var(--sidebar-border))",
@@ -51,16 +49,11 @@ module.exports = {
           "close-hover": "hsl(var(--titlebar-close-hover-bg))",
           "close-hover-text": "hsl(var(--titlebar-close-hover-text))",
         },
-        // 表单控件色
         "input-bg": "hsl(var(--input-bg))",
         "input-border": "hsl(var(--input-border))",
         "input-focus-border": "hsl(var(--input-focus-border))",
         "input-focus-ring": "hsl(var(--input-focus-ring))",
         "input-placeholder": "hsl(var(--input-placeholder))",
-        // 状态色。三个变体的分工见 src/themes/types.ts：
-        //   DEFAULT    = 色块本体（圆点 / 进度条 / 10% 淡底）
-        //   foreground = 压在色块本体上的文字
-        //   strong     = 直接画在页面或卡片底色上的文字（对比度 ≥4.5:1）
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",

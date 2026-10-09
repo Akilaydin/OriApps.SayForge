@@ -11,8 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",
-    "format": "prettier --write src",
-    "i18n:check": "node scripts/check-i18n.mjs --strict"
+    "format": "prettier --write src"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
