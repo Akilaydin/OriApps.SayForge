@@ -62,6 +62,17 @@ function Get-Installers([string[]] $Paths) {
     return @($files[0])
 }
 
+function Assert-UpdaterSignature([System.IO.FileInfo] $Installer, [string] $SignaturePath) {
+    $verifier = $env:SAYFORGE_UPDATER_VERIFIER
+    if ([string]::IsNullOrWhiteSpace($verifier) -or -not (Test-Path -LiteralPath $verifier -PathType Leaf)) {
+        throw 'Updater signature verifier executable is missing.'
+    }
+    # The verifier uses the same Minisign algorithm as tauri-plugin-updater and
+    # reads the trusted key directly from the checked-out Tauri configuration.
+    & $verifier $Installer.FullName $SignaturePath (Join-Path $RepositoryRoot 'client/src-tauri/tauri.conf.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Updater cryptographic signature verification failed.' }
+}
+
 function Assert-UpdaterAssets([System.IO.FileInfo] $Installer, [string] $Directory) {
     $signaturePath = Join-Path $Directory "$($Installer.Name).sig"
     if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) { throw 'Updater signature missing.' }
@@ -83,6 +94,7 @@ function Assert-UpdaterAssets([System.IO.FileInfo] $Installer, [string] $Directo
     if (-not [DateTimeOffset]::TryParse($manifest.pub_date, [ref] $date)) {
         throw 'Updater manifest publication date is invalid.'
     }
+    Assert-UpdaterSignature $Installer $signaturePath
 }
 
 if ($Stage -eq 'Preflight') {
@@ -103,6 +115,8 @@ if ($Stage -eq 'Prepare') {
         $fullPath -cne $installers[0].FullName -and $fullPath -cne (Get-Item -LiteralPath $signatureSource).FullName
     })
     if ($unexpected.Count -ne 0) { throw 'Unexpected Tauri build artifact paths.' }
+    # Reject a valid signature made by the wrong key before staging any assets.
+    Assert-UpdaterSignature $installers[0] $signatureSource
     New-Item -ItemType Directory -Path $assetsDirectory -ErrorAction Stop | Out-Null
     Copy-Item -LiteralPath $installers[0].FullName, $signatureSource -Destination $assetsDirectory
     foreach ($notice in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
@@ -120,7 +134,7 @@ if ($Stage -eq 'Prepare') {
         }
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $assetsDirectory 'latest.json') -Encoding utf8
-    Assert-UpdaterAssets $installers[0] $assetsDirectory
+    Assert-UpdaterAssets (Get-Item -LiteralPath (Join-Path $assetsDirectory $installers[0].Name)) $assetsDirectory
     $checksums = Get-ChildItem -LiteralPath $assetsDirectory -File | Sort-Object Name | ForEach-Object {
         "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
     }

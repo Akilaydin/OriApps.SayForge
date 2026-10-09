@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { showUpdatePrompt } from '@/components/updatePromptState'
 
 const mock = vi.hoisted(() => ({
   isTauri: vi.fn(() => true),
@@ -126,6 +127,19 @@ describe('optional signed updates', () => {
     expect(mock.reserve).toHaveBeenCalledTimes(1)
     expect(mock.release).toHaveBeenCalledTimes(1)
     expect(manager.getUpdateStatus()).toMatchObject({ phase: 'error', errorStage: 'install' })
+  })
+
+  it('retains the explicit retry failure when GitHub goes offline after a failed install', async () => {
+    const update = release()
+    update.install.mockRejectedValueOnce(new Error('Synthetic installation error'))
+    mock.check.mockResolvedValueOnce(update).mockRejectedValueOnce(new Error('Synthetic GitHub outage'))
+    const manager = await updates()
+    await manager.checkForUpdates()
+    await manager.installAvailableUpdate()
+    expect(manager.getUpdateStatus()).toMatchObject({ phase: 'error', errorStage: 'install' })
+    await manager.checkForUpdates(true)
+    expect(manager.getUpdateStatus()).toMatchObject({ phase: 'error', errorStage: 'check' })
+    expect(showUpdatePrompt(manager.getUpdateStatus(), true, true)).toBe(true)
   })
 
   it('does not call native updater APIs in the browser', async () => {

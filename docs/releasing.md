@@ -46,6 +46,16 @@ starting with v0.2.4; the already published v0.2.3 assets remain unchanged.
   are rejected. The bundle produces a matching `.exe.sig`; `latest.json` embeds
   that signature and an exact release asset URL for `windows-x86_64`. The publish
   job validates all six expected assets and rechecks SHA-256 after transfer.
+- A dedicated [Rust signature verifier](../.github/tools/updater-verifier/src/main.rs)
+  reads `plugins.updater.pubkey` from the checked-out Tauri config and uses
+  Tauri's own Minisign verification algorithm to check actual installer bytes
+  against `.exe.sig`. Both the build stage and the publish stage run it, **before
+  tag creation**. The verifier is passed between jobs as a private workflow
+  artifact, never uploaded to the public release; any missing verifier, malformed
+  signature or valid signature from a different key blocks publication.
+  Regression fixtures contain only synthetic data, public keys and signatures,
+  never private keys. `release` guard tests run after Rust toolchain setup on
+  new versions; pushes for existing tags skip the entire build and test path.
 - Build has `contents: read`; only publish has `contents: write`. Both use the
   built-in `GITHUB_TOKEN`; no PAT or Windows certificate secret is required. **Two
   Actions secrets** provide the updater private signing key/password as described

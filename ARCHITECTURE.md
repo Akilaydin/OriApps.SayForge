@@ -158,7 +158,12 @@ User data remain under `%LOCALAPPDATA%\com.oriapps.sayforge`.
 The release workflow signs the **existing single NSIS `.exe`** using an
 encrypted Tauri updater signing key from GitHub Actions Secrets. It does not
 perform Windows Authenticode signing. The build produces `.exe.sig`, and the
-publish job validates six expected assets plus hashes and the `windows-x86_64`
+build and publish jobs both cryptographically verify the NSIS signature against
+`plugins.updater.pubkey`, using a small independent Rust CLI that shares Tauri's
+`minisign-verify` algorithm. The verifier travels between CI jobs as a private
+workflow artifact (not a release asset), and the publish job validates the
+signature **before creating the tag**. It also validates six expected assets,
+hashes and the `windows-x86_64`
 entry in `latest.json`, publishing the manifest last. Neither existing tags nor
 past release assets are modified. See `docs/releasing.md` for key backup and
 upgrade verification; `v0.2.4` still requires a manual upgrade.

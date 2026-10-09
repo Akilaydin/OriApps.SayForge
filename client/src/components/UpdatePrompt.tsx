@@ -10,6 +10,7 @@ import {
   cancelPendingInstallation, getUpdateStatus, installAvailableUpdate,
   postponeUpdate, subscribeUpdates, checkForUpdates,
 } from '@/services/appUpdates'
+import { showUpdatePrompt, updateErrorMessageKey } from './updatePromptState'
 
 const RELEASES_URL = 'https://github.com/Akilaydin/OriApps.SayForge/releases/latest'
 
@@ -44,11 +45,8 @@ export default function UpdatePrompt() {
     return () => clearInterval(timer)
   }, [update.phase])
 
-  if (!windowVisible) return null
+  if (!showUpdatePrompt(update, windowVisible, recorderIdle)) return null
   const { phase } = update
-  if (phase === 'idle' || phase === 'checking' || phase === 'up-to-date') return null
-  if (phase === 'available' && !recorderIdle) return null
-  if (phase === 'error' && update.errorStage !== 'install') return null
 
   const busy = phase === 'downloading' || phase === 'waiting' || phase === 'installing'
 
@@ -106,7 +104,7 @@ export default function UpdatePrompt() {
       {phase === 'installing' && <p className="mt-3 text-sm text-muted-foreground">{t('updater.installing')}</p>}
       {phase === 'error' && (
         <div className="mt-3">
-          <p className="text-sm text-muted-foreground">{t('updater.installFailed')}</p>
+          <p className="text-sm text-muted-foreground">{t(updateErrorMessageKey(update.errorStage))}</p>
           <Button size="sm" variant="outline" className="mt-2" onClick={() => void checkForUpdates(true)}>{t('updater.retry')}</Button>
         </div>
       )}
