@@ -1401,6 +1401,8 @@ export class RecorderOrchestrator {
     this.activeRunId = runId
     this.activeFallbackToken = 0
     this.startRecordingLock = true
+    // Snapshot before the first await; UI changes during setup belong to the next recording.
+    const micGain = { enabled: this.micGainEnabled, db: this.micGainDb }
     this.pendingStopWhileStarting = false
     this.timedOutProcessingContext = null
     this.clearMicMutedAutoCancelTimer()
@@ -1585,7 +1587,7 @@ export class RecorderOrchestrator {
             this.updateVolumeWarning(classifyMicLevel(rms, framePeak), pcmFrame.length)
           },
           this.noiseSuppression,
-          { enabled: this.micGainEnabled, db: this.micGainDb },
+          micGain,
         ),
       ])
       resolveCaptureReady!()
