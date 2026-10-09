@@ -560,7 +560,6 @@
   "diagnosticsReport.imageTooLarge": "{name} is larger than 5 MB.",
   "modeStatus.notConfigured": "Not configured",
   "modeStatus.noAsrService": "No speech recognition service configured",
-  "modeStatus.noWorkspace": "Workspace ID missing",
   "recorder.serviceNotReady": "The service isn't ready",
   "recorder.microphoneUnavailable": "The microphone isn't available",
   "recorder.startFailed": "Recording couldn't start",

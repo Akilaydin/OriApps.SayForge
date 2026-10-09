@@ -27,8 +27,6 @@ pub struct AsrProviderConfig {
     pub provider: String,
     #[serde(default)]
     pub api_key: String,
-    #[serde(default)]
-    pub app_id: String,
         #[serde(default)]
     pub extra: serde_json::Value,
 }

@@ -8,7 +8,8 @@ import './tray-menu.css'
 import '@/index.css'
 
 async function bootstrap() {
-  await Promise.all([initLanguage(), initTheme()])
+  initLanguage()
+  await initTheme()
 
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
@@ -20,7 +21,7 @@ async function bootstrap() {
 window.addEventListener('contextmenu', (event) => event.preventDefault())
 
 void listen('tray-menu-open', () => {
-  void initLanguage()
+  initLanguage()
   void initTheme()
 })
 

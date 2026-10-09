@@ -448,7 +448,6 @@ mod tests {
         AsrProviderConfig {
             provider: provider.to_string(),
             api_key: String::new(),
-            app_id: String::new(),
             extra,
         }
     }

@@ -6,14 +6,13 @@ import { storeGetSettings } from '../bridge'
 export interface AsrProviderConfig {
   provider: string
   api_key: string
-  app_id: string
   extra?: Record<string, unknown>
 }
 
 export function asrConfigFromProfile(profile: AsrProfile): AsrProviderConfig {
   const credentials = effectiveAsrCredentials(profile)
   return {
-    provider: resolveAsrRuntimeProvider(profile), api_key: credentials.apiKey, app_id: credentials.appId,
+    provider: resolveAsrRuntimeProvider(profile), api_key: credentials.apiKey,
     extra: buildAsrExtra(profile.provider, {
       model: resolveAsrApiModel(profile), baseUrl: asrEndpointUrl(profile), protocol: profile.protocol,
       instructions: profile.systemInstruction, userPrompt: profile.userPrompt, audioEncoding: profile.audioEncoding,
@@ -21,7 +20,7 @@ export function asrConfigFromProfile(profile: AsrProfile): AsrProviderConfig {
   }
 }
 
-const keys = ['profiles', 'activeProfileId', 'provider', 'apiKey', 'appId', 'model', 'baseUrl',
+const keys = ['profiles', 'activeProfileId', 'provider', 'apiKey', 'model', 'baseUrl',
   'protocol', 'systemInstruction', 'userPrompt', 'audioEncoding'].map(key => 'cloudAsr.' + key)
 
 export async function loadAsrConfig(): Promise<AsrProviderConfig> {
@@ -36,7 +35,7 @@ export async function loadAsrConfig(): Promise<AsrProviderConfig> {
   if (Array.isArray(raw) && raw.length) throw new Error('No compatible ASR profile configured')
   const provider = str('provider', 'openai_compat')
   return {
-    provider, api_key: str('apiKey'), app_id: str('appId'),
+    provider, api_key: str('apiKey'),
     extra: buildAsrExtra(provider, {
       model: str('model'), baseUrl: str('baseUrl'), protocol: parseAsrCompatProtocol(str('protocol')),
       instructions: str('systemInstruction'), userPrompt: str('userPrompt'), audioEncoding: str('audioEncoding', 'wav'),

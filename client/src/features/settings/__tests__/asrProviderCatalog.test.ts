@@ -51,7 +51,7 @@ describe('OpenAI-compatible protocol, credentials and validation', () => {
     expect(describeAsrMissing(empty)).not.toBe('')
     expect(describeAsrMissing({...empty,apiUrl:'http://127.0.0.1:8000/v1'})).toBe('')
     expect(effectiveAsrCredentials({...empty,apiKey:' sk-demo '}))
-      .toEqual({apiKey:'sk-demo',appId:''})
+      .toEqual({apiKey:'sk-demo'})
   })
 
   it('shows configured domain and optional user-entered profile names without exposing keys', () => {

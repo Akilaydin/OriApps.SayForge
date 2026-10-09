@@ -154,7 +154,7 @@ fn mic_label_match_rank(browser_label: &str, endpoint_label: &str) -> u8 {
     if browser == endpoint { return 2; }
     if browser.strip_suffix(&endpoint).is_some_and(|prefix| {
         prefix.trim_end().chars().last()
-            .is_some_and(|c| matches!(c, '-' | '–' | '—' | ':' | '：'))
+            .is_some_and(|c| matches!(c, '-' | '–' | '—' | ':'))
     }) { 1 } else { 0 }
 }
 
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn localized_browser_route_prefixes_do_not_require_ui_translations() {
-        assert_eq!(mic_label_match_rank("默认值 - USB 麦克风", "USB 麦克风"), 1);
+        assert_eq!(mic_label_match_rank("Par défaut - USB Microphone", "USB Microphone"), 1);
         assert_eq!(mic_label_match_rank("По умолчанию - USB Microphone", "USB Microphone"), 1);
         assert_eq!(mic_label_match_rank("Communications: Studio Mic", "Studio Mic"), 2);
         assert_eq!(mic_label_match_rank("Another Studio Mic", "Studio Mic"), 0);

@@ -9,7 +9,7 @@ vi.mock('@/services/debugLog', () => ({ addRuntimeEvent: vi.fn() }))
 import { ASR_ACTIVE_PROFILE_KEY, ASR_PROFILES_KEY, loadAsrProfiles, saveAsrProfiles, topUpProfiles } from '../asrProfileStore'
 import { ASR_PROVIDERS, asrModelsOf, emptyAsrProfile, findAsrProvider, type AsrProfile } from '../asrProviderCatalog'
 
-const creds = (apiKey: string) => ({apiKey, otherKey:'', appId:'', console:'new' as const, workspaceId:'', omniPrompt:''})
+const creds = (apiKey: string) => ({apiKey})
 const profile = (provider: string, patch: Partial<AsrProfile> = {}): AsrProfile =>
   ({...emptyAsrProfile(provider), ...patch})
 
@@ -47,7 +47,7 @@ describe('ASR profile persistence and orphan protection', () => {
   beforeEach(() => store.clear())
 
   it('retains raw unsupported vendor profiles and their secrets on load and save', async () => {
-    const retired={id:'old',provider:'retired-vendor',model:'old-model',apiKey:'SECRET',otherKey:'SECONDARY'}
+    const retired={id:'old',provider:'retired-vendor',model:'old-model',apiKey:'SECRET',opaqueSetting:'SECONDARY'}
     const valid={id:'active',provider:'openai_compat',model:'gateway-asr',apiUrl:'https://private.example/v1',apiKey:'current'}
     const alien={id:'alien',provider:'future-provider',model:'next',apiKey:'FUTURE'}
     store.set(ASR_PROFILES_KEY,[retired,valid,alien])

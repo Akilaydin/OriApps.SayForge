@@ -45,8 +45,8 @@ Paths below are relative to `client/`.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
-- `stores/language.ts` — fixed English UI locale; `stores/providerDefaults.ts` — provider startup defaults and preservation of retired runtime credentials, independent of UI language.
-- Unmodified historical selection-edit instructions are upgraded by exact prompt fingerprints; saved custom prompts and transcription languages are preserved.
+- `stores/language.ts` — fixed English UI locale without stored language preferences; `stores/providerDefaults.ts` — provider startup defaults independent of UI language.
+- AI cleanup adopts custom presets when migrating to the single-prompt setting, without special treatment of retired localized defaults. Speech recognition languages remain provider-controlled.
 - `services/debugLog.ts` — bounded runtime diagnostics mirrored to native logs; no experimental session/audio viewer or separate PTT laboratory hook.
 
 ### Rust (`src-tauri/src/`)
@@ -54,6 +54,7 @@ Paths below are relative to `client/`.
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
 - `providers/` — OpenAI-compatible HTTP ASR, optional AI cleanup and capability reporting.
+- ASR IPC uses provider, API key and protocol/model options; old vendor-specific app IDs, workspace credentials and catalog flags are not used.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
 - `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.
 
@@ -63,7 +64,7 @@ Paths below are relative to `client/`.
 - `app_settings` holds JSON settings; `history_records` stores transcription records. Legacy prompt presets, app rules, corrections and feedback retain their existing tables for compatibility.
 - Recording PCM lives only in the cloud provider buffer; no second archive buffer or audio retention cleanup runs. Older audio files remain on disk. Log cleanup still follows its retention setting.
 - Settings JSON export/import excludes history and audio. Legacy selected settings and full ZIP imports remain compatible; preview tokens protect settings import confirmation. Retired settings and SQLite columns/tables remain intact. History favorites and statistics have no active UI; recording no longer updates statistics.
-- Old full backups with distinct built-in prompt language variants are imported with unique stable IDs. The previously selected language variant keeps its original ID (English if no preference was stored), preserving user instructions. Same-language and custom duplicate IDs remain invalid in JSON configuration imports.
+- Full JSON configuration imports validate unique prompt IDs; no locale-specific rewriting of legacy built-in prompts occurs. Generic full ZIP import and rollback continue to use the existing storage schema.
 - Retired provider records and flat runtime credentials remain available for recovery; subsequent imports keep additional snapshots rather than overwriting the first backup. These settings do not re-enable unsupported providers.
 
 ## Invariants

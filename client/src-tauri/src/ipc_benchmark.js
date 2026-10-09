@@ -33,7 +33,7 @@ addEventListener('DOMContentLoaded', async () => {
           const encodeMs = performance.now() - start - mergeMs
           const send = performance.now()
           const response = await invoke('benchmark_receive', mode === 'binary' ? audio
-            : {request: {audio_b64: audio, sample_rate: 16000, asr_config: {provider: 'synthetic', api_key: '', app_id: ''}}})
+            : {request: {audio_b64: audio, sample_rate: 16000, asr_config: {provider: 'synthetic', api_key: ''}}})
           if (response.bytes !== raw.length || response.checksum !== checksum) throw new Error('PCM changed in IPC')
           rows.push({seconds, mode, trial, pcm_bytes: raw.length, payload_bytes: audio.length,
             merge_ms: mergeMs, encode_ms: encodeMs, stop_receive_ms: response.received_ms - epoch,

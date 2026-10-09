@@ -9,7 +9,6 @@ import {
   ASR_PROVIDERS,
   asrCardIdOfLegacyProvider,
   asrEndpointUrl,
-  asrModelsOf,
   effectiveAsrCredentials,
   emptyAsrProfile,
   parseAsrProfilesDetailed,
@@ -33,12 +32,11 @@ export interface AsrProfileState {
 let orphanProfiles: unknown[] = []
 
 async function syncRuntimeActive(profile: AsrProfile | null): Promise<void> {
-  const creds = profile ? effectiveAsrCredentials(profile) : { apiKey: '', appId: '' }
+  const creds = profile ? effectiveAsrCredentials(profile) : { apiKey: '' }
   await Promise.all([
     setSetting('cloudAsr.provider', profile ? resolveAsrRuntimeProvider(profile) : ''),
     setSetting('cloudAsr.model', profile ? resolveAsrApiModel(profile) : ''),
     setSetting('cloudAsr.apiKey', creds.apiKey),
-    setSetting('cloudAsr.appId', creds.appId),
     setSetting('cloudAsr.systemInstruction', profile?.provider === 'openai_compat' ? profile.systemInstruction : ''),
     setSetting('cloudAsr.userPrompt', profile?.provider === 'openai_compat' ? profile.userPrompt : ''),
     setSetting('cloudAsr.audioEncoding', profile?.provider === 'openai_compat' ? profile.audioEncoding : 'wav'),
@@ -49,26 +47,16 @@ async function syncRuntimeActive(profile: AsrProfile | null): Promise<void> {
 
 interface PlatformCreds {
   apiKey: string
-  otherKey: string
-  appId: string
-  console: 'new' | 'legacy'
-  workspaceId: string
-  omniPrompt: string
 }
 
 async function readPlatformCreds(platform: AsrPlatform): Promise<PlatformCreds> {
   return {
     apiKey: await getSetting(`cloudAsr.${platform}.apiKey`, '') as string,
-    otherKey: '',
-    appId: '',
-    console: 'new',
-    workspaceId: '',
-    omniPrompt: '',
   }
 }
 
 function hasKey(creds: PlatformCreds): boolean {
-  return creds.apiKey.trim() !== '' || creds.otherKey.trim() !== ''
+  return creds.apiKey.trim() !== ''
 }
 
 export function topUpProfiles(
@@ -87,11 +75,6 @@ export function topUpProfiles(
     // Existing platform credentials came from the legacy WAV-only setup.
     profile.audioEncoding = 'wav'
     profile.apiKey = creds.apiKey
-    profile.otherKey = creds.otherKey
-    profile.appId = creds.appId
-    profile.console = creds.console
-    profile.workspaceId = creds.workspaceId
-    profile.omniPrompt = asrModelsOf(entry).some((m) => m.omni) ? creds.omniPrompt : ''
     added.push(profile)
   }
   return {

@@ -5,7 +5,6 @@ import { loadAsrProfiles } from '../features/settings/asrProfileStore'
 import {
   describeAsrMissing,
   resolveActiveAsrProfile,
-  resolveAsrModelOption,
   resolveAsrRuntimeProvider,
 } from '../features/settings/asrProviderCatalog'
 import { subscribeLocale, t } from '@/i18n'
@@ -61,10 +60,8 @@ export async function refreshModeStatus(): Promise<void> {
     } else {
       detail = cloudProviderShort(resolveAsrRuntimeProvider(active))
       const missing = describeAsrMissing(active)
-      const needsWorkspace = resolveAsrModelOption(active)?.needsWorkspaceId === true
-        && active.workspaceId.trim() === ''
-      ready = missing === '' && !needsWorkspace
-      blockedReason = missing || (needsWorkspace ? t('modeStatus.noWorkspace') : '')
+      ready = missing === ''
+      blockedReason = missing
     }
   }
 

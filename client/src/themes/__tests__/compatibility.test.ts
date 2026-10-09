@@ -23,7 +23,7 @@ describe('retained themes and legacy settings',()=>{
     expect(classes.has('dark')).toBe(getTheme(id).isDark)
     expect(themeList.map(theme=>theme.id)).toEqual(['light','dark','claude'])
     expect(document.body.style.fontFamily).toMatch(/^"Segoe UI"/)
-    expect(document.body.style.fontFamily).toContain('Microsoft YaHei')
+    expect(document.body.style.fontFamily).toBe('"Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif')
   })
   it('does not overwrite a stored legacy value during initialization',async()=>{
     getSetting.mockResolvedValue('teal-dark')

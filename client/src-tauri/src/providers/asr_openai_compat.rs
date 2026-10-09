@@ -68,7 +68,6 @@ fn with_provider(config: &AsrProviderConfig, provider: &str) -> AsrProviderConfi
     AsrProviderConfig {
         provider: provider.to_string(),
         api_key: config.api_key.clone(),
-        app_id: config.app_id.clone(),
         extra: config.extra.clone(),
     }
 }
@@ -196,7 +195,6 @@ mod tests {
         AsrProviderConfig {
             provider: "openai_compat".to_string(),
             api_key: "k".to_string(),
-            app_id: String::new(),
             extra,
         }
     }

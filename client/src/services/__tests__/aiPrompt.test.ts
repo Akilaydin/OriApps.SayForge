@@ -19,9 +19,9 @@ describe('single AI prompt migration', () => {
     state.values.set('promptPresets','invalid'); state.values.set('aiPromptAppend',42)
     expect(await getAiPrompt()).toBe(DEFAULT_AI_PROMPT)
   })
-  it('does not adopt a retired unmodified built-in prompt from restored settings', async () => {
+  it('ignores bundled presets instead of adopting retired defaults', async () => {
     const presets = [
-      { id: 'intent', systemPrompt: 'Retired built-in instructions', builtin: true, builtinPromptModified: false },
+      { id: 'intent', systemPrompt: 'Bundled instructions', builtin: true },
     ]
     state.values.set('promptPresets', presets)
     state.values.set('activePresetId', 'intent')
@@ -29,13 +29,7 @@ describe('single AI prompt migration', () => {
     expect(await getAiPrompt()).toBe(`${DEFAULT_AI_PROMPT}\n\nKeep product names`)
     expect(state.values.get('promptPresets')).toBe(presets)
   })
-  it('preserves previously edited built-ins and user prompts in any language', async () => {
-    state.values.set('promptPresets', [
-      { id: 'intent', systemPrompt: 'Отредактированный промпт', builtin: true, builtinPromptModified: true },
-    ])
-    state.values.set('activePresetId', 'intent')
-    expect(await getAiPrompt()).toBe('Отредактированный промпт')
-    state.values.delete(AI_PROMPT_KEY)
+  it('adopts custom prompts in any language', async () => {
     state.values.set('promptPresets', [
       { id: 'custom', systemPrompt: 'Rédige un texte fidèle', builtin: false },
     ])

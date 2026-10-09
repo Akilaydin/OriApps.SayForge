@@ -1,8 +1,6 @@
 
 export const DEFAULTS: Record<string, unknown> = {
 
-  'ui.language': 'en',
-
   workMode: 'cloud_api',
 
   shortcutPTT: 'ControlRight',
@@ -31,7 +29,6 @@ export const DEFAULTS: Record<string, unknown> = {
   'cloudAsr.provider': 'openai_compat',
   'cloudAsr.model': '',
   'cloudAsr.apiKey': '',
-  'cloudAsr.appId': '',
   'cloudAsr.profiles': [],
   'cloudAsr.activeProfileId': '',
   'cloudAsr.autoCreatedProviders': [],

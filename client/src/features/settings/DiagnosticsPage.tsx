@@ -120,7 +120,6 @@ export default function DiagnosticsPage() {
               config: {
                 provider: asrProvider,
                 api_key: asrApiKey,
-                app_id: '',
                 extra: {
                   model: asrModel,
                   baseUrl: await getSetting('cloudAsr.baseUrl', ''),

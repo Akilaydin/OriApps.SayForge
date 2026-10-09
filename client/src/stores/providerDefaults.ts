@@ -15,11 +15,8 @@ export async function initProviderDefaults(): Promise<void> {
   if (typeof activeAsrProvider === 'string' && activeAsrProvider &&
     !SUPPORTED_ASR_RUNTIME_PROVIDERS.has(activeAsrProvider)) {
     const existingBackup = await bridge.storeGet(UNSUPPORTED_ASR_RUNTIME_BACKUP_KEY)
-    // Include retired vendor-only settings in the recovery snapshot. They are
-    // not used for dispatch, but may still contain user credentials or text.
-    const fields = ['provider', 'model', 'apiKey', 'appId', 'baseUrl', 'protocol',
-      'systemInstruction', 'userPrompt', 'audioEncoding', 'qwen.workspaceId',
-      'omniSystemPrompt']
+    const fields = ['provider', 'model', 'apiKey', 'baseUrl', 'protocol',
+      'systemInstruction', 'userPrompt', 'audioEncoding']
     const snapshot: Record<string, unknown> = {}
     for (const field of fields) snapshot[field] = await bridge.storeGet('cloudAsr.' + field)
     if (existingBackup === null || existingBackup === undefined) {

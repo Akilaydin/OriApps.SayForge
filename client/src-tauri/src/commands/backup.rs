@@ -13,9 +13,7 @@ use crate::storage::Storage;
 const FORMAT_VERSION: i64 = 1;
 const SELECTED_CONFIG_FORMAT_VERSION: i64 = 2;
 const MAX_HOTWORDS: usize = 1000;
-// Historic built-in IDs are only retained to exclude bundled presets from
-// user-created prompt exports. This does not enable any retired UI locale.
-const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "zh2en", "casual"];
+const BUILTIN_PRESET_IDS: &[&str] = &["intent", "faithful", "casual"];
 const MAX_LEGACY_JSON_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_LEGACY_AUDIO_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_LEGACY_TOTAL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
@@ -299,7 +297,7 @@ fn apply_config_part(
     let prompt_presets = data
         .get("promptPresets")
         .and_then(Value::as_array)
-        .map(|items| normalize_legacy_prompt_presets(items, legacy_prompt_language(data)));
+        .map(Vec::as_slice);
     let app_prompt_rules = data
         .get("appPromptRules")
         .and_then(Value::as_array)
@@ -309,7 +307,7 @@ fn apply_config_part(
         .apply_config_transaction(
             app_settings,
             settings_exclude,
-            prompt_presets.as_deref(),
+            prompt_presets,
             app_prompt_rules,
         )
         .map_err(|error| format!("Failed to write configuration: {}", error))
@@ -751,69 +749,6 @@ fn validate_config_collection(key: &str, items: &[Value]) -> Result<(), String> 
     Ok(())
 }
 
-/// Retain only the old language preference needed to resolve conflicting
-/// built-in IDs in historical backup files. It is not an active UI setting.
-fn legacy_prompt_language(data: &Value) -> Option<&str> {
-    data.get("appSettings")?.get("ai.builtinPromptLanguage")?.as_str()
-}
-
-/// Legacy backups could store both language variants of one built-in ID, but
-/// SQLite uses that ID as a primary key. Preserve the formerly active variant
-/// under its original ID and rename the other without modifying user text.
-/// Malformed duplicate IDs or duplicate same-language variants are not fixed.
-fn normalize_legacy_prompt_presets(items: &[Value], preferred_language: Option<&str>) -> Vec<Value> {
-    use std::collections::HashMap;
-
-    let mut reserved = items.iter()
-        .filter_map(|item| item.get("id").and_then(Value::as_str))
-        .map(ToString::to_string)
-        .collect::<HashSet<_>>();
-    let mut groups = HashMap::<&str, Vec<usize>>::new();
-    for (index, item) in items.iter().enumerate() {
-        let Some(id) = item.get("id").and_then(Value::as_str) else { continue };
-        if BUILTIN_PRESET_IDS.contains(&id) { groups.entry(id).or_default().push(index); }
-    }
-
-    let mut rename_indices = HashSet::new();
-    for indices in groups.values().filter(|indices| indices.len() > 1) {
-        let mut languages = HashSet::new();
-        let valid_variants = indices.iter().all(|&index| {
-            match items[index].get("builtinPromptLanguage").and_then(Value::as_str) {
-                Some(language @ ("en" | "zh-CN")) => languages.insert(language),
-                _ => false,
-            }
-        });
-        if !valid_variants { continue; }
-        let keep_index = preferred_language
-            .and_then(|language| indices.iter().copied().find(|&index| {
-                items[index]["builtinPromptLanguage"].as_str() == Some(language)
-            }))
-            .or_else(|| indices.iter().copied().find(|&index| {
-                items[index]["builtinPromptLanguage"] == "en"
-            }))
-            .unwrap_or(indices[0]);
-        rename_indices.extend(indices.iter().copied().filter(|&index| index != keep_index));
-    }
-
-    let mut normalized = Vec::with_capacity(items.len());
-    for (index, item) in items.iter().enumerate() {
-        let mut item = item.clone();
-        if rename_indices.contains(&index) {
-            let id = item.get("id").and_then(Value::as_str).unwrap();
-            let base = format!("legacy_preset_{}_{}", id, index);
-            let mut replacement = base.clone();
-            let mut suffix = 1;
-            while !reserved.insert(replacement.clone()) {
-                replacement = format!("{}_{}", base, suffix);
-                suffix += 1;
-            }
-            item.as_object_mut().unwrap().insert("id".to_string(), Value::String(replacement));
-        }
-        normalized.push(item);
-    }
-    normalized
-}
-
 fn full_config_preview_sections(data: &Value) -> Result<Vec<ConfigImportSectionPreview>, String> {
     let mut sections = Vec::new();
 
@@ -840,12 +775,7 @@ fn full_config_preview_sections(data: &Value) -> Result<Vec<ConfigImportSectionP
             let items = value
                 .as_array()
                 .ok_or_else(|| format!("{} has an invalid format", key))?;
-            if key == "promptPresets" {
-                let normalized = normalize_legacy_prompt_presets(items, legacy_prompt_language(data));
-                validate_config_collection(key, &normalized)?;
-            } else {
-                validate_config_collection(key, items)?;
-            }
+            validate_config_collection(key, items)?;
             sections.push(ConfigImportSectionPreview {
                 kind: kind.to_string(),
                 total: items.len(),
@@ -1060,11 +990,6 @@ fn apply_full_backup_into(storage: &Storage, in_path: &str, adir: &Path) -> Resu
         if data.get(key).is_some_and(|value| !value.is_array()) {
             return Err(format!("{} has an invalid format", key));
         }
-    }
-    // Normalize before any filesystem changes, including staging audio files.
-    if let Some(presets) = data.get("promptPresets").and_then(Value::as_array) {
-        let normalized = normalize_legacy_prompt_presets(presets, legacy_prompt_language(&data));
-        data["promptPresets"] = Value::Array(normalized);
     }
     if let Some(history) = data.get_mut("history").and_then(Value::as_array_mut) {
         for record in history {
@@ -1440,72 +1365,6 @@ mod tests {
         assert!(validate_config_collection("promptPresets", &items).is_err());
     }
 
-    fn legacy_variants() -> Value {
-        json!([
-            { "id": "intent", "name": "Old default", "systemPrompt": "Retired default text",
-              "builtin": true, "builtinPromptLanguage": "zh-CN", "extra": "retain" },
-            { "id": "intent", "name": "English default", "systemPrompt": "English default text",
-              "builtin": true, "builtinPromptLanguage": "en" },
-            { "id": "user-preset", "name": "My prompt", "systemPrompt": "Обработай текст" }
-        ])
-    }
-
-    #[test]
-    fn legacy_full_config_preview_and_import_keep_both_builtin_variants_and_user_text() {
-        let (storage, dir) = temp_storage("legacy-language-config");
-        let config = json!({
-            "kind": "config", "formatVersion": 1,
-            "appSettings": { "activePresetId": "intent" },
-            "promptPresets": legacy_variants()
-        });
-        let sections = full_config_preview_sections(&config).unwrap();
-        assert!(sections.iter().any(|section| section.kind == "promptPresets" && section.total == 3));
-
-        apply_config_part(&storage, &config, CONFIG_EXCLUDE).unwrap();
-        let restored = storage.get("promptPresets", None);
-        let presets = restored.as_array().unwrap();
-        assert_eq!(presets.len(), 3);
-        assert_eq!(presets[0]["systemPrompt"], "Retired default text");
-        assert_eq!(presets[0]["extra"], "retain");
-        assert_ne!(presets[0]["id"], "intent");
-        assert_eq!(presets[1]["id"], "intent");
-        assert_eq!(presets[1]["systemPrompt"], "English default text");
-        assert_eq!(presets[2]["systemPrompt"], "Обработай текст");
-        assert_eq!(storage.get("activePresetId", None), "intent");
-        assert_eq!(config["promptPresets"], legacy_variants());
-
-        // Repeated restores must generate identical IDs without extra copies.
-        let first = restored;
-        apply_config_part(&storage, &config, CONFIG_EXCLUDE).unwrap();
-        assert_eq!(storage.get("promptPresets", None), first);
-        drop(storage);
-        fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn legacy_full_zip_restore_recovers_colliding_builtin_ids_without_losing_audio() {
-        let (storage, dir) = temp_storage("legacy-language-zip");
-        let audio_dir = dir.join("audio");
-        let archive = dir.join("legacy.zip");
-        let mut data = legacy_data();
-        data["appSettings"]["activePresetId"] = json!("intent");
-        data["appSettings"]["ai.builtinPromptLanguage"] = json!("zh-CN");
-        data["promptPresets"] = legacy_variants();
-        write_legacy_archive(&archive, &data, &[("audio/sample.wav", b"synthetic audio")]);
-
-        apply_full_backup_into(&storage, archive.to_str().unwrap(), &audio_dir).unwrap();
-        let presets = storage.get("promptPresets", None);
-        assert_eq!(presets.as_array().unwrap().len(), 3);
-        assert_eq!(presets[0]["id"], "intent");
-        assert_eq!(presets[0]["systemPrompt"], "Retired default text");
-        assert_ne!(presets[1]["id"], "intent");
-        assert_eq!(presets[1]["systemPrompt"], "English default text");
-        assert_eq!(storage.get("activePresetId", None), "intent");
-        assert_eq!(fs::read(audio_dir.join("sample.wav")).unwrap(), b"synthetic audio");
-        drop(storage);
-        fs::remove_dir_all(dir).unwrap();
-    }
-
     #[test]
     fn duplicate_custom_prompt_ids_still_fail_validation() {
         let items = json!([
@@ -1519,26 +1378,10 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_same_language_builtin_ids_still_fail_instead_of_being_rewritten() {
-        for language in [Some("en"), None] {
-            let mut presets = legacy_variants();
-            for item in presets.as_array_mut().unwrap().iter_mut().take(2) {
-                match language {
-                    Some(language) => item["builtinPromptLanguage"] = json!(language),
-                    None => { item.as_object_mut().unwrap().remove("builtinPromptLanguage"); }
-                }
-            }
-            let config = json!({ "kind": "config", "formatVersion": 1, "promptPresets": presets });
-            assert!(full_config_preview_sections(&config).is_err());
-        }
-    }
-
-    #[test]
     fn selected_export_skips_builtin_prompts_even_for_unknown_legacy_ids() {
         let (storage, dir) = temp_storage("selected-prompt-export");
         storage.set("promptPresets", &json!([
             { "id": "intent", "name": "Default", "systemPrompt": "Built in" },
-            { "id": "zh2en", "name": "Old built in", "systemPrompt": "Legacy instruction" },
             { "id": "retired-builtin", "builtin": true, "name": "Legacy default", "systemPrompt": "Old built in" },
             { "id": "custom", "name": "Custom", "systemPrompt": "My instructions" }
         ])).unwrap();
@@ -1547,7 +1390,7 @@ mod tests {
             hotword_group_ids: vec![],
             include_text_replacements: false,
             text_replacements: None,
-            prompt_preset_ids: ["intent", "zh2en", "retired-builtin", "custom"].map(str::to_string).to_vec(),
+            prompt_preset_ids: ["intent", "retired-builtin", "custom"].map(str::to_string).to_vec(),
         };
 
         let export = build_selected_config_value(&storage, &selection).unwrap();

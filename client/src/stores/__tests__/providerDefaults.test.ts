@@ -49,8 +49,6 @@ describe('provider defaults and retired settings preservation', () => {
     bridgeState.values.set('cloudAsr.apiKey', 'PRIVATE')
     bridgeState.values.set('cloudAsr.model', 'old-asr')
     bridgeState.values.set('cloudAsr.systemInstruction', 'Preserve the original')
-    bridgeState.values.set('cloudAsr.qwen.workspaceId', 'retired-workspace-secret')
-    bridgeState.values.set('cloudAsr.omniSystemPrompt', 'Custom user instructions')
     await initProviderDefaults()
     expect(bridgeState.values.get('cloudAsr.provider')).toBe('')
     expect(bridgeState.values.get('cloudAsr.apiKey')).toBe('')
@@ -58,11 +56,7 @@ describe('provider defaults and retired settings preservation', () => {
     expect(bridgeState.values.get('cloudAsr.unsupportedRuntimeBackup')).toMatchObject({
       provider: 'retired-vendor', apiKey: 'PRIVATE', model: 'old-asr',
       systemInstruction: 'Preserve the original',
-      'qwen.workspaceId': 'retired-workspace-secret',
-      omniSystemPrompt: 'Custom user instructions',
     })
-    expect(bridgeState.values.get('cloudAsr.qwen.workspaceId')).toBe('retired-workspace-secret')
-    expect(bridgeState.values.get('cloudAsr.omniSystemPrompt')).toBe('Custom user instructions')
   })
 
   it('retains a previous snapshot and backs up newly imported unsupported credentials', async () => {

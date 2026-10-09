@@ -36,11 +36,7 @@ export interface AsrModelOption {
   id: string
   provider: string
   apiModel?: string
-  //
-  //
   blurb?: string
-  omni?: boolean
-  needsWorkspaceId?: boolean
   supportsCustomUrl?: boolean
   requiresCustomUrl?: boolean
 }
@@ -213,18 +209,8 @@ export interface AsrProfile {
   /** OpenAI-compatible chat: optional user text alongside the input audio. */
   userPrompt: string
   model: string
-  /** Key to the selected speech API; legacy vendor fields are retained for imported data. */
+  /** Key to the selected speech API. */
   apiKey: string
-  /** Legacy ID, kept only for round-tripping imported profiles. */
-  appId: string
-  /** Legacy console flag, no longer used by supported providers. */
-  console: 'new' | 'legacy'
-  /** Legacy alternative key, not used by supported providers. */
-  otherKey: string
-  /** Legacy workspace ID, no longer used by supported providers. */
-  workspaceId: string
-  /** Legacy omni prompt, not used by supported providers. */
-  omniPrompt: string
   check?: AsrCheck
 }
 
@@ -245,11 +231,6 @@ export function emptyAsrProfile(provider = ASR_PROVIDERS[0].id): AsrProfile {
     userPrompt: '',
     model: entry ? asrModelsOf(entry)[0].id : '',
     apiKey: '',
-    appId: '',
-    console: 'new',
-    otherKey: '',
-    workspaceId: '',
-    omniPrompt: '',
   }
 }
 
@@ -290,7 +271,6 @@ export function parseAsrProfilesDetailed(
       continue
     }
     seen.add(id)
-    const consoleRaw = str(v.console)
     out.push({
       id,
       provider,
@@ -304,11 +284,6 @@ export function parseAsrProfilesDetailed(
       userPrompt: str(v.userPrompt),
       model,
       apiKey: str(v.apiKey),
-      appId: str(v.appId),
-      console: consoleRaw === 'legacy' ? 'legacy' : 'new',
-      otherKey: str(v.otherKey),
-      workspaceId: str(v.workspaceId),
-      omniPrompt: str(v.omniPrompt),
       check: parseCheck(v.check),
     })
   }
@@ -347,8 +322,8 @@ export function resolveActiveAsrProfile(
   return profiles.find((p) => p.id === activeId) ?? profiles[0] ?? null
 }
 
-export function effectiveAsrCredentials(profile: AsrProfile): { apiKey: string; appId: string } {
-  return { apiKey: profile.apiKey.trim(), appId: '' }
+export function effectiveAsrCredentials(profile: AsrProfile): { apiKey: string } {
+  return { apiKey: profile.apiKey.trim() }
 }
 
 /** Return which required credentials or endpoint are missing. */
