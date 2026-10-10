@@ -81,6 +81,9 @@ Paths below are relative to `client/`.
 - Recording PCM lives only in the cloud provider buffer; no second archive buffer or audio retention cleanup runs. Older audio files remain on disk. Log cleanup still follows its retention setting.
 - Settings JSON export/import excludes history and audio. Legacy selected settings and full ZIP imports remain compatible; preview tokens protect settings import confirmation. Retired settings and SQLite columns/tables remain intact. History favorites and statistics have no active UI; recording no longer updates statistics.
 - Full JSON configuration imports validate unique prompt IDs; no locale-specific rewriting of legacy built-in prompts occurs. Generic full ZIP import and rollback continue to use the existing storage schema.
+- History search and count filter only ASR/AI text inside saved JSON records,
+  with Unicode case normalization and literal wildcard escaping. TXT export
+  reads all matching records through the same history query.
 - Retired provider records and flat runtime credentials remain available for recovery; subsequent imports keep additional snapshots rather than overwriting the first backup. These settings do not re-enable unsupported providers.
 
 ## Invariants

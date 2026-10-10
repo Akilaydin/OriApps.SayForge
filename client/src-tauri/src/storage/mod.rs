@@ -1,4 +1,5 @@
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::functions::FunctionFlags;
+use rusqlite::{params, params_from_iter, Connection, Result as SqlResult};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -83,6 +84,43 @@ mod compatibility_tests {
         drop(reopened);
         fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn history_search_filters_transcript_fields_and_matches_count_and_paging() {
+        let dir = std::env::temp_dir().join(format!("sayforge-history-search-{}", uuid::Uuid::new_v4()));
+        let db_path = dir.join("sayforge.db");
+        let storage = Storage::new(db_path).unwrap();
+        let asr = json!({
+            "id": "asr", "timestamp": 1, "favorite": true,
+            "asrText": "ПрИвЕт 50%_ C:\\Temp", "llmText": "",
+        });
+        let ai = json!({
+            "id": "ai", "timestamp": 2, "asrText": "other",
+            "llmText": "привет Alpha",
+        });
+        let metadata = json!({
+            "id": "metadata", "timestamp": 3, "asrText": "", "llmText": "",
+            "promptSummary": "Alpha asrText ПрИвЕт", "appName": "Alpha",
+        });
+        for record in [&asr, &ai, &metadata] {
+            storage.history_add(record).unwrap();
+        }
+
+        assert_eq!(storage.history_count(Some("asrText"), false), 0);
+        assert_eq!(storage.history_count(Some("Alpha"), false), 1);
+        assert_eq!(storage.history_count(Some("%"), false), 1);
+        assert_eq!(storage.history_count(Some("_"), false), 1);
+        assert_eq!(storage.history_count(Some("\\"), false), 1);
+        assert_eq!(storage.history_count(Some("пРИвЕТ"), false), 2);
+        assert_eq!(storage.history_list(Some("ПРИВЕТ"), false, Some(1), Some(0)), vec![ai]);
+        assert_eq!(storage.history_list(Some("ПРИВЕТ"), false, Some(1), Some(1)), vec![asr.clone()]);
+        assert_eq!(storage.history_count(Some("ПРИВЕТ"), true), 1);
+        assert_eq!(storage.history_list(Some("ПРИВЕТ"), true, None, None), vec![asr]);
+        assert_eq!(storage.history_count(Some("  "), false), 3);
+
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 fn collection_table(key: &str) -> Option<&'static str> {
@@ -96,6 +134,23 @@ fn collection_table(key: &str) -> Option<&'static str> {
     }
 }
 
+fn history_filter(keyword: Option<&str>, favorite_only: bool) -> (String, Option<String>) {
+    let mut clauses = Vec::new();
+    if favorite_only {
+        clauses.push("favorite = 1");
+    }
+    let pattern = keyword.map(str::trim).filter(|s| !s.is_empty()).map(|term| {
+        clauses.push(
+            "(unicode_lower(COALESCE(json_extract(raw_json, '$.asrText'), '')) LIKE ?1 ESCAPE '\\' \
+             OR unicode_lower(COALESCE(json_extract(raw_json, '$.llmText'), '')) LIKE ?1 ESCAPE '\\')",
+        );
+        let escaped = term.to_lowercase().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        format!("%{}%", escaped)
+    });
+    let where_sql = if clauses.is_empty() { String::new() } else { format!("WHERE {}", clauses.join(" AND ")) };
+    (where_sql, pattern)
+}
+
 pub struct Storage {
     pub db: Mutex<Connection>,
 }
@@ -107,6 +162,12 @@ impl Storage {
         }
 
         let conn = Connection::open(&db_path)?;
+        conn.create_scalar_function(
+            "unicode_lower",
+            1,
+            FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| Ok(ctx.get::<String>(0)?.to_lowercase()),
+        )?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
 
         let storage = Self { db: Mutex::new(conn) };
@@ -262,25 +323,7 @@ impl Storage {
 
     pub fn history_list(&self, keyword: Option<&str>, favorite_only: bool, limit: Option<i64>, offset: Option<i64>) -> Vec<Value> {
         let db = self.db.lock().unwrap();
-        let mut where_clauses = Vec::new();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-
-        if favorite_only {
-            where_clauses.push("favorite = 1".to_string());
-        }
-        if let Some(kw) = keyword {
-            let trimmed = kw.trim().to_lowercase();
-            if !trimmed.is_empty() {
-                where_clauses.push(format!("LOWER(raw_json) LIKE ?{}", param_values.len() + 1));
-                param_values.push(Box::new(format!("%{}%", trimmed)));
-            }
-        }
-
-        let where_sql = if where_clauses.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", where_clauses.join(" AND "))
-        };
+        let (where_sql, pattern) = history_filter(keyword, favorite_only);
 
         let limit_sql = match limit {
             Some(l) if l > 0 => {
@@ -295,10 +338,9 @@ impl Storage {
             where_sql, limit_sql
         );
 
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
         let mut stmt = db.prepare(&sql).unwrap();
         let rows = stmt
-            .query_map(params_ref.as_slice(), |row| {
+            .query_map(params_from_iter(pattern.iter()), |row| {
                 let json_str: String = row.get(0)?;
                 Ok(json_str)
             })
@@ -311,30 +353,10 @@ impl Storage {
 
     pub fn history_count(&self, keyword: Option<&str>, favorite_only: bool) -> i64 {
         let db = self.db.lock().unwrap();
-        let mut where_clauses = Vec::new();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-
-        if favorite_only {
-            where_clauses.push("favorite = 1".to_string());
-        }
-        if let Some(kw) = keyword {
-            let trimmed = kw.trim().to_lowercase();
-            if !trimmed.is_empty() {
-                where_clauses.push(format!("LOWER(raw_json) LIKE ?{}", param_values.len() + 1));
-                param_values.push(Box::new(format!("%{}%", trimmed)));
-            }
-        }
-
-        let where_sql = if where_clauses.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", where_clauses.join(" AND "))
-        };
+        let (where_sql, pattern) = history_filter(keyword, favorite_only);
 
         let sql = format!("SELECT COUNT(*) FROM history_records {}", where_sql);
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
-
-        db.query_row(&sql, params_ref.as_slice(), |row| row.get(0)).unwrap_or(0)
+        db.query_row(&sql, params_from_iter(pattern.iter()), |row| row.get(0)).unwrap_or(0)
     }
 
     pub fn history_add(&self, record: &Value) -> SqlResult<()> {
