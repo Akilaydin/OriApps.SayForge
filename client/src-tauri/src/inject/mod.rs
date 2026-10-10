@@ -312,7 +312,7 @@ pub fn editability_gate(ctx: &context::AppContext) -> EditableGate {
 
         // A process allowlist cannot override explicit evidence that the focused
         // UIA control is disabled, read-only or clearly not an editor.
-        if !ctx.is_enabled {
+        if ctx.uia_enabled == Some(false) {
             return EditableGate::NoSignal;
         }
         if ctx.is_read_only == Some(true) {
@@ -1409,11 +1409,23 @@ mod tests {
 
             ctx.control_type = "Window".to_string();
             ctx.is_enabled = false;
+            ctx.uia_enabled = Some(false);
             assert_eq!(editability_gate(&ctx), EditableGate::NoSignal, "{name}");
 
             ctx.is_enabled = true;
+            ctx.uia_enabled = Some(true);
             ctx.is_read_only = Some(true);
             assert_eq!(editability_gate(&ctx), EditableGate::UiaReadOnly, "{name}");
+        }
+    }
+
+    #[test]
+    fn vendor_fallback_accepts_unknown_uia_enabled_without_claiming_disabled() {
+        for name in ["Weixin.exe", "WeChat.exe", "DingTalk.exe", "Trae.exe"] {
+            let mut ctx = weixin_4x_ctx(name);
+            ctx.is_enabled = false; // Default for unavailable UIA IsEnabled property.
+            ctx.uia_enabled = None;
+            assert_eq!(editability_gate(&ctx), EditableGate::ProcessAllowlist, "{name}");
         }
     }
 

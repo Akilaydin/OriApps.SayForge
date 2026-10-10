@@ -71,6 +71,10 @@ pub struct AppContext {
     pub is_keyboard_focusable: bool,
     #[serde(rename = "isEnabled")]
     pub is_enabled: bool,
+    // UIA may fail to supply IsEnabled. Keep the existing serialized bool contract,
+    // but distinguish an explicit disabled result from an unavailable property.
+    #[serde(skip)]
+    pub uia_enabled: Option<bool>,
     #[serde(rename = "isReadOnly")]
     pub is_read_only: Option<bool>,
     #[serde(rename = "isPassword")]
@@ -395,6 +399,7 @@ unsafe fn populate_uia_fields(ctx: &mut AppContext, include_text_context: bool) 
         if let Ok(v) = en_val {
             if let Ok(b) = bool::try_from(&v) {
                 ctx.is_enabled = b;
+                ctx.uia_enabled = Some(b);
             }
         }
 
