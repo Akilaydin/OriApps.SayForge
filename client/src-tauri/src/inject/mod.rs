@@ -42,6 +42,7 @@ struct PendingClipboard {
     owner_hwnd: isize,
     injected_text: String,
     previous: Arc<ClipboardSnapshot>,
+    restoring: bool,
 }
 
 #[cfg(windows)]
@@ -76,40 +77,37 @@ impl Drop for ClipboardRestoreGuard {
 
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(400));
-            let elapsed_ms = scheduled_at.elapsed().as_millis();
-            let _paste_lock = PASTE_LOCK.lock().unwrap();
-            let mut pending = PENDING_CLIPBOARD.lock().unwrap();
-            if pending.as_ref().map(|state| state.paste_id) != Some(paste_id) {
+            // Access can stay blocked beyond the initial retry window. Keep
+            // trying without holding our mutexes while another application
+            // owns the clipboard, until either restoration or a newer copy.
+            loop {
+                let outcome = {
+                    let _paste_lock = PASTE_LOCK.lock().unwrap();
+                    let mut pending = PENDING_CLIPBOARD.lock().unwrap();
+                    let Some(state) = pending.as_mut().filter(|s| s.paste_id == paste_id) else {
+                        return; // Superseded by a newer SayForge paste.
+                    };
+                    let outcome = unsafe { restore_clipboard_if_unchanged(state) };
+                    if !matches!(outcome, RestoreOutcome::Unavailable) {
+                        pending.take();
+                    }
+                    outcome
+                };
+                if matches!(outcome, RestoreOutcome::Unavailable) {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    continue;
+                }
                 crate::commands::system::write_log_line(&format!(
-                    "[RUST] [inject] clipboard restore skipped pasteId={} reason=superseded elapsedMs={}",
-                    paste_id, elapsed_ms
+                    "[RUST] [inject] clipboard restore finished pasteId={} result={} elapsedMs={}",
+                    paste_id,
+                    if matches!(outcome, RestoreOutcome::Restored) {
+                        "restored"
+                    } else {
+                        "clipboard_changed"
+                    },
+                    scheduled_at.elapsed().as_millis()
                 ));
                 return;
-            }
-
-            let state = pending.as_ref().unwrap();
-            let mut outcome = RestoreOutcome::Unavailable;
-            for attempt in 0..20 {
-                outcome = unsafe { restore_clipboard_if_unchanged(state) };
-                if !matches!(outcome, RestoreOutcome::Unavailable) {
-                    break;
-                }
-                if attempt < 19 {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-            }
-            crate::commands::system::write_log_line(&format!(
-                "[RUST] [inject] clipboard restore finished pasteId={} result={} formats={} elapsedMs={}",
-                paste_id,
-                match outcome {
-                    RestoreOutcome::Restored => "restored",
-                    RestoreOutcome::Changed => "clipboard_changed",
-                    RestoreOutcome::Unavailable => "clipboard_unavailable",
-                },
-                state.previous.formats.len(), elapsed_ms
-            ));
-            if !matches!(outcome, RestoreOutcome::Unavailable) {
-                pending.take();
             }
         });
     }
@@ -405,10 +403,24 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
                     owner_hwnd: clipboard_owner.0 as isize,
                     injected_text: text.to_owned(),
                     previous,
+                    restoring: false,
                 });
                 true
             }
-            Err(why) => {
+            Err((why, recovery)) => {
+                if let Some((previous, sequence)) = recovery {
+                    *pending = Some(PendingClipboard {
+                        paste_id,
+                        sequence,
+                        owner_hwnd: clipboard_owner.0 as isize,
+                        injected_text: text.to_owned(),
+                        previous,
+                        restoring: true,
+                    });
+                    // The clipboard write failed after EmptyClipboard and the
+                    // immediate rollback failed too. Retry later.
+                    drop(ClipboardRestoreGuard::new(true, paste_id));
+                }
                 crate::commands::system::write_log_line(&format!(
                     "[RUST] [inject] clipboard backup failed pasteId={} reason={}", paste_id, why
                 ));
@@ -589,6 +601,9 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     ));
 
     if !try_wm_paste {
+        if !clipboard_still_ours(text, paste_id) {
+            return clipboard_changed_result();
+        }
         let mut result_val: usize = 0;
         let send_ok = SendMessageTimeoutW(
             paste_target,
@@ -1177,6 +1192,11 @@ fn same_clipboard_version(expected: u32, actual: u32, text_matches: bool) -> boo
     expected != 0 && expected == actual && text_matches
 }
 
+#[cfg(any(windows, test))]
+fn pending_clipboard_matches(expected: u32, actual: u32, restoring: bool, text_matches: bool) -> bool {
+    same_clipboard_version(expected, actual, restoring || text_matches)
+}
+
 #[cfg(windows)]
 unsafe fn clipboard_still_ours(text: &str, paste_id: u64) -> bool {
     let expected = PENDING_CLIPBOARD.lock().unwrap().as_ref()
@@ -1254,7 +1274,8 @@ unsafe fn capture_clipboard_open() -> Result<ClipboardSnapshot, String> {
 }
 
 #[cfg(windows)]
-unsafe fn restore_snapshot_open(snapshot: &ClipboardSnapshot) -> Result<(), String> {
+// The error flag distinguishes failures before and after EmptyClipboard.
+unsafe fn restore_snapshot_open(snapshot: &ClipboardSnapshot) -> Result<(), (String, bool)> {
     // Allocate every block before EmptyClipboard so allocation failures cannot
     // discard the text currently on the clipboard.
     let mut prepared = Vec::with_capacity(snapshot.formats.len());
@@ -1265,7 +1286,7 @@ unsafe fn restore_snapshot_open(snapshot: &ClipboardSnapshot) -> Result<(), Stri
                 for (_, handle) in prepared {
                     let _ = GlobalFree(handle);
                 }
-                return Err(why);
+                return Err((why, false));
             }
         }
     }
@@ -1273,14 +1294,14 @@ unsafe fn restore_snapshot_open(snapshot: &ClipboardSnapshot) -> Result<(), Stri
         for (_, handle) in prepared {
             let _ = GlobalFree(handle);
         }
-        return Err(format!("step=EmptyClipboard err={err}"));
+        return Err((format!("step=EmptyClipboard err={err}"), false));
     }
     for (index, (format, handle)) in prepared.iter().copied().enumerate() {
         if let Err(err) = SetClipboardData(format, HANDLE(handle.0)) {
             for (_, remaining) in prepared.into_iter().skip(index) {
                 let _ = GlobalFree(remaining);
             }
-            return Err(format!("step=SetClipboardData format={format} err={err}"));
+            return Err((format!("step=SetClipboardData format={format} err={err}"), true));
         }
     }
     Ok(())
@@ -1291,13 +1312,13 @@ unsafe fn set_clipboard_preserving(
     text: &str,
     pending: Option<&PendingClipboard>,
     owner: HWND,
-) -> Result<(Arc<ClipboardSnapshot>, u32), String> {
+) -> Result<(Arc<ClipboardSnapshot>, u32), (String, Option<(Arc<ClipboardSnapshot>, u32)>)> {
     if owner.0.is_null() {
-        return Err("clipboard owner window unavailable".to_string());
+        return Err(("clipboard owner window unavailable".to_string(), None));
     }
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let bytes = std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2);
-    let mut replacement = Some(allocate_clipboard_bytes(bytes)?);
+    let mut replacement = Some(allocate_clipboard_bytes(bytes).map_err(|err| (err, None))?);
 
     let mut opened = false;
     for attempt in 0..5 {
@@ -1311,15 +1332,17 @@ unsafe fn set_clipboard_preserving(
     }
     if !opened {
         let _ = GlobalFree(replacement.take().unwrap());
-        return Err(format!("step=OpenClipboard {}", describe_clipboard_holder()));
+        return Err((format!("step=OpenClipboard {}", describe_clipboard_holder()), None));
     }
+    let mut recovery = None;
     let result = (|| -> Result<(Arc<ClipboardSnapshot>, u32), String> {
         let current_sequence = GetClipboardSequenceNumber();
         let previous = match pending {
-            Some(state) if same_clipboard_version(
+            Some(state) if pending_clipboard_matches(
                 state.sequence,
                 current_sequence,
-                native_get_clipboard_text_open().as_deref() == Some(state.injected_text.as_str()),
+                state.restoring,
+                !state.restoring && native_get_clipboard_text_open().as_deref() == Some(state.injected_text.as_str()),
             ) => Arc::clone(&state.previous),
             _ => Arc::new(capture_clipboard_open()?),
         };
@@ -1328,7 +1351,9 @@ unsafe fn set_clipboard_preserving(
         if let Err(err) = SetClipboardData(13, HANDLE(handle.0)) {
             let _ = GlobalFree(handle);
             // The previous data was already removed; restore it immediately.
-            let _ = restore_snapshot_open(&previous);
+            if restore_snapshot_open(&previous).is_err() {
+                recovery = Some((Arc::clone(&previous), GetClipboardSequenceNumber()));
+            }
             return Err(format!("step=SetClipboardData err={err}"));
         }
         mark_clipboard_history_excluded();
@@ -1338,11 +1363,11 @@ unsafe fn set_clipboard_preserving(
     if let Some(handle) = replacement {
         let _ = GlobalFree(handle);
     }
-    result
+    result.map_err(|reason| (reason, recovery))
 }
 
 #[cfg(windows)]
-unsafe fn restore_clipboard_if_unchanged(state: &PendingClipboard) -> RestoreOutcome {
+unsafe fn restore_clipboard_if_unchanged(state: &mut PendingClipboard) -> RestoreOutcome {
     let mut opened = false;
     for attempt in 0..5 {
         if OpenClipboard(HWND(state.owner_hwnd as *mut _)).is_ok() {
@@ -1356,15 +1381,28 @@ unsafe fn restore_clipboard_if_unchanged(state: &PendingClipboard) -> RestoreOut
     if !opened {
         return RestoreOutcome::Unavailable;
     }
-    let restored = if same_clipboard_version(
+    let restored = if pending_clipboard_matches(
         state.sequence,
         GetClipboardSequenceNumber(),
-        native_get_clipboard_text_open().as_deref() == Some(state.injected_text.as_str()),
+        state.restoring,
+        !state.restoring && native_get_clipboard_text_open().as_deref() == Some(state.injected_text.as_str()),
     ) {
-        if restore_snapshot_open(&state.previous).is_ok() {
-            RestoreOutcome::Restored
-        } else {
-            RestoreOutcome::Unavailable
+        match restore_snapshot_open(&state.previous) {
+            Ok(()) => RestoreOutcome::Restored,
+            Err((reason, modified)) => {
+                crate::commands::system::write_log_line(&format!(
+                    "[RUST] [inject] clipboard restore failed pasteId={} modified={} reason={}",
+                    state.paste_id, modified, reason
+                ));
+                if modified {
+                    // Still holding OpenClipboard: only this restore attempt
+                    // caused this version change. Keep the original snapshot
+                    // and retry while the clipboard stays at this sequence.
+                    state.sequence = GetClipboardSequenceNumber();
+                    state.restoring = true;
+                }
+                RestoreOutcome::Unavailable
+            }
         }
     } else {
         RestoreOutcome::Changed
@@ -1579,7 +1617,7 @@ unsafe fn native_get_clipboard_text_open() -> Option<String> {
 mod tests {
     use super::{
         can_snapshot_format, describe_editability, editability_gate, is_likely_editable_pub,
-        normalize_for_edit, same_clipboard_version, selection_len_matches, EditableGate,
+        normalize_for_edit, pending_clipboard_matches, same_clipboard_version, selection_len_matches, EditableGate,
     };
     use crate::context::AppContext;
 
@@ -1603,6 +1641,16 @@ mod tests {
         assert!(!same_clipboard_version(41, 42, true)); // User copied the same text anew.
         assert!(!same_clipboard_version(41, 41, false));
         assert!(!same_clipboard_version(0, 0, true)); // No reliable sequence number.
+    }
+
+    #[test]
+    fn partial_restore_retry_accepts_only_our_updated_sequence() {
+        // A failed write can leave an empty or partially restored clipboard
+        // without our injected text, but only our own sequence is reusable.
+        assert!(pending_clipboard_matches(42, 42, true, false));
+        assert!(!pending_clipboard_matches(42, 43, true, false));
+        assert!(!pending_clipboard_matches(42, 42, false, false));
+        assert!(pending_clipboard_matches(42, 42, false, true));
     }
 
             #[test]
