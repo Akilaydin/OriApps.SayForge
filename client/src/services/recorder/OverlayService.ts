@@ -192,7 +192,7 @@ export class OverlayService {
     this.stopCardKeepAlive()
     try {
       await bridge.setEscapeActionMode('off', 0)
-    } catch {  }
+    } catch { /* Best effort while dismissing the overlay. */ }
   }
 
   showWaiting() {

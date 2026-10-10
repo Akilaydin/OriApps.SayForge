@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, Info, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
