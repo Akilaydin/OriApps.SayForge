@@ -9,7 +9,7 @@ import { checkForUpdates, getUpdateStatus, subscribeUpdates } from '@/services/a
 
 const REPO_URL = 'https://github.com/Akilaydin/OriApps.SayForge'
 const RELEASES_URL = `${REPO_URL}/releases`
-const ATTRIBUTION_URL = `\${REPO_URL}/blob/main/README.md#license-and-third-party-notices`
+const ATTRIBUTION_URL = `${REPO_URL}/blob/main/README.md#license-and-third-party-notices`
 const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`
 
 export default function About() {
