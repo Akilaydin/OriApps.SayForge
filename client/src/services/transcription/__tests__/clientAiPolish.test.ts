@@ -8,13 +8,23 @@ vi.mock('../../store', () => ({getSetting: (key: string) => Promise.resolve({
 vi.mock('../../debugLog', () => ({addRuntimeEvent:vi.fn(),AI_LOG_SOURCE:'ai',AI_EVENT_REQUEST:'request',AI_EVENT_OUTCOME:'outcome'}))
 import { polishWithClientAi, isClientAiConfigComplete } from '../clientAiPolish'
 import { resolveAiPolicy } from '../aiPolicy'
+import { addRuntimeEvent } from '../../debugLog'
 const options = () => ({asrText:'Synthetic transcript',policy:resolveAiPolicy({workMode:'cloud_api',aiEnabled:true,aiMinDurationSec:0,audioDurationSec:1}),outcomeContext:{operationId:Math.random().toString(),trigger:'live' as const},logSource:'test'})
-beforeEach(() => { mocks.invoke.mockReset() })
+beforeEach(() => { mocks.invoke.mockReset(); vi.mocked(addRuntimeEvent).mockClear() })
 afterEach(() => vi.useRealTimers())
 describe('optional client AI failure and cancellation', () => {
   it('keeps the transcript when AI fails', async () => {
     mocks.invoke.mockRejectedValue(new Error('Synthetic network failure'))
     expect(await polishWithClientAi(options())).toMatchObject({llmText:'Synthetic transcript',aiStatus:'failed',aiReason:'call_failed'})
+  })
+  it('does not persist provider-echoed private data on AI failure', async () => {
+    mocks.invoke.mockRejectedValue(new Error('HTTP 401 sk-synthetic-secret private transcript and editor context'))
+    expect(await polishWithClientAi(options())).toMatchObject({llmText:'Synthetic transcript',aiStatus:'failed'})
+    const events = vi.mocked(addRuntimeEvent).mock.calls
+    const warn = events.find(([level]) => level === 'warn')
+    expect(warn?.[3]).toMatchObject({ errorCode: 'request_failed', provider: 'openai_compat' })
+    expect(JSON.stringify(events)).not.toContain('synthetic-secret')
+    expect(JSON.stringify(events)).not.toContain('editor context')
   })
   it('keeps the transcript when AI reaches its timeout', async () => {
     vi.useFakeTimers(); mocks.invoke.mockReturnValue(new Promise(() => {}))

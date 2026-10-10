@@ -153,6 +153,25 @@ fn parse_log_line(line: &str) -> Option<TimelineEntry> {
 // Older AI-provider logs included raw HTTP bodies and request URLs. Diagnostics exports
 // must not reintroduce that data even after new logging paths have been fixed.
 fn redact_ai_provider_log_line(line: &str) -> Cow<'_, str> {
+    // Before redaction, the frontend mirrored the complete rejected AI error
+    // (including provider-echoed text) through append_debug_log. Its source may
+    // be cloud, history or another caller, so match the stable event name.
+    let frontend_ai_event = if line.contains("[WARN] [")
+        && line.contains("] Custom AI cleanup failed; using raw ASR text") {
+        Some("[WARN] [ai] Custom AI cleanup failed; using raw ASR text")
+    } else if line.contains("[INFO] [ai] ai.request") {
+        Some("[INFO] [ai] ai.request")
+    } else if line.contains("[INFO] [ai] ai.outcome") {
+        Some("[INFO] [ai] ai.outcome")
+    } else {
+        None
+    };
+    if let Some(event) = frontend_ai_event {
+        // Preserve the timestamp, but not the original source or arbitrary JSON.
+        let timestamp = line.split_once("] ").map(|(start, _)| format!("{start}] ")).unwrap_or_default();
+        return Cow::Owned(format!("{timestamp}{event} [details redacted]"));
+    }
+
     const TAG: &str = "[RUST] [provider] ";
     let Some((prefix, rest)) = line.split_once(TAG) else {
         return Cow::Borrowed(line);
@@ -527,11 +546,17 @@ mod tests {
             "Response excerpt: private-editor-context\n",
             "[2026-10-10 09:01:02] [RUST] [provider] ai/openai-compat-test http_status FAILED ",
             "API returned 403: sk-synthetic-secret\n",
+            "[2026-10-10 09:01:02] [WARN] [cloud] Custom AI cleanup failed; using raw ASR text ",
+            "{\"error\":\"provider echoed sk-synthetic-secret private-editor-context\"}\n",
+            "[2026-10-10 09:01:02] [INFO] [ai] ai.outcome ",
+            "{\"model\":\"sk-synthetic-secret\",\"status\":\"failed\"}\n",
             "[2026-10-10 09:01:03] [RUST] [provider] openai-compat/asr start safe\n",
         );
         let safe_logs = redact_ai_provider_logs(legacy_log);
         assert!(safe_logs.contains("ai/openai-compat http_status http=401"));
         assert!(safe_logs.contains("ai/openai-compat-test http_status http=403"));
+        assert!(safe_logs.contains("[WARN] [ai] Custom AI cleanup failed; using raw ASR text [details redacted]"));
+        assert!(safe_logs.contains("[INFO] [ai] ai.outcome [details redacted]"));
         assert!(safe_logs.contains("openai-compat/asr start safe"));
         assert!(!safe_logs.contains("synthetic-secret"));
         assert!(!safe_logs.contains("private transcript"));
