@@ -113,7 +113,8 @@ on ports 1420/1421; custom `TAURI_DEV_HOST` needs an explicit matching dev CSP o
 Tauri's automatic bundled-script/style hashes and nonces remain enabled, as described in
 [Tauri CSP guidance](https://v2.tauri.app/security/csp/).
 WebView2 automatically allows microphone and denies camera; other permissions use the
-browser default. Global browser flags, including `--ignore-certificate-errors`, are unchanged.
+browser default. Shared browser flags prevent background throttling while retaining
+normal HTTPS certificate validation; unavailable Google Fonts use CSS fallbacks.
 
 ## Cloud audio encoding
 

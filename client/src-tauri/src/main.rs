@@ -44,8 +44,7 @@ fn initialize_autostart(
 /// `additionalBrowserArgs` in tauri.conf.json (WebView2 rejects the second environment
 /// with ERROR_INVALID_STATE when the option sets differ).
 const WEBVIEW2_BROWSER_ARGS: &str =
-    "--ignore-certificate-errors \
-     --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
+    "--disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
      --disable-background-timer-throttling";
 
 #[cfg(target_os = "windows")]
@@ -591,7 +590,7 @@ mod config_tests {
         assert!(!config["app"]["security"]["csp"]["connect-src"].as_str().unwrap().contains("ws:"));
         assert!(config["app"]["security"]["devCsp"]["connect-src"].as_str().unwrap().contains("ws://localhost:1420"));
         assert_eq!(super::WEBVIEW2_BROWSER_ARGS.split_whitespace().collect::<Vec<_>>(), vec![
-            "--ignore-certificate-errors", "--disable-backgrounding-occluded-windows",
+            "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
         ]);
     }
