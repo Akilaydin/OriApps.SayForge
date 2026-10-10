@@ -85,6 +85,11 @@ Paths below are relative to `client/`.
 
 - Run IDs and cancellation must prevent late results from updating another recording or editor field.
 - Probe and preserve the original edit target; provide fallback text when native insertion fails or is unconfirmed.
+- Protected Win32 paste snapshots HGLOBAL clipboard formats under one OpenClipboard lock
+  before replacing the contents. GDI, owner-display, private or inaccessible formats
+  cause a fallback without changing the clipboard. Restore is serialized with later
+  paste operations, requires the original clipboard sequence number and text, and
+  retains the original snapshot if access errors prevent immediate restoration.
 - Treat editor context as bounded, untrusted data. Do not replace selected text unless an AI edit was applied.
 - Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
 - Cloud ASR sends recorded audio; optional cloud AI refinement may transmit text/context. Retired model files/settings remain untouched.
