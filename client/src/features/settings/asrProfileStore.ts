@@ -14,7 +14,6 @@ import {
   parseAsrProfilesDetailed,
   resolveActiveAsrProfile,
   resolveAsrApiModel,
-  resolveAsrModelOption,
   resolveAsrRuntimeProvider,
   type AsrPlatform,
   type AsrProfile,

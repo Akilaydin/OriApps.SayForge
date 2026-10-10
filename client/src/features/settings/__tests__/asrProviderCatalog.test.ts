@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   ASR_PLATFORMS, ASR_PROVIDERS, ASR_COMPAT_PROTOCOLS,
   asrCardIdOfLegacyProvider, asrCardTitle,
-  asrEndpointHost, asrEndpointUrl, asrModelsOf,
+  asrEndpointHost, asrEndpointUrl,
   describeAsrMissing, effectiveAsrCredentials,
-  emptyAsrProfile, findAsrProvider, gradeAsrLatency,
+  emptyAsrProfile, gradeAsrLatency,
   groupAsrModelsByVendor, parseAsrAudioEncoding,
   parseAsrCompatProtocol, parseAsrProfiles, parseAsrProfilesDetailed,
   providersOfPlatform, resolveActiveAsrProfile,
   resolveAsrApiModel, resolveAsrModel,
-  resolveAsrModelOption, resolveAsrRuntimeProvider,
+  resolveAsrRuntimeProvider,
   type AsrModelOption, type AsrProfile,
 } from '../asrProviderCatalog'
 

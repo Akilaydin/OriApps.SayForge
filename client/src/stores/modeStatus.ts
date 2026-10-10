@@ -46,9 +46,9 @@ function cloudProviderShort(provider: string): string {
 export async function refreshModeStatus(): Promise<void> {
   const mode: ModeStatusMode = 'cloud_api'
 
-  let detail = ''
-  let ready: boolean | null = null
-  let blockedReason = ''
+  let detail: string
+  let ready: boolean
+  let blockedReason: string
 
   {
     const state = await loadAsrProfiles()

@@ -8,7 +8,6 @@ import {
   addHistory,
   deleteHistory,
   getSetting,
-  updateHistoryRecord,
   type HistoryFailReasonCode,
   type HistoryRecord,
 } from '../store'
@@ -826,6 +825,7 @@ export class RecorderOrchestrator {
       if (!label) return
       await this.checkMicMuted(label, runId, probeSequence)
     } catch {
+      // Microphone mute probing is optional.
     }
   }
 
@@ -896,7 +896,7 @@ export class RecorderOrchestrator {
     try {
       await deleteHistory(artifact.recordId)
       void bridge.emit('history-updated')
-    } catch {  }
+    } catch { /* Preserve cancellation even if history cleanup fails. */ }
   }
 
   private async cancelRecording(
@@ -1433,7 +1433,7 @@ export class RecorderOrchestrator {
     const targetCapture = captureActiveInsertionTarget(undefined, {
       preserveExistingOnFailure: true,
     })
-    let activeAppContext: ActiveAppContext | null = null
+    let activeAppContext: ActiveAppContext | null
     try {
       // AI is the only consumer of editor text. If cleanup is off, do not read the text even when
       // the preference remains enabled, so the privacy boundary matches actual behavior.
@@ -1799,7 +1799,7 @@ export class RecorderOrchestrator {
           this.overlayService.clearWarning()
         }
       }
-    } catch {  }
+    } catch { /* Microphone mute probing is optional. */ }
   }
 
   private async stopRecording() {

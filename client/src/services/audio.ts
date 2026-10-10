@@ -254,6 +254,7 @@ export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
       stream = await navigator.mediaDevices.getUserMedia(microphoneCaptureConstraints(undefined))
       devices = audioInputs(await navigator.mediaDevices.enumerateDevices())
     } catch {
+      // Device labels can remain unavailable without microphone permission.
     } finally {
       if (stream) stream.getTracks().forEach((t) => t.stop())
     }
@@ -277,6 +278,7 @@ function createAudioContext() {
     try {
       return new AudioContextCtor(opts)
     } catch {
+      // Try the next option set on older WebView2 versions.
     }
   }
   return new AudioContextCtor()

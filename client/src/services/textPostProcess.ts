@@ -37,7 +37,7 @@ export function stripTrailingPunctuation(text: string): string {
 export function replacePunctuationWithSpace(text: string): string {
   if (!text) return text
   let result = text.replace(
-    /(?<!\d)\.(?!\d)|[!?,;:"'(){}<>_=+|@#^&*~—–\[\]]/gu,
+    /(?<!\d)\.(?!\d)|[!?,;:"'(){}<>_=+|@#^&*~—–[\]]/gu,
     ' ',
   )
   result = result.replace(/[^\S\n]+/g, ' ').replace(/ *\n */g, '\n').trim()
