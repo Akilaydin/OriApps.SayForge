@@ -24,15 +24,6 @@ export function preferredAiProviderValue(): string {
   return 'openai_compat'
 }
 
-export function aiProvidersForDisplay(): AiProvider[] {
-  const preferred = preferredAiProviderValue()
-  if (AI_PROVIDERS[0]?.value === preferred) return AI_PROVIDERS
-  return [
-    ...AI_PROVIDERS.filter((provider) => provider.value === preferred),
-    ...AI_PROVIDERS.filter((provider) => provider.value !== preferred),
-  ]
-}
-
 export function findProvider(value: string): AiProvider {
   return AI_PROVIDERS.find((p) => p.value === value) ?? AI_PROVIDERS[0]
 }

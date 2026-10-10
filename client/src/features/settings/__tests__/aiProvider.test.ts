@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   AI_PROVIDERS,
-  aiProvidersForDisplay,
   blankProfile,
   checkAiKeyFormat,
   checkApiUrl,
@@ -44,7 +43,6 @@ describe('AI_PROVIDERS catalog', () => {
 describe('provider defaults', () => {
   it('prefers OpenAI-compatible', () => {
     expect(preferredAiProviderValue()).toBe('openai_compat')
-    expect(aiProvidersForDisplay()[0].value).toBe('openai_compat')
     expect(blankProfile().provider).toBe('openai_compat')
   })
 })
