@@ -42,6 +42,10 @@ API key, upload format or prompts during recording applies to the next recording
 4. Insert the result into the captured editable target. If insertion fails or cannot be confirmed, show a copyable fallback card.
 
 Cancellation must not insert late results. Empty/silent recordings can produce no text. Not every Windows application permits automatic insertion.
+When clipboard protection is enabled, insertion backs up supported clipboard formats
+and restores them if the clipboard has not changed.
+If a format cannot be backed up safely or the clipboard is unavailable, SayForge
+leaves the original contents untouched and shows the copyable fallback card.
 
 ## Speech engines
 
