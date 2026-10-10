@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Write;
+use std::borrow::Cow;
 use tauri::State;
 use crate::storage::Storage;
 
@@ -149,6 +150,56 @@ fn parse_log_line(line: &str) -> Option<TimelineEntry> {
     })
 }
 
+// Older AI-provider logs included raw HTTP bodies and request URLs. Diagnostics exports
+// must not reintroduce that data even after new logging paths have been fixed.
+fn redact_ai_provider_log_line(line: &str) -> Cow<'_, str> {
+    const TAG: &str = "[RUST] [provider] ";
+    let Some((prefix, rest)) = line.split_once(TAG) else {
+        return Cow::Borrowed(line);
+    };
+    let (scope, detail) = if let Some(detail) = rest.strip_prefix("ai/openai-compat-test ") {
+        ("ai/openai-compat-test", detail)
+    } else if let Some(detail) = rest.strip_prefix("ai/openai-compat ") {
+        ("ai/openai-compat", detail)
+    } else {
+        return Cow::Borrowed(line);
+    };
+
+    // Whitelist only stage names from the application, never arbitrary provider prose.
+    let stage = match detail.split_whitespace().next().unwrap_or("") {
+        "start" => "start",
+        "http_status" => "http_status",
+        "parse_json" => "parse_json",
+        "read_body" => "read_body",
+        "http_send" => "http_send",
+        "thinking_params_rejected" => "thinking_params_rejected",
+        "no_content_fallback_to_input" => "no_content_fallback_to_input",
+        "empty_after_strip_thinking" => "empty_after_strip_thinking",
+        "ok" => "ok",
+        _ => "event",
+    };
+    // The numeric status is useful for support, unlike response headers/body content.
+    let http = if stage == "http_status" {
+        [" http=", " returned error ", " returned "]
+            .iter()
+            .filter_map(|marker| detail.split_once(marker).map(|(_, tail)| tail))
+            .filter_map(|tail| tail.get(..3).and_then(|n| n.parse::<u16>().ok()))
+            .find(|code| (100..=599).contains(code))
+            .map(|status| format!(" http={status}"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    Cow::Owned(format!("{prefix}{TAG}{scope} {stage}{http} [details redacted]"))
+}
+
+fn redact_ai_provider_logs(content: &str) -> String {
+    content.lines()
+        .map(|line| redact_ai_provider_log_line(line).into_owned())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn issue_window_label(occurrence: &str) -> &'static str {
     match occurrence {
         "just_now" => "Just now",
@@ -199,7 +250,7 @@ fn read_and_parse_logs() -> (Vec<TimelineEntry>, usize) {
         files_scanned += 1;
         if let Ok(content) = std::fs::read_to_string(&path) {
             for line in content.lines() {
-                if let Some(entry) = parse_log_line(line) {
+                if let Some(entry) = parse_log_line(&redact_ai_provider_log_line(line)) {
                     all_entries.push(entry);
                 }
             }
@@ -334,7 +385,8 @@ pub fn create_diagnostics_zip(data: Value) -> Result<String, String> {
             if let Ok(content) = std::fs::read(&path) {
                 let zip_name = format!("logs/{}", filename);
                 zip.start_file(&zip_name, options).map_err(|e| e.to_string())?;
-                zip.write_all(&content).map_err(|e| e.to_string())?;
+                let safe_logs = redact_ai_provider_logs(&String::from_utf8_lossy(&content));
+                zip.write_all(safe_logs.as_bytes()).map_err(|e| e.to_string())?;
             }
         }
     }
@@ -459,4 +511,44 @@ pub fn open_log_folder() -> Result<(), String> {
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn diagnostics_zip_redacts_old_ai_responses_but_keeps_http_status() {
+        let legacy_log = concat!(
+            "[2026-10-10 09:01:00] [RUST] [provider] ai/openai-compat http_status FAILED ",
+            "API returned error 401 [http=401]: {\"message\":\"sk-synthetic-secret private transcript\"}\n",
+            "[2026-10-10 09:01:01] [RUST] [provider] ai/openai-compat parse_json FAILED ",
+            "Response excerpt: private-editor-context\n",
+            "[2026-10-10 09:01:02] [RUST] [provider] ai/openai-compat-test http_status FAILED ",
+            "API returned 403: sk-synthetic-secret\n",
+            "[2026-10-10 09:01:03] [RUST] [provider] openai-compat/asr start safe\n",
+        );
+        let safe_logs = redact_ai_provider_logs(legacy_log);
+        assert!(safe_logs.contains("ai/openai-compat http_status http=401"));
+        assert!(safe_logs.contains("ai/openai-compat-test http_status http=403"));
+        assert!(safe_logs.contains("openai-compat/asr start safe"));
+        assert!(!safe_logs.contains("synthetic-secret"));
+        assert!(!safe_logs.contains("private transcript"));
+        assert!(!safe_logs.contains("private-editor-context"));
+
+        // Uses the same sanitizer as the production logs/ ZIP entry.
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        zip.start_file("logs/sayforge.log", zip::write::FileOptions::default()).unwrap();
+        zip.write_all(safe_logs.as_bytes()).unwrap();
+        let zip_bytes = zip.finish().unwrap().into_inner();
+        let mut archive = zip::ZipArchive::new(Cursor::new(zip_bytes)).unwrap();
+        let mut archived_log = String::new();
+        archive.by_name("logs/sayforge.log").unwrap().read_to_string(&mut archived_log).unwrap();
+        assert_eq!(archived_log, safe_logs);
+
+        let preview_entry = parse_log_line(&redact_ai_provider_log_line(legacy_log.lines().next().unwrap())).unwrap();
+        assert!(preview_entry.title.contains("http=401"));
+        assert!(!preview_entry.title.contains("synthetic-secret"));
+    }
 }

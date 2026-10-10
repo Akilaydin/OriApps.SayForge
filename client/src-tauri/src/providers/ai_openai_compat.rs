@@ -91,7 +91,6 @@ fn rejected_thinking_field(body: &str, overrides: &serde_json::Value) -> Option<
 
 struct ChatHttpResponse {
     status: reqwest::StatusCode,
-    summary: String,
     body: String,
 }
 
@@ -119,12 +118,10 @@ async fn send_chat_once(
         .map_err(ChatHttpError::Send)?;
 
     let status = resp.status();
-    let summary = diag::http_summary(status, resp.headers());
     let body = resp.text().await.map_err(ChatHttpError::ReadBody)?;
 
     Ok(ChatHttpResponse {
         status,
-        summary,
         body,
     })
 }
@@ -205,13 +202,7 @@ pub async fn polish(
     diag::log(
         SCOPE,
         "start",
-        &format!(
-            "provider={} model={} chars={} url={}",
-            config.provider,
-            config.model,
-            text.chars().count(),
-            url
-        ),
+        &format!("chars={}", text.chars().count()),
     );
 
     let resp = send_chat_with_thinking_fallback(
@@ -231,42 +222,22 @@ pub async fn polish(
         ChatHttpError::ReadBody(e) => diag::fail(
             SCOPE,
             "read_body",
-            format!("Failed to read response: {}", e),
+            format!("Failed to read provider response ({})", classify_read_error(&e)),
         ),
     })?;
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
     let ChatHttpResponse {
         status,
-        summary: http_summary,
         body: body_text,
     } = resp;
 
     if !status.is_success() {
-        return Err(diag::fail(
-            SCOPE,
-            "http_status",
-            format!(
-                "API returned error {} [{}]: {}",
-                status,
-                http_summary,
-                diag::truncate(&body_text, 200)
-            ),
-        ));
+        return Err(diag::http_failure(SCOPE, status, &body_text));
     }
 
-    let data: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| {
-        diag::fail(
-            SCOPE,
-            "parse_json",
-            format!(
-                "Failed to parse response: {} [{}] response excerpt: {}",
-                e,
-                http_summary,
-                diag::truncate(&body_text, 200)
-            ),
-        )
-    })?;
+    let data: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|_| diag::fail(SCOPE, "parse_json", invalid_json_message(status)))?;
 
     let result_text = match extract_chat_completion_text(&data) {
         Some(t) => t,
@@ -274,11 +245,7 @@ pub async fn polish(
             diag::log(
                 SCOPE,
                 "no_content_fallback_to_input",
-                &format!(
-                    "Response contained no usable content; returned the original text [{}] {}",
-                    http_summary,
-                    diag::describe_json(&body_text)
-                ),
+                &format!("No usable text (HTTP {}, body_bytes={})", status.as_u16(), body_text.len()),
             );
             text.to_string()
         }
@@ -291,8 +258,7 @@ pub async fn polish(
             SCOPE,
             "empty_after_strip_thinking",
             &format!(
-                "Output was empty after removing the reasoning block; returned the original text model={} raw_chars={}",
-                config.model,
+                "Output empty after reasoning removal; returned original text raw_chars={}",
                 result_text.chars().count()
             ),
         );
@@ -371,16 +337,7 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
         }
         Ok(resp) => TestResult {
             ok: false,
-            message: diag::fail(
-                "ai/openai-compat-test",
-                "http_status",
-                format!(
-                    "API returned {} [{}]: {}",
-                    resp.status,
-                    resp.summary,
-                    diag::truncate(&resp.body, 100)
-                ),
-            ),
+            message: diag::http_failure("ai/openai-compat-test", resp.status, &resp.body),
             elapsed_ms,
             detail: format!("Model: {}\nRequest URL: {}", config.model, url),
         },
@@ -399,7 +356,7 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
             message: diag::fail(
                 "ai/openai-compat-test",
                 "read_body",
-                format!("Failed to read response: {}", e),
+                format!("Failed to read provider response ({})", classify_read_error(&e)),
             ),
             elapsed_ms,
             detail: format!("Model: {}\nRequest URL: {}", config.model, url),
@@ -407,19 +364,15 @@ pub async fn test_connection(config: &AiProviderConfig) -> TestResult {
     }
 }
 
-/// Convert reqwest errors into concise diagnostic details.
+/// Error strings can contain request URLs and credentials. Log only known error categories.
 fn describe_reqwest_error(e: &reqwest::Error) -> String {
-    let raw = format!("{}", e);
     if e.is_timeout() {
         return "Request timed out; check the network connection and API URL".to_string();
     }
     if e.is_connect() {
-        let lower = raw.to_lowercase();
+        let lower = e.to_string().to_ascii_lowercase();
         if lower.contains("dns") || lower.contains("resolve") || lower.contains("getaddrinfo") {
-            return format!(
-                "DNS lookup failed; the host may not exist or the network may be unavailable: {}",
-                raw
-            );
+            return "DNS lookup failed; check the host and network".to_string();
         }
         if lower.contains("ssl")
             || lower.contains("tls")
@@ -427,17 +380,22 @@ fn describe_reqwest_error(e: &reqwest::Error) -> String {
             || lower.contains("handshake")
             || lower.contains("schannel")
         {
-            return format!("TLS/SSL handshake failed; check the certificate: {}", raw);
+            return "TLS/SSL handshake failed; check the certificate".to_string();
         }
         if lower.contains("refused") {
-            return format!(
-                "Connection refused; the service may not be running: {}",
-                raw
-            );
+            return "Connection refused; the service may not be running".to_string();
         }
-        return format!("Could not connect to the server: {}", raw);
+        return "Could not connect to the server".to_string();
     }
-    raw
+    "HTTP request failed".to_string()
+}
+
+fn classify_read_error(e: &reqwest::Error) -> &'static str {
+    if e.is_timeout() { "timeout" } else { "response read error" }
+}
+
+fn invalid_json_message(status: reqwest::StatusCode) -> String {
+    format!("Provider response was not valid JSON (HTTP {})", status.as_u16())
 }
 
 fn normalize_base_url(url: &str) -> String {
@@ -516,6 +474,42 @@ mod tests {
             .unwrap_or_default();
         out.sort();
         out
+    }
+
+    #[test]
+    fn http_errors_never_return_reflected_sensitive_provider_text() {
+        for (status, code) in [
+            (401, "provider_bad_key"),
+            (403, "provider_forbidden"),
+            (429, "provider_rate_limit"),
+            (500, "provider_internal"),
+        ] {
+            let status = reqwest::StatusCode::from_u16(status).unwrap();
+            let error = diag::http_failure(
+                SCOPE,
+                status,
+                r#"{"error":{"message":"sk-synthetic-secret prompt-context transcript"}}"#,
+            );
+            assert_eq!(crate::error_protocol::code(&error), Some(code));
+            assert!(!error.contains("synthetic-secret"));
+            assert!(!error.contains("prompt-context"));
+            assert!(error.contains(&status.as_u16().to_string()));
+        }
+    }
+
+    #[test]
+    fn malformed_response_and_url_failures_have_only_safe_descriptions() {
+        let malformed_response = "invalid { sk-synthetic-secret transcript";
+        assert!(serde_json::from_str::<serde_json::Value>(malformed_response).is_err());
+        let message = invalid_json_message(reqwest::StatusCode::OK);
+        assert_eq!(message, "Provider response was not valid JSON (HTTP 200)");
+        assert!(!message.contains("synthetic-secret"));
+
+        let error = reqwest::Client::new()
+            .get("http://[sk-synthetic-secret")
+            .build()
+            .unwrap_err();
+        assert!(!describe_reqwest_error(&error).contains("synthetic-secret"));
     }
 
     #[test]
