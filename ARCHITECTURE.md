@@ -67,6 +67,7 @@ Paths below are relative to `client/`.
 
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
+- `inject/mod.rs` — known Qt/vendor process names remain an editability fallback only when the target's UIA control is not explicitly disabled, read-only or non-editable. Detection of 360/QQ/Baidu security processes is diagnostic only and never grants insertion permission.
 - `providers/` — OpenAI-compatible HTTP ASR, optional AI cleanup and capability reporting.
 - ASR IPC uses provider, API key and protocol/model options; old vendor-specific app IDs, workspace credentials and catalog flags are not used.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.

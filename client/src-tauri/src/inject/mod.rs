@@ -310,10 +310,25 @@ pub fn editability_gate(ctx: &context::AppContext) -> EditableGate {
             }
         }
 
-        // For non-Chromium windows with UIA data: if it's not an editable type,
-        // fall through to process-based heuristic (don't hard-reject).
+        // A process allowlist cannot override explicit evidence that the focused
+        // UIA control is disabled, read-only or clearly not an editor.
+        if !ctx.is_enabled {
+            return EditableGate::NoSignal;
+        }
+        if ctx.is_read_only == Some(true) {
+            return EditableGate::UiaReadOnly;
+        }
+        if matches!(ct, "Button" | "MenuItem" | "MenuBar" | "Menu" | "Tab" | "TabItem"
+            | "ToolBar" | "TitleBar" | "ScrollBar" | "Image" | "Hyperlink"
+            | "StatusBar" | "Header" | "HeaderItem" | "Separator" | "ProgressBar") {
+            return EditableGate::NoSignal;
+        }
+        // Unknown UIA controls may still need the legacy process fallback.
     }
 
+    // Includes Qt apps (WeChat/Weixin/DingTalk) and Trae, whose editors may not
+    // expose a caret or usable UIA control. Keep these compatibility paths until
+    // verified replacements exist; the explicit UIA rejects above take precedence.
     let editable_procs = [
         "notepad", "winword", "excel", "powerpnt", "outlook",
         "code", "devenv", "idea64",
@@ -1132,7 +1147,9 @@ unsafe fn describe_clipboard_holder() -> String {
 ///
 #[cfg(windows)]
 const INPUT_GUARD_PROCESSES: &[&str] = &[
-    // 360
+    // Diagnostics only: security tools that may block clipboard or SendInput.
+    // Process detection never grants editability or triggers an insertion.
+    // 360, QQ, Baidu, and other security tools
     "360tray.exe", "360safe.exe", "zhudongfangyu.exe", "360sd.exe", "360rp.exe",
     "hipstray.exe", "usysdiag.exe", "wsctrlsvc.exe",
     "qqpctray.exe", "qqpcmgr.exe", "qqpcrtp.exe",
@@ -1374,6 +1391,39 @@ mod tests {
             editability_gate(&weixin_4x_ctx("wechatdevtools.exe")),
             EditableGate::ProcessAllowlist
         );
+    }
+
+    #[test]
+    fn vendor_editors_keep_fallback_when_uia_cannot_identify_the_editor() {
+        for name in ["Weixin.exe", "WeChat.exe", "DingTalk.exe", "Trae.exe"] {
+            assert_eq!(editability_gate(&weixin_4x_ctx(name)), EditableGate::ProcessAllowlist);
+        }
+    }
+
+    #[test]
+    fn vendor_allowlist_does_not_override_explicit_noneditable_uia_controls() {
+        for name in ["Weixin.exe", "WeChat.exe", "DingTalk.exe", "Trae.exe"] {
+            let mut ctx = weixin_4x_ctx(name);
+            ctx.control_type = "Button".to_string();
+            assert_eq!(editability_gate(&ctx), EditableGate::NoSignal, "{name}");
+
+            ctx.control_type = "Window".to_string();
+            ctx.is_enabled = false;
+            assert_eq!(editability_gate(&ctx), EditableGate::NoSignal, "{name}");
+
+            ctx.is_enabled = true;
+            ctx.is_read_only = Some(true);
+            assert_eq!(editability_gate(&ctx), EditableGate::UiaReadOnly, "{name}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn input_guard_processes_are_detected_by_exact_executable_name() {
+        assert!(super::INPUT_GUARD_PROCESSES.contains(&"360safe.exe"));
+        assert!(super::INPUT_GUARD_PROCESSES.contains(&"qqpctray.exe"));
+        assert!(super::INPUT_GUARD_PROCESSES.contains(&"baidusdtray.exe"));
+        assert!(!super::INPUT_GUARD_PROCESSES.contains(&"not_360safe.exe"));
     }
 
                 #[test]
