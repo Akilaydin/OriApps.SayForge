@@ -27,6 +27,8 @@ API key, upload format or prompts during recording applies to the next recording
 - Cloud speech recognition; cloud audio is uploaded after recording stops; live captions are not supported.
 - Optional AI cleanup with one editable prompt and an OpenAI-compatible endpoint.
 - Hotwords, text replacements, formatting and context-aware editing of selected text.
+  Default text replacements cover common technical terms; an explicitly saved
+  empty list disables replacements, and existing custom lists remain unchanged.
 - Dictionary shows hotword delivery for the active HTTP protocol. Multipart uses its
   prompt for punctuation; chat sends hotwords as context without guaranteeing a match.
 - Searchable local text history with copying and TXT export.
