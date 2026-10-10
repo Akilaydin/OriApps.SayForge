@@ -29,7 +29,9 @@ API key, upload format or prompts during recording applies to the next recording
 - Hotwords, text replacements, formatting and context-aware editing of selected text.
 - Dictionary shows hotword delivery for the active HTTP protocol. Multipart uses its
   prompt for punctuation; chat sends hotwords as context without guaranteeing a match.
-- Searchable local text history with copying and TXT export.
+- Searchable local text history with copying and TXT export. Search matches
+  ASR/AI transcript text only, ignores letter case, and treats `%` and `_`
+  literally. The list, result count and export use the same filter.
 - Local settings export/import and legacy ZIP restore, tray controls and diagnostics.
 - Windows autostart is an explicit choice in Settings; new installs leave it off.
   Existing choices are preserved and enabled startup launches minimized in the tray.
