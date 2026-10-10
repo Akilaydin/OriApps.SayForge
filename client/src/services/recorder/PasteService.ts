@@ -31,6 +31,7 @@ export interface ProbeResult {
 
 export interface PasteResult extends TextInsertionResult {
   attempts?: TextInsertionAttempt[]
+  uncertain?: boolean
 }
 
 export class PasteService {

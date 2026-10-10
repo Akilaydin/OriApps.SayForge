@@ -84,10 +84,11 @@ export function isModifierPTTSetting(pttSetting?: string): boolean {
   ))
 }
 
-export const SLOW_SEND_INPUT_PASTE_MS = 1200
-
-export function isUnconfirmedPaste(strategy: string | undefined, pasteExecMs: number): boolean {
-  return strategy === 'send_input' && pasteExecMs >= SLOW_SEND_INPUT_PASTE_MS
+export function isUnconfirmedPaste(strategy: string | undefined, uncertain?: boolean): boolean {
+  return uncertain === true
+    || strategy === 'send_input'
+    || strategy === 'console_paste'
+    || strategy === 'wm_paste_last_resort'
 }
 
 const PROCESSING_TIMEOUT_BASE_MS = 15_000

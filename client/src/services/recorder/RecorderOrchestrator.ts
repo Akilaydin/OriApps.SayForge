@@ -1303,7 +1303,7 @@ export class RecorderOrchestrator {
     if (!this.isRunCurrent(runId)) return
     const pasteExecMs = Date.now() - pasteStartedAt
 
-    if (result.ok && isUnconfirmedPaste(result.strategy, pasteExecMs)) {
+    if (result.ok && isUnconfirmedPaste(result.strategy, result.uncertain)) {
       addRuntimeEvent('warn', 'recorder', 'External text insertion unconfirmed; showing fallback card', {
         strategy: result.strategy,
         gate: probe.gate,
