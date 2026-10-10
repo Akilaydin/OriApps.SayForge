@@ -203,7 +203,6 @@ export function resolveAndLogAiOutcome(
       attempted: outcome.attempted,
       llmMs: outcome.llmMs,
       ...(outcome.provider && { provider: outcome.provider }),
-      ...(outcome.model && { model: outcome.model }),
     })
   }
   return outcome

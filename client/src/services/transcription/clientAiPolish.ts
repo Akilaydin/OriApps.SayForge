@@ -118,7 +118,6 @@ export async function polishWithClientAi(
     logSource,
     route: policy.route,
     provider: config.provider,
-    model: config.model,
     asrChars: asrText.length,
   })
 
@@ -160,9 +159,8 @@ export async function polishWithClientAi(
     const message = String(error)
     const isTimeout = message.includes('timed out')
     addRuntimeEvent('warn', logSource, 'Custom AI cleanup failed; using raw ASR text', {
-      error: message,
+      errorCode: isTimeout ? 'timeout' : 'request_failed',
       provider: config.provider,
-      model: config.model,
     })
     return toResult(policy, {
       clientFailure: isTimeout ? 'timeout' : 'error',

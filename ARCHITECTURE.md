@@ -9,6 +9,7 @@ Technical reference for the current SayForge implementation. Product behavior be
 - Rust handles Win32 integration, persistence and cloud HTTP calls.
 - Speech mode: `cloud_api`. Retired `local`/server values normalize and persist as `cloud_api` at frontend startup.
 - Optional AI refinement uses an OpenAI-compatible endpoint and a single prompt; Ollama, preset shortcuts, per-app rules and personalization statistics are inactive.
+- AI provider diagnostics record HTTP status, structured error code and coarse transport/JSON failures; no response excerpts, request URLs, model names or editor text. Frontend AI failure events mirror only error categories, not raw exception messages. Diagnostics previews and ZIP exports redact legacy Rust and frontend AI-provider log entries as well.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - The Tauri 2 updater checks one public static GitHub Releases `latest.json` at startup or when requested in About. The signed NSIS is downloaded only after consent; a small UI prompt does not open a separate window and does not interrupt tray startup. On Windows the native updater launches the installer and exits the app.
 - A push to `release` runs Windows tests and one Tauri NSIS build. A separate
