@@ -46,6 +46,8 @@ When clipboard protection is enabled, insertion backs up supported clipboard for
 and restores them if the clipboard has not changed.
 If a format cannot be backed up safely or the clipboard is unavailable, SayForge
 leaves the original contents untouched and shows the copyable fallback card.
+For keyboard-only insertion and other unverified results, SayForge shows the
+copyable fallback card even if Windows accepted the input events.
 
 ## Speech engines
 

@@ -391,6 +391,11 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     let _paste_lock = PASTE_LOCK.lock().unwrap();
     let paste_id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
 
+    // Reject closed or unrelated target windows before touching the clipboard.
+    if !valid_target_tree(target, focus) {
+        return rejected_focus("invalid_target");
+    }
+
     // With protection enabled, capture all supported formats before replacing
     // the clipboard. If a format cannot be backed up, leave it untouched.
     let clipboard_ok = if restore_clipboard {
@@ -481,7 +486,10 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
                 target.0 as isize, target_class, text.len())
         );
 
-        let fg_ok = force_foreground(target);
+        let fg_ok = GetForegroundWindow() == target || force_foreground(target);
+        if !fg_ok {
+            return rejected_focus("target_not_foreground");
+        }
 
         let mut result_val: usize = 0;
         let send_ok = SendMessageTimeoutW(
@@ -494,23 +502,11 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
             Some(&mut result_val),
         );
 
-        if send_ok.0 != 0 {
-            crate::commands::system::write_log_line(
-                &format!("[RUST] [inject] console paste ok hwnd={} fgOk={}", target.0 as isize, fg_ok)
-            );
-            return InjectResult {
-                ok: true,
-                strategy: Some("console_paste".to_string()),
-                reason: None,
-                detail: Some(format!(
-                    "hwnd={} class={} textLen={} fgOk={}",
-                    target.0 as isize, target_class, text.len(), fg_ok
-                )),
-                uncertain: false,
-            };
-        }
-        crate::commands::system::write_log_line(
-            "[RUST] [inject] console paste failed, fallback to SendInput"
+        // Message delivery does not prove that the console inserted anything.
+        // Do not retry automatically: the first attempt may have succeeded.
+        return unconfirmed_paste(
+            "console_paste",
+            format!("hwnd={} delivered={} textLen={}", target.0 as isize, send_ok.0 != 0, text.len()),
         );
     }
 
@@ -527,21 +523,21 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         || focus_class.contains("scintilla");
 
     if try_wm_paste {
-        if let Some(result) = wm_paste_verified(target, paste_target, &focus_class, text, paste_id) {
-            return result;
-        }
-        crate::commands::system::write_log_line("[RUST] [inject] WM_PASTE failed, fallback to SendInput");
+        return wm_paste_verified(target, paste_target, &focus_class, text, paste_id);
     }
 
     // Step 3: Fallback — force foreground + SendInput Ctrl+V
     if !clipboard_still_ours(text, paste_id) {
         return clipboard_changed_result();
     }
-    let fg_ok = force_foreground(target);
+    let fg_ok = GetForegroundWindow() == target || force_foreground(target);
     crate::commands::system::write_log_line(
         &format!("[RUST] [inject] SendInput fallback target={} fg_ok={} class={} textLen={} {}",
             target.0 as isize, fg_ok, focus_class, text.len(), describe_elevation(target))
     );
+    if !fg_ok {
+        return rejected_focus("target_not_foreground");
+    }
 
     // Release stuck modifiers
     release_modifiers();
@@ -554,6 +550,10 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
 
     if !clipboard_still_ours(text, paste_id) {
         return clipboard_changed_result();
+    }
+    // SendInput goes to whichever control owns keyboard focus at this instant.
+    if !keyboard_focus_is_confirmed(target, focus) {
+        return rejected_focus("focus_not_confirmed");
     }
 
     // SendInput Ctrl+V
@@ -576,20 +576,8 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         sent, last_err, focus_class, target.0 as isize, focus.0 as isize, text.len(), fg_ok
     );
 
-    // SendInput Ctrl+V is fire-and-forget. For Chromium-class windows we
-    // used to mark ALL results as uncertain, but that was too aggressive —
-    // it blocked every browser input field. Now we only mark as uncertain
-    // when UIA says the focused element is NOT an editable control.
-    let uncertain = false; // UIA-based editability is checked upstream in probe
-
     if sent >= 4 {
-        return InjectResult {
-            ok: true,
-            strategy: Some("send_input".to_string()),
-            reason: None,
-            detail: Some(detail),
-            uncertain,
-        };
+        return unconfirmed_paste("send_input", detail);
     }
 
     //
@@ -599,38 +587,6 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         "[RUST] [inject] SendInput blocked {} inputGuards={}",
         detail, guards
     ));
-
-    if !try_wm_paste {
-        if !clipboard_still_ours(text, paste_id) {
-            return clipboard_changed_result();
-        }
-        let mut result_val: usize = 0;
-        let send_ok = SendMessageTimeoutW(
-            paste_target,
-            WM_PASTE,
-            windows::Win32::Foundation::WPARAM(0),
-            windows::Win32::Foundation::LPARAM(0),
-            SMTO_ABORTIFHUNG,
-            2000,
-            Some(&mut result_val),
-        );
-        if send_ok.0 != 0 {
-            crate::commands::system::write_log_line(&format!(
-                "[RUST] [inject] WM_PASTE last-resort ok hwnd={} class={}",
-                paste_target.0 as isize, focus_class
-            ));
-            return InjectResult {
-                ok: true,
-                strategy: Some("wm_paste_last_resort".to_string()),
-                reason: None,
-                detail: Some(format!("{} inputGuards={}", detail, guards)),
-                uncertain: false,
-            };
-        }
-        crate::commands::system::write_log_line(
-            "[RUST] [inject] WM_PASTE last-resort also failed",
-        );
-    }
 
     let blocked_by_privilege = sent == 0 && last_err == ERROR_ACCESS_DENIED;
     InjectResult {
@@ -649,14 +605,81 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     }
 }
 
+#[cfg(windows)]
+fn rejected_focus(reason: &str) -> InjectResult {
+    InjectResult {
+        ok: false,
+        strategy: Some("send_input".to_string()),
+        reason: Some(reason.to_string()),
+        detail: None,
+        uncertain: false,
+    }
+}
+
+#[cfg(windows)]
+fn unconfirmed_paste(strategy: &str, detail: String) -> InjectResult {
+    InjectResult {
+        ok: false,
+        strategy: Some(strategy.to_string()),
+        reason: Some("paste_unconfirmed".to_string()),
+        detail: Some(detail),
+        uncertain: true,
+    }
+}
+
+#[cfg(any(windows, test))]
+fn keyboard_focus_gate(
+    target_valid: bool,
+    focus_valid: bool,
+    foreground_matches: bool,
+    focus_matches: bool,
+) -> bool {
+    target_valid && focus_valid && foreground_matches && focus_matches
+}
+
+#[cfg(any(windows, test))]
+fn wm_paste_has_observed_effect(delivered: bool, before: Option<usize>, after: Option<usize>) -> bool {
+    delivered && matches!((before, after), (Some(start), Some(end)) if start != end)
+}
+
+#[cfg(windows)]
+unsafe fn valid_target_tree(target: HWND, focus: HWND) -> bool {
+    ffi::IsWindow(target) != 0
+        && ffi::IsWindowVisible(target) != 0
+        && ffi::IsWindowEnabled(target) != 0
+        && ffi::IsWindow(focus) != 0
+        && ffi::IsWindowEnabled(focus) != 0
+        && (focus == target || ffi::IsChild(target, focus) != 0)
+}
+
+#[cfg(windows)]
+unsafe fn keyboard_focus_is_confirmed(target: HWND, requested: HWND) -> bool {
+    let current = current_focus_of(target);
+    let focus_valid = current.is_some_and(|hwnd| {
+        ffi::IsWindow(hwnd) != 0
+            && ffi::IsWindowEnabled(hwnd) != 0
+            && ffi::IsWindowVisible(hwnd) != 0
+            && (hwnd == target || ffi::IsChild(target, hwnd) != 0)
+    });
+    let focus_matches = current.is_some_and(|hwnd| {
+        if requested == target {
+            hwnd == target || ffi::IsChild(target, hwnd) != 0
+        } else {
+            hwnd == requested
+        }
+    });
+    keyboard_focus_gate(
+        valid_target_tree(target, requested),
+        focus_valid,
+        GetForegroundWindow() == target,
+        focus_matches,
+    )
+}
+
 // ─── Verified WM_PASTE ───
 
 #[cfg(windows)]
 const WM_GETTEXTLENGTH: u32 = 0x000E;
-#[cfg(windows)]
-const EM_GETSEL: u32 = 0x00B0;
-#[cfg(windows)]
-const EM_REPLACESEL: u32 = 0x00C2;
 #[cfg(windows)]
 const GWL_STYLE: i32 = -16;
 #[cfg(windows)]
@@ -668,8 +691,6 @@ const ES_READONLY: i32 = 0x0800;
 const VERIFY_QUERY_TIMEOUT_MS: u32 = 150;
 #[cfg(windows)]
 const VERIFY_WAIT_MS: u64 = 150;
-#[cfg(windows)]
-const WM_PASTE_RETRY_DELAYS_MS: [u64; 2] = [40, 120];
 
 #[cfg(windows)]
 mod ffi {
@@ -678,6 +699,7 @@ mod ffi {
 
     #[link(name = "user32")]
     extern "system" {
+        pub fn IsWindow(hwnd: HWND) -> i32;
         pub fn IsWindowVisible(hwnd: HWND) -> i32;
         pub fn IsWindowEnabled(hwnd: HWND) -> i32;
         pub fn GetWindowLongW(hwnd: HWND, index: i32) -> i32;
@@ -716,154 +738,56 @@ unsafe fn wm_paste_verified(
     focus_class: &str,
     text: &str,
     paste_id: u64,
-) -> Option<InjectResult> {
+) -> InjectResult {
     if !clipboard_still_ours(text, paste_id) {
-        return Some(clipboard_changed_result());
+        return clipboard_changed_result();
     }
     let utf16_len = text.encode_utf16().count();
     let len_before = query_text_len(paste_target);
-    let sel_before = query_selection(paste_target);
 
     crate::commands::system::write_log_line(&format!(
-        "[RUST] [inject] WM_PASTE attempt pasteId={} hwnd={} class={} textLen={} utf16Len={} lenBefore={} sel={} {} {} clipSeq={} {}",
+        "[RUST] [inject] WM_PASTE attempt pasteId={} hwnd={} class={} textLen={} utf16Len={} lenBefore={} {} {} clipSeq={} {}",
         paste_id,
         paste_target.0 as isize,
         focus_class,
         text.len(),
         utf16_len,
         fmt_opt(len_before),
-        fmt_sel(sel_before),
         describe_paste_target(target, paste_target),
         describe_elevation(target),
         GetClipboardSequenceNumber(),
         describe_clipboard_holder()
     ));
 
-    let base_detail = format!(
-        "hwnd={} class={} textLen={}",
-        paste_target.0 as isize, focus_class, text.len()
-    );
-    let succeeded = |strategy: &str, verify: &str, attempts: usize| {
-        crate::commands::system::write_log_line(&format!(
-            "[RUST] [inject] WM_PASTE ok hwnd={} class={} pasteId={} strategy={} verify={} attempts={}",
-            paste_target.0 as isize, focus_class, paste_id, strategy, verify, attempts
-        ));
-        InjectResult {
-            ok: true,
-            strategy: Some(strategy.to_string()),
-            reason: None,
-            detail: Some(format!("{} verify={} attempts={}", base_detail, verify, attempts)),
-            uncertain: false,
-        }
+    // Send exactly once. Neither SendMessageTimeout completion nor an unreadable
+    // control proves insertion; retrying can duplicate text in the target.
+    let delivered = send_wm_paste(paste_target, paste_id, 1);
+    let (len_after, waited_ms) = match (delivered, len_before) {
+        (true, Some(before)) => wait_for_text_len_change(paste_target, before),
+        _ => (None, 0),
     };
-
-    let before = match len_before {
-        Some(n) if utf16_len > 0 => n,
-        _ => {
-            if !send_wm_paste(paste_target, paste_id, 1) {
-                return None;
-            }
-            return Some(succeeded("wm_paste", "unavailable", 1));
-        }
-    };
-
-    let mut attempts = 0usize;
-    for attempt in 0..=WM_PASTE_RETRY_DELAYS_MS.len() {
-        if attempt > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(WM_PASTE_RETRY_DELAYS_MS[attempt - 1]));
-            if !clipboard_still_ours(text, paste_id) {
-                crate::commands::system::write_log_line(&format!(
-                    "[RUST] [inject] clipboard changed before retry pasteId={} attempt={} clipSeq={} {}",
-                    paste_id,
-                    attempt + 1,
-                    GetClipboardSequenceNumber(),
-                    describe_clipboard_holder()
-                ));
-                return Some(clipboard_changed_result());
-            }
-        }
-
-        attempts += 1;
-        let seq_before = GetClipboardSequenceNumber();
-        if !send_wm_paste(paste_target, paste_id, attempts) {
-            if attempt == 0 {
-                return None;
-            }
-            break;
-        }
-        let (after, waited_ms) = wait_for_text_len_change(paste_target, before);
-        crate::commands::system::write_log_line(&format!(
-            "[RUST] [inject] WM_PASTE verify pasteId={} attempt={} lenBefore={} lenAfter={} waitedMs={} clipSeqBefore={} clipSeqAfter={}",
-            paste_id,
-            attempts,
-            before,
-            fmt_opt(after),
-            waited_ms,
-            seq_before,
-            GetClipboardSequenceNumber()
-        ));
-
-        match after {
-            None => return Some(succeeded("wm_paste", "unreadable", attempts)),
-            Some(n) if n != before => return Some(succeeded("wm_paste", "changed", attempts)),
-            Some(_) => {
-                if selection_len_matches(sel_before, before, utf16_len) {
-                    return Some(succeeded("wm_paste", "ambiguous_same_length", attempts));
-                }
-            }
-        }
-    }
-
-    if focus_class == "edit" {
-        let multiline = ffi::GetWindowLongW(paste_target, GWL_STYLE) & ES_MULTILINE != 0;
-        let normalized = normalize_for_edit(text, multiline);
-        let wide: Vec<u16> = normalized.encode_utf16().chain(std::iter::once(0)).collect();
-        let mut result_val: usize = 0;
-        let send_ok = SendMessageTimeoutW(
-            paste_target,
-            EM_REPLACESEL,
-            windows::Win32::Foundation::WPARAM(1),
-            windows::Win32::Foundation::LPARAM(wide.as_ptr() as isize),
-            SMTO_ABORTIFHUNG,
-            2000,
-            Some(&mut result_val),
-        );
-        let after = if send_ok.0 != 0 { query_text_len(paste_target) } else { None };
-        crate::commands::system::write_log_line(&format!(
-            "[RUST] [inject] EM_REPLACESEL fallback pasteId={} sent={} multiline={} lenBefore={} lenAfter={}",
-            paste_id,
-            send_ok.0 != 0,
-            multiline,
-            before,
-            fmt_opt(after)
-        ));
-        if matches!(after, Some(n) if n != before) {
-            return Some(succeeded("em_replacesel", "changed", attempts));
-        }
-    }
-
     let detail = format!(
-        "{} verify=no_effect attempts={} lenBefore={} sel={} {}",
-        base_detail,
-        attempts,
-        before,
-        fmt_sel(sel_before),
-        describe_paste_target(target, paste_target)
+        "hwnd={} class={} delivered={} lenBefore={} lenAfter={} waitedMs={}",
+        paste_target.0 as isize,
+        focus_class,
+        delivered,
+        fmt_opt(len_before),
+        fmt_opt(len_after),
+        waited_ms,
     );
-    crate::commands::system::write_log_line(&format!(
-        "[RUST] [inject] WM_PASTE no effect pasteId={} {} clipSeq={} {}",
-        paste_id,
-        detail,
-        GetClipboardSequenceNumber(),
-        describe_clipboard_holder()
-    ));
-    Some(InjectResult {
-        ok: false,
-        strategy: Some("wm_paste".to_string()),
-        reason: Some("paste_no_effect".to_string()),
-        detail: Some(detail),
-        uncertain: false,
-    })
+    if wm_paste_has_observed_effect(delivered, len_before, len_after) {
+        crate::commands::system::write_log_line(&format!(
+            "[RUST] [inject] WM_PASTE verified pasteId={} {}", paste_id, detail
+        ));
+        return InjectResult {
+            ok: true,
+            strategy: Some("wm_paste".to_string()),
+            reason: None,
+            detail: Some(detail),
+            uncertain: false,
+        };
+    }
+    unconfirmed_paste("wm_paste", detail)
 }
 
 #[cfg(windows)]
@@ -905,21 +829,6 @@ unsafe fn query_text_len(hwnd: HWND) -> Option<usize> {
 }
 
 #[cfg(windows)]
-unsafe fn query_selection(hwnd: HWND) -> Option<(usize, usize)> {
-    let mut out: usize = 0;
-    let ok = SendMessageTimeoutW(
-        hwnd,
-        EM_GETSEL,
-        windows::Win32::Foundation::WPARAM(0),
-        windows::Win32::Foundation::LPARAM(0),
-        SMTO_ABORTIFHUNG,
-        VERIFY_QUERY_TIMEOUT_MS,
-        Some(&mut out),
-    );
-    if ok.0 == 0 { None } else { Some((out & 0xFFFF, (out >> 16) & 0xFFFF)) }
-}
-
-#[cfg(windows)]
 unsafe fn wait_for_text_len_change(hwnd: HWND, before: usize) -> (Option<usize>, u64) {
     let started = Instant::now();
     loop {
@@ -931,24 +840,6 @@ unsafe fn wait_for_text_len_change(hwnd: HWND, before: usize) -> (Option<usize>,
             }
             _ => return (now, waited_ms),
         }
-    }
-}
-
-#[cfg(any(windows, test))]
-fn selection_len_matches(sel: Option<(usize, usize)>, text_len: usize, inserted_len: usize) -> bool {
-    match sel {
-        Some((start, end)) if text_len < 0xFFFF && end > start => end - start == inserted_len,
-        _ => false,
-    }
-}
-
-#[cfg(any(windows, test))]
-fn normalize_for_edit(text: &str, multiline: bool) -> String {
-    let unified = text.replace("\r\n", "\n");
-    if multiline {
-        unified.replace('\n', "\r\n")
-    } else {
-        unified.replace('\n', " ")
     }
 }
 
@@ -1066,11 +957,6 @@ unsafe fn token_elevated(process: *mut std::ffi::c_void) -> Option<bool> {
 #[cfg(any(windows, test))]
 fn fmt_opt(value: Option<usize>) -> String {
     value.map_or_else(|| "?".to_string(), |v| v.to_string())
-}
-
-#[cfg(any(windows, test))]
-fn fmt_sel(sel: Option<(usize, usize)>) -> String {
-    sel.map_or_else(|| "?".to_string(), |(start, end)| format!("{}-{}", start, end))
 }
 
 #[cfg(any(windows, test))]
@@ -1617,7 +1503,8 @@ unsafe fn native_get_clipboard_text_open() -> Option<String> {
 mod tests {
     use super::{
         can_snapshot_format, describe_editability, editability_gate, is_likely_editable_pub,
-        normalize_for_edit, pending_clipboard_matches, same_clipboard_version, selection_len_matches, EditableGate,
+        keyboard_focus_gate, pending_clipboard_matches, same_clipboard_version,
+        wm_paste_has_observed_effect, EditableGate,
     };
     use crate::context::AppContext;
 
@@ -1653,23 +1540,22 @@ mod tests {
         assert!(pending_clipboard_matches(42, 42, false, true));
     }
 
-            #[test]
-    fn same_length_replacement_is_treated_as_ambiguous() {
-        assert!(selection_len_matches(Some((2, 5)), 100, 3));
-        assert!(!selection_len_matches(Some((5, 5)), 100, 3));
-        assert!(!selection_len_matches(Some((2, 4)), 100, 3));
-        assert!(!selection_len_matches(None, 100, 3));
+    #[test]
+    fn keyboard_shortcut_requires_valid_target_and_current_focus() {
+        assert!(keyboard_focus_gate(true, true, true, true));
+        assert!(!keyboard_focus_gate(false, true, true, true)); // Closed target.
+        assert!(!keyboard_focus_gate(true, false, true, true)); // Invalid focused control.
+        assert!(!keyboard_focus_gate(true, true, false, true)); // Foreground activation failed.
+        assert!(!keyboard_focus_gate(true, true, true, false)); // Focus shifted elsewhere.
     }
 
     #[test]
-    fn selection_positions_are_distrusted_beyond_16_bits() {
-        assert!(!selection_len_matches(Some((2, 5)), 0x1_0000, 3));
-    }
-
-    #[test]
-    fn edit_newlines_are_normalized_per_style() {
-        assert_eq!(normalize_for_edit("a\nb\r\nc", true), "a\r\nb\r\nc");
-        assert_eq!(normalize_for_edit("a\nb\r\nc", false), "a b c");
+    fn wm_paste_must_observe_changed_text_length() {
+        assert!(wm_paste_has_observed_effect(true, Some(5), Some(10)));
+        assert!(!wm_paste_has_observed_effect(false, Some(5), Some(10)));
+        assert!(!wm_paste_has_observed_effect(true, Some(5), Some(5)));
+        assert!(!wm_paste_has_observed_effect(true, None, Some(10)));
+        assert!(!wm_paste_has_observed_effect(true, Some(5), None));
     }
 
             fn weixin_4x_ctx(process_name: &str) -> AppContext {
