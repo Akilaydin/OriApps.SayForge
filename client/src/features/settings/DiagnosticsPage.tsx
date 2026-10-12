@@ -7,7 +7,6 @@ import { getRuntimeEvents, type RuntimeEvent } from '@/services/debugLog'
 import { getWorkMode } from '@/services/transcription'
 import { FolderOpen, RefreshCw, CheckCircle2, XCircle, MinusCircle, CircleSlash, Info, HelpCircle, ChevronDown } from 'lucide-react'
 import { Tooltip } from '@/components/ui/tooltip'
-import { providerLabel } from './aiProviderCatalog'
 import { asrCardIdOfLegacyProvider, findAsrProvider } from './asrProviderCatalog'
 import DiagnosticsReportPanel from './DiagnosticsReportPanel'
 import { t } from '@/i18n'
@@ -17,7 +16,7 @@ import { useLocale } from '@/i18n/useT'
 type HealthStatus = 'ok' | 'error' | 'unknown' | 'disabled'
 
 interface HealthItem {
-  id: 'workMode' | 'asr' | 'ai'
+  id: 'workMode' | 'asr'
   label: string
   status: HealthStatus
   detail: string
@@ -54,7 +53,6 @@ export default function DiagnosticsPage() {
   const [showFileLog, setShowFileLog] = useState(true)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
 
-  const aiProofreadDisabled = health.some((item) => item.id === 'ai' && item.status === 'disabled')
 
   const faqItems: { q: string; answer: React.ReactNode }[] = [{
     q: t('diagnostics.faq.insertQuestion'),
@@ -135,30 +133,6 @@ export default function DiagnosticsPage() {
       }
     }
 
-    const aiEnabled = await getSetting('aiEnabled', false) as boolean
-    if (!aiEnabled) {
-      items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'disabled', detail: t('diagnostics.aiDisabled') })
-    } else {
-      const aiProvider = await getSetting('cloudAi.provider', '') as string
-      const aiApiKey = await getSetting('cloudAi.apiKey', '') as string
-      const aiApiUrl = await getSetting('cloudAi.apiUrl', '') as string
-      const aiModel = await getSetting('cloudAi.model', '') as string
-      const displayName = aiProvider ? providerLabel(aiProvider) : ''
-
-      if (!aiProvider || !aiApiKey || !aiApiUrl) {
-        items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'error', detail: t('diagnostics.incomplete') })
-      } else {
-        try {
-          const result = await invoke<{ ok: boolean; message: string }>('test_ai_connection', {
-            config: { provider: aiProvider, api_url: aiApiUrl, api_key: aiApiKey, model: aiModel },
-          })
-          items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: result.ok ? 'ok' : 'error', detail: result.ok ? t('diagnostics.providerModel', { provider: displayName, model: aiModel }) : `${displayName} — ${result.message}` })
-        } catch (err) {
-          items.push({ id: 'ai', label: t('diagnostics.health.ai'), status: 'error', detail: `${displayName} — ${String(err)}` })
-        }
-      }
-    }
-
     setHealth(items)
   }
 
@@ -227,12 +201,6 @@ export default function DiagnosticsPage() {
                 </div>
               ))}
             </div>
-            {aiProofreadDisabled && (
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{t('diagnostics.aiDisabledHint')}</span>
-              </div>
-            )}
           </CardContent>
         </Card>
 

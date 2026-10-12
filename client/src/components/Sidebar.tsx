@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Home, Clock, BookOpen, Settings, Info, Cloud, AudioLines, Sparkles, Wand2 } from 'lucide-react'
+import { Home, Clock, BookOpen, Settings, Info, Cloud, AudioLines } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getModeStatus, refreshModeStatus, subscribeModeStatus } from '@/stores/modeStatus'
@@ -15,8 +15,6 @@ const dailyNavItems = [
 const configNavItems = [
   { to: '/voice-engine', icon: AudioLines, labelKey: 'nav.voiceEngine' },
   { to: '/hotwords', icon: BookOpen, labelKey: 'nav.hotwords' },
-  { to: '/ai-instructions', icon: Wand2, labelKey: 'nav.aiInstructions' },
-  { to: '/ai-service', icon: Sparkles, labelKey: 'nav.aiService' },
 ] as const satisfies readonly NavItemDef[]
 
 const footerNavItems = [

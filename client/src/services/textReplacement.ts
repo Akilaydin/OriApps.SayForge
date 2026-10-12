@@ -13,13 +13,12 @@ const STORAGE_KEY = 'textReplacements'
 export const BUILTIN_REPLACEMENTS: TextReplacementRule[] = [
   { id: 'builtin_1', from: 'Chat G P T', to: 'ChatGPT', enabled: true },
   { id: 'builtin_2', from: 'Git Hub', to: 'GitHub', enabled: true },
-  { id: 'builtin_3', from: 'pump', to: 'Prompt', enabled: true },
   { id: 'builtin_4', from: 'Cloud Code', to: 'Claude Code', enabled: true },
 ]
 
 export async function getTextReplacements(): Promise<TextReplacementRule[]> {
-  const rules = await getSetting<TextReplacementRule[]>(STORAGE_KEY, [])
-  if (!rules || rules.length === 0) {
+  const rules = await getSetting<TextReplacementRule[] | null>(STORAGE_KEY, null)
+  if (rules == null) {
     return BUILTIN_REPLACEMENTS.map((r) => ({ ...r }))
   }
   return rules

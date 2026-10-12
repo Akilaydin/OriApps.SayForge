@@ -89,6 +89,11 @@ const PUNCTUATION_PROMPT: &str = "Transcribe the audio faithfully, with natural 
 
 ///
 ///
+fn transcription_prompt(config: &AsrProviderConfig) -> &str {
+    config.extra.get("instructions").and_then(|v| v.as_str())
+        .map(str::trim).filter(|s| !s.is_empty()).unwrap_or(PUNCTUATION_PROMPT)
+}
+
 fn resolve_language(config: &AsrProviderConfig) -> Option<String> {
     let raw = config
         .extra
@@ -109,7 +114,7 @@ fn build_form(
     model: &str,
     language: Option<&str>,
     scope: &str,
-    with_prompt: bool,
+    prompt: Option<&str>,
 ) -> Result<reqwest::multipart::Form, String> {
     let part = reqwest::multipart::Part::bytes(audio)
         .file_name(if mp3 { "audio.mp3" } else { "audio.wav" })
@@ -120,8 +125,8 @@ fn build_form(
         .part("file", part)
         .text("model", model.to_string())
         .text("response_format", "json");
-    if with_prompt {
-        form = form.text("prompt", PUNCTUATION_PROMPT);
+    if let Some(prompt) = prompt {
+        form = form.text("prompt", prompt.to_string());
     }
     if let Some(lang) = language {
         form = form.text("language", lang.to_string());
@@ -219,7 +224,7 @@ pub async fn transcribe(
     let client = super::http_client::shared();
     let mut with_prompt = true;
     let (body_text, http_summary, elapsed_ms) = loop {
-        let form = build_form(audio.clone(), mp3, &model, language.as_deref(), scope, with_prompt)?;
+        let form = build_form(audio.clone(), mp3, &model, language.as_deref(), scope, if with_prompt { Some(transcription_prompt(config)) } else { None })?;
         let resp = client
             .post(&url)
             .header("Authorization", format!("Bearer {}", config.api_key))
@@ -316,7 +321,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         }
     };
 
-    let form = match build_form(audio, mp3, &model, None, endpoint.scope, true) {
+    let form = match build_form(audio, mp3, &model, None, endpoint.scope, Some(transcription_prompt(config))) {
         Ok(f) => f,
         Err(e) => {
             return TestResult {
@@ -479,6 +484,14 @@ mod tests {
 
                 ///
             #[test]
+    fn custom_transcription_prompt_replaces_the_builtin_hint() {
+        let custom = config_for("openai_compat_transcribe", serde_json::json!({ "instructions": "Preserve RabbitMQ spelling." }));
+        assert_eq!(transcription_prompt(&custom), "Preserve RabbitMQ spelling.");
+        let empty = config_for("openai_compat_transcribe", serde_json::json!({ "instructions": "   " }));
+        assert_eq!(transcription_prompt(&empty), PUNCTUATION_PROMPT);
+    }
+
+    #[test]
     fn punctuation_prompt_requests_accurate_transcription_in_any_language() {
         assert!(PUNCTUATION_PROMPT.contains("Transcribe"));
         assert!(PUNCTUATION_PROMPT.contains("punctuation"));

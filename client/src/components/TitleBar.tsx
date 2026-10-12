@@ -1,22 +1,10 @@
-import { useEffect, useState } from 'react'
 import * as bridge from '@/services/bridge'
-import { Minus, Square, X, Wand2 } from 'lucide-react'
+import { Minus, Square, X } from 'lucide-react'
 import appIcon from '@/assets/ico-frame-48x48.png'
-import { useAiEnabled, useAiEnabledReady } from '@/hooks/useAiEnabled'
-import { toggleAiEnabled } from '@/stores/aiEnabled'
-import { Tooltip } from '@/components/ui/tooltip'
 import { useT } from '@/i18n/useT'
 
 export default function TitleBar() {
   const t = useT()
-  const aiEnabled = useAiEnabled()
-  const ready = useAiEnabledReady()
-  const [animate, setAnimate] = useState(false)
-  useEffect(() => {
-    if (!ready || animate) return
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => setAnimate(true)))
-    return () => cancelAnimationFrame(id)
-  }, [ready, animate])
   return (
     <div className="flex h-10 items-center justify-between bg-titlebar border-b select-none"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
@@ -25,24 +13,6 @@ export default function TitleBar() {
         <span className="text-sm text-foreground" style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, letterSpacing: '0.01em' }}>SayForge</span>
       </div>
       <div className="flex items-center">
-        <div className="flex items-center pr-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <Tooltip content={t('titleBar.aiCleanupToggle')}>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={aiEnabled}
-              onClick={() => { void toggleAiEnabled() }}
-              className="flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors hover:bg-accent"
-              aria-label={t('titleBar.aiCleanupToggle')}
-            >
-              <Wand2 className={aiEnabled ? 'h-3.5 w-3.5 text-primary' : 'h-3.5 w-3.5 text-muted-foreground'} />
-              <span className={aiEnabled ? 'text-xs text-foreground' : 'text-xs text-muted-foreground'}>{t('titleBar.aiCleanup')}</span>
-              <span className={`relative h-4 w-7 shrink-0 rounded-full ${animate ? 'transition-colors' : ''} ${aiEnabled ? 'bg-primary' : 'bg-muted'}`} style={ready ? undefined : { visibility: 'hidden' }}>
-                <span className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-card shadow ${animate ? 'transition-transform' : ''} ${aiEnabled ? 'translate-x-3' : ''}`} />
-              </span>
-            </button>
-          </Tooltip>
-        </div>
         <div className="flex" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button onClick={() => bridge.minimize()}
             className="flex h-10 w-11 items-center justify-center hover:bg-accent"

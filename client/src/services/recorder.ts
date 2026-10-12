@@ -1,7 +1,7 @@
 import { RecorderOrchestrator } from './recorder/RecorderOrchestrator'
 import type { RecorderState } from './recorder/types'
 
-let orchestrator = new RecorderOrchestrator()
+const orchestrator = new RecorderOrchestrator()
 
 // HMR cleanup: dispose old orchestrator when module is hot-replaced
 if ((import.meta as unknown as Record<string, unknown>).hot) {
@@ -39,14 +39,6 @@ export function cleanup() {
 /** Call after changing settings that recorder caches (preset, mic, overlay display) */
 export async function refreshRecorderSettings() {
   await orchestrator.refreshRuntimeSettings()
-}
-
-export function setAiEnabledCache(next: boolean) {
-  orchestrator.setAiEnabledCache(next)
-}
-
-export function showAiEnabledToast(enabled: boolean) {
-  orchestrator.showAiEnabledToast(enabled)
 }
 
 export function setHotwordsCache(words: string[]) {

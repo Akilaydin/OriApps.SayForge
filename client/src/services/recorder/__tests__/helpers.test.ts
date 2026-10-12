@@ -8,7 +8,6 @@ import {
   judgeOsMicMute,
   hasSilenceEvidence,
   isUnconfirmedPaste,
-  SLOW_SEND_INPUT_PASTE_MS,
   MIC_NO_SIGNAL_PEAK_THRESHOLD,
   MIC_LOW_RMS_THRESHOLD,
   OS_MIC_MUTE_CONFIRM_SAMPLES,
@@ -166,19 +165,19 @@ describe('computeProcessingTimeoutMs', () => {
 })
 
 describe('isUnconfirmedPaste', () => {
-  it('slow send_input uses a fallback card', () => {
-    expect(isUnconfirmedPaste('send_input', 2088)).toBe(true)
-    expect(isUnconfirmedPaste('send_input', SLOW_SEND_INPUT_PASTE_MS)).toBe(true)
+  it('send_input never reports success from keyboard events alone', () => {
+    expect(isUnconfirmedPaste('send_input')).toBe(true)
+    expect(isUnconfirmedPaste('send_input', false)).toBe(true)
   })
 
-  it('normal send_input remains successful', () => {
-    expect(isUnconfirmedPaste('send_input', 631)).toBe(false)
-    expect(isUnconfirmedPaste('send_input', SLOW_SEND_INPUT_PASTE_MS - 1)).toBe(false)
+  it('console and last-resort message delivery remain unconfirmed', () => {
+    expect(isUnconfirmedPaste('console_paste')).toBe(true)
+    expect(isUnconfirmedPaste('wm_paste_last_resort')).toBe(true)
   })
 
-  it('verified or synchronous insertion tolerates longer latency', () => {
-    expect(isUnconfirmedPaste('wm_paste', 5000)).toBe(false)
-    expect(isUnconfirmedPaste('console_paste', 5000)).toBe(false)
-    expect(isUnconfirmedPaste(undefined, 5000)).toBe(false)
+  it('verification evidence determines success for native message paste', () => {
+    expect(isUnconfirmedPaste('wm_paste', false)).toBe(false)
+    expect(isUnconfirmedPaste('wm_paste', true)).toBe(true)
+    expect(isUnconfirmedPaste(undefined)).toBe(false)
   })
 })

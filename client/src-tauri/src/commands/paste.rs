@@ -3,7 +3,7 @@ use crate::inject;
 use crate::window::WindowState;
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Serialize)]
 pub struct PasteResult {
@@ -29,6 +29,9 @@ pub fn paste_text(
     window_state: State<WindowState>,
 ) -> Result<PasteResult, String> {
     let restore_clipboard = restore_clipboard.unwrap_or(false);
+    let clipboard_owner = app.get_webview_window("main")
+        .and_then(|window| window.hwnd().ok())
+        .map_or(0, |handle| handle.0 as isize);
     let result = match hwnd.as_deref() {
         Some(h) if !h.is_empty() && h != "0" => {
             let target_val = h.parse::<isize>().unwrap_or(0);
@@ -40,13 +43,13 @@ pub fn paste_text(
                 "[RUST] [paste] pre-probed hwnd target={} focus={}",
                 target_val, focus_val
             ));
-            inject::inject_text_to_hwnd(&text, target_val, focus_val, restore_clipboard)
+            inject::inject_text_to_hwnd(&text, target_val, focus_val, restore_clipboard, clipboard_owner)
         }
         _ => {
             crate::commands::system::write_log_line(
                 "[RUST] [paste] no pre-probed hwnd, fallback to inject_text",
             );
-            inject::inject_text(&text, restore_clipboard)
+            inject::inject_text(&text, restore_clipboard, clipboard_owner)
         }
     };
 
@@ -84,11 +87,10 @@ pub fn get_probe_result(detector: State<ContextDetector>) -> Result<Value, Strin
 
 #[tauri::command]
 pub fn get_recording_context(
-    include_text_context: Option<bool>,
     detector: State<ContextDetector>,
 ) -> Result<Value, String> {
     let started_at = chrono::Utc::now().timestamp_millis();
-    let ctx = detector.capture_recording("recording_start", include_text_context.unwrap_or(false));
+    let ctx = detector.capture("recording_start");
     let completed_at = chrono::Utc::now().timestamp_millis();
     let app_context = serde_json::to_value(&ctx).map_err(|e| e.to_string())?;
     let probe = probe_result_for_context(&ctx, started_at, completed_at);

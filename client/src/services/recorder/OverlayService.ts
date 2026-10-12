@@ -192,7 +192,7 @@ export class OverlayService {
     this.stopCardKeepAlive()
     try {
       await bridge.setEscapeActionMode('off', 0)
-    } catch {  }
+    } catch { /* Best effort while dismissing the overlay. */ }
   }
 
   showWaiting() {
@@ -460,19 +460,6 @@ export class OverlayService {
     this.fallbackHideId = setTimeout(() => this.hide(), 1600)
   }
 
-  showAiCleanupToggled(enabled: boolean) {
-    this.currentState = 'toast'
-    this.clearMicSourceHint()
-    this.enterTransientState('off', 0)
-    void bridge.presentOverlay({
-      state: 'toast',
-      toastText: t(enabled ? 'overlay.toastAiCleanupOn' : 'overlay.toastAiCleanupOff'),
-      toastTone: 'info',
-      ...this.getCommonPayload(),
-    })
-    this.clearFallbackHideTimer()
-    this.fallbackHideId = setTimeout(() => this.hide(), 1400)
-  }
 
   showNoSpeech(reason: 'silent' | 'no_text', diagnostic?: Record<string, unknown>) {
     this.currentState = 'toast'

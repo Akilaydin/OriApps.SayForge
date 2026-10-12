@@ -47,8 +47,8 @@ describe('independent SayForge distribution', () => {
     expect(dependencies).not.toHaveProperty('@tauri-apps/plugin-process')
     const apiVersion = dependencies['@tauri-apps/api'] as string
     const updaterVersion = dependencies['@tauri-apps/plugin-updater'] as string
-    const rustUpdater = text('src-tauri/Cargo.toml').match(/^tauri-plugin-updater\s*=\s*"=([^\"]+)"/m)?.[1]
-    const rustCore = text('src-tauri/Cargo.lock').match(/\[\[package\]\]\s+name = "tauri"\s+version = "([^\"]+)"/)?.[1]
+    const rustUpdater = text('src-tauri/Cargo.toml').match(/^tauri-plugin-updater\s*=\s*"=([^"]+)"/m)?.[1]
+    const rustCore = text('src-tauri/Cargo.lock').match(/\[\[package\]\]\s+name = "tauri"\s+version = "([^"]+)"/)?.[1]
     expect(apiVersion).toMatch(/^2\.10\./)
     expect(rustCore).toMatch(/^2\.10\./)
     expect(updaterVersion.split('.').slice(0, 2)).toEqual(rustUpdater?.split('.').slice(0, 2))
@@ -77,6 +77,9 @@ describe('independent SayForge distribution', () => {
     const readme = text('../README.md')
     const heading = '## License and third-party notices'
     expect(readme).toContain(heading)
+    const about = text('src/pages/About.tsx')
+    expect(about).toContain('const ATTRIBUTION_URL = `${REPO_URL}/blob/main/README.md#license-and-third-party-notices`')
+    expect(about).toContain('shellOpen(ATTRIBUTION_URL)')
     const [publicDescription, legalSection] = readme.split(heading)
     expect(publicDescription).not.toContain('github.com/crosswk/')
     expect(legalSection).toContain('github.com/crosswk/')

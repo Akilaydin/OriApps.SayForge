@@ -21,16 +21,14 @@ describe('supported international ASR providers', () => {
 })
 
 describe('OpenAI-compatible audio request construction', () => {
-  it('preserves MP3 option, custom system/user prompts and the exact model name', () => {
+  it('preserves MP3 option, the transcription prompt and the exact model name', () => {
     expect(buildAsrExtra('openai_compat', {
       model: 'gemini-example', protocol: 'chat_standard',
       instructions: 'Transcribe Russian speech.',
-      userPrompt: 'Keep C# and RabbitMQ spelling.',
       audioEncoding: 'mp3',
     })).toEqual({
       model: 'gemini-example', protocol: 'chat_standard',
       instructions: 'Transcribe Russian speech.',
-      userPrompt: 'Keep C# and RabbitMQ spelling.',
       audioEncoding: 'mp3',
     })
   })

@@ -80,7 +80,7 @@ describe('ASR profile persistence and orphan protection', () => {
     expect(loaded.profiles).toHaveLength(1)
     expect(loaded.profiles[0]).toMatchObject({model:'custom',apiKey:'test-flat',apiUrl:'https://relay.example/v1'})
   })
-  it('preserves OpenAI-compatible system instruction, user prompt, MP3 mode and model', async () => {
+  it('preserves the transcription prompt and retired user text without activating it', async () => {
     const first=profile('openai_compat',{
       id:'custom',model:'gemini-example',apiKey:'test',apiUrl:'https://api.example/v1',
       protocol:'chat_standard',audioEncoding:'mp3',systemInstruction:'Transcribe Russian',
@@ -94,7 +94,8 @@ describe('ASR profile persistence and orphan protection', () => {
     await saveAsrProfiles({profiles:loaded.profiles,activeId:'custom'})
     expect(store.get('cloudAsr.model')).toBe('gemini-example')
     expect(store.get('cloudAsr.systemInstruction')).toBe('Transcribe Russian')
-    expect(store.get('cloudAsr.userPrompt')).toBe('Keep RabbitMQ spelling')
+    expect((store.get(ASR_PROFILES_KEY) as AsrProfile[])[0].userPrompt).toBe('Keep RabbitMQ spelling')
+    expect(store.has('cloudAsr.userPrompt')).toBe(false)
     expect(store.get('cloudAsr.audioEncoding')).toBe('mp3')
     await saveAsrProfiles({profiles:loaded.profiles,activeId:'groq'})
     expect(store.get('cloudAsr.provider')).toBe('openai_compat')

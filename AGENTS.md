@@ -28,7 +28,7 @@ Read the relevant documents and actual code before changing behavior. Report con
 - Preserve focused-target probing and a copyable fallback when insertion fails or cannot be confirmed.
 - Preserve the identity `com.oriapps.sayforge`, database `sayforge.db` and existing user data.
 - The UI is English-only; speech recognition languages depend on the selected provider or model.
-- Optional AI refinement may send text and editor context to a remote provider independently of ASR.
+- ASR is the only provider call; Transcription Prompt accompanies audio. Do not add a separate cleanup call or capture editor text.
 - Protect audio, transcripts, editor text, API keys and backup credentials. Use synthetic test data; do not expose real content in logs or commits.
 - Configure WebView2 browser arguments globally for windows sharing one environment.
 - The new optional updater requires a signed published release channel; never download/install without user consent. Preserve existing NSIS installation modes and release signing-key secrecy.
@@ -46,7 +46,8 @@ npm run i18n:check
 npm run build
 ```
 
-`npm run lint` is currently blocked: ESLint 10 requires `eslint.config.*`, but the repository only has `.eslintrc.cjs`. Do not report lint as passing until the configuration is fixed.
+ESLint 10 uses `client/eslint.config.cjs`. The release workflow checks lint
+before frontend tests and installer build.
 
 For Rust changes, from the repository root:
 
@@ -55,3 +56,27 @@ cargo test --manifest-path client/src-tauri/Cargo.toml
 ```
 
 Run the checks relevant to the change, plus `git diff --check`. Manually verify Windows-specific shortcut, audio, insertion, model and installer behavior when affected. Documentation-only edits do not require a build.
+
+## Contribution workflow
+
+- Follow CONTRIBUTING.md for every change. Open a PR from a separate branch; never push directly to the default branch.
+- After opening the PR, wait for feedback from configured automated AI reviewers (currently Codex).
+- Critically assess each finding. Fix valid issues, and explain rejected findings explicitly in the PR discussion.
+- Check new reviews triggered by updates. Do not merge with unaddressed substantive findings.
+
+## Automatic Code Review Rules
+
+Report only high-confidence P0/P1 issues that:
+- Cause significant functional regressions.
+- Introduce security vulnerabilities or data loss.
+- Can cause serious production failures.
+
+Do not report:
+- Style or formatting issues.
+- Minor improvements or refactoring suggestions.
+- Speculative edge cases.
+- Low-impact bugs.
+- Missing tests unless they expose a serious risk.
+
+Every finding must describe a concrete failure scenario.
+If no qualifying issues exist, report no findings.

@@ -2,7 +2,7 @@
 //
 //
 
-import { t } from '@/i18n'
+import { getLocale, t } from '@/i18n'
 
 export type AsrPlatform = 'openai_compat'
 
@@ -204,10 +204,10 @@ export interface AsrProfile {
   protocol: AsrCompatProtocol
   /** Multipart/standard chat audio: MP3/64 kbps mono for new profiles; WAV remains available. */
   audioEncoding: AsrAudioEncoding
-  /** OpenAI-compatible chat: override the built-in transcription system instruction. */
+  /** Transcription Prompt. Keep the historical storage key for compatible imports. */
   systemInstruction: string
-  /** OpenAI-compatible chat: optional user text alongside the input audio. */
-  userPrompt: string
+  /** Retired field: retain nonempty legacy values for export/recovery only. */
+  userPrompt?: string
   model: string
   /** Key to the selected speech API. */
   apiKey: string
@@ -228,7 +228,6 @@ export function emptyAsrProfile(provider = ASR_PROVIDERS[0].id): AsrProfile {
     protocol: 'auto',
     audioEncoding: 'mp3',
     systemInstruction: '',
-    userPrompt: '',
     model: entry ? asrModelsOf(entry)[0].id : '',
     apiKey: '',
   }
@@ -281,7 +280,7 @@ export function parseAsrProfilesDetailed(
           ? LEGACY_PROTOCOLS[str(v.provider)] ?? 'auto' : parseAsrCompatProtocol(v.protocol),
       audioEncoding: parseAsrAudioEncoding(v.audioEncoding),
       systemInstruction: str(v.systemInstruction),
-      userPrompt: str(v.userPrompt),
+      ...(str(v.userPrompt) ? { userPrompt: str(v.userPrompt) } : {}),
       model,
       apiKey: str(v.apiKey),
       check: parseCheck(v.check),
@@ -366,4 +365,26 @@ export function gradeAsrLatency(latencyMs: number, audioSec: number): AsrLatency
   if (rtf < RTF_THRESHOLDS.normal) return { tier: 'normal', label: t('grade.normal'), tone: 'ok' }
   if (rtf < RTF_THRESHOLDS.slow) return { tier: 'slow', label: t('grade.slow'), tone: 'warn' }
   return { tier: 'tooSlow', label: t('grade.tooSlow'), tone: 'bad' }
+}
+
+export function formatLatency(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
+}
+
+export const CHECK_FRESH_MS = 24 * 60 * 60 * 1000
+
+export function isCheckFresh(check: AsrCheck | undefined, now = Date.now()): boolean {
+  if (!check?.at) return false
+  return now - check.at < CHECK_FRESH_MS
+}
+
+export function formatCheckedAt(at: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - at) / 1000))
+  if (seconds < 60) return t('time.justNow')
+  const rtf = new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' })
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return rtf.format(-minutes, 'minute')
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return rtf.format(-hours, 'hour')
+  return rtf.format(-Math.floor(hours / 24), 'day')
 }

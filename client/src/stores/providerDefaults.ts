@@ -38,8 +38,4 @@ export async function initProviderDefaults(): Promise<void> {
     await bridge.storeSet('cloudAsr.apiKey', '')
   }
 
-  const existingAiProvider = await bridge.storeGet('cloudAi.provider')
-  if (existingAiProvider === null || existingAiProvider === undefined) {
-    await bridge.storeSet('cloudAi.provider', 'openai_compat')
-  }
 }

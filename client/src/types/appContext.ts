@@ -1,11 +1,3 @@
-export interface TextContext {
-  source: string
-  textBefore: string
-  selectedText: string
-  textAfter: string
-  selectionTruncated: boolean
-}
-
 export interface ActiveAppContext {
   reason?: string
   timestamp?: number
@@ -35,6 +27,4 @@ export interface ActiveAppContext {
   isReadOnly?: boolean
   isPassword?: boolean
   isCurrentAppProcess?: boolean
-  /** Only populated for a recording when context-aware writing is explicitly enabled. */
-  textContext?: TextContext
 }

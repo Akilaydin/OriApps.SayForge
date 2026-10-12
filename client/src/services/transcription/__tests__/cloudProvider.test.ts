@@ -3,7 +3,7 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn(), read: vi.fn(), settings: new 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@/services/store', () => ({ getSetting: (key: string, fallback: unknown) => Promise.resolve(mocks.settings.get(key) ?? fallback) }))
 vi.mock('@/services/bridge', () => ({ notifyAsrCapabilityMaybeChanged: vi.fn(), storeGetSettings: mocks.read }))
-vi.mock('@/services/debugLog', () => ({ addRuntimeEvent: vi.fn(), AI_LOG_SOURCE: 'ai', AI_EVENT_OUTCOME: 'outcome', AI_EVENT_REQUEST: 'request' }))
+vi.mock('@/services/debugLog', () => ({ addRuntimeEvent: vi.fn() }))
 import { CloudAPIProvider } from '../CloudAPIProvider'
 import type { StartOptions } from '../types'
 
@@ -16,7 +16,7 @@ function deferred<T>() {
 const result = (text: string) => ({ text, elapsed_ms: 20 })
 const settle = async () => { for (let i = 0; i < 25; i++) await Promise.resolve() }
 function record(provider: CloudAPIProvider, runId: number, patch: Partial<StartOptions> = {}) {
-  expect(provider.start({ runId, aiConfig: { workMode: 'cloud_api', aiEnabled: false, aiMinDurationSec: 0 }, ...patch })).toBe(true)
+  expect(provider.start({ runId, ...patch })).toBe(true)
   provider.sendAudio(new ArrayBuffer(16000))
   expect(provider.stop()).toBe(true)
 }
@@ -39,7 +39,19 @@ describe('buffered cloud recording run isolation', () => {
       hotwords:['RabbitMQ'], sample_rate:16000,
       asr_config:expect.objectContaining({provider:'openai_compat',api_key:'test',extra:expect.objectContaining({baseUrl:'https://relay.example/v1',model:'custom-model',audioEncoding:'mp3'})}),
     }) })
-    expect(onFinal).toHaveBeenCalledWith(expect.objectContaining({ asrText:'Synthetic text',llmText:'Synthetic text' }))
+    expect(onFinal).toHaveBeenCalledWith(expect.objectContaining({ asrText:'Synthetic text' }))
+    expect(onDone).toHaveBeenCalledOnce()
+  })
+  it('ignores retired cleanup settings and returns an empty ASR result without another call', async () => {
+    mocks.settings.set('aiEnabled', true)
+    mocks.settings.set('cloudAi.apiKey', 'synthetic-retired-key')
+    mocks.invoke.mockResolvedValue(result(''))
+    const provider = new CloudAPIProvider(), onFinal = vi.fn(), onDone = vi.fn()
+    await provider.connect({ onFinal, onDone })
+    record(provider, 1); await settle()
+    expect(mocks.invoke).toHaveBeenCalledOnce()
+    expect(mocks.invoke.mock.calls[0][0]).toBe('cloud_transcribe')
+    expect(onFinal).toHaveBeenCalledWith({ asrText: '', asrMs: 20, durationSec: 0.5 })
     expect(onDone).toHaveBeenCalledOnce()
   })
   it.each(['resolve', 'reject'] as const)('ignores cancelled responses: %s', async (completion) => {
@@ -71,7 +83,7 @@ describe('buffered cloud recording run isolation', () => {
     expect(onFinal).not.toHaveBeenCalled(); expect(onDone).not.toHaveBeenCalled()
   })
   it('keeps a complete active profile snapshot despite changes during recording', async () => {
-    const old = {id:'a',provider:'openai_compat',model:'old',apiUrl:'https://old.invalid/v1',apiKey:'old-key',protocol:'chat_standard',audioEncoding:'mp3',systemInstruction:'Old instruction',userPrompt:'Old prompt'}
+    const old = {id:'a',provider:'openai_compat',model:'old',apiUrl:'https://old.invalid/v1',apiKey:'old-key',protocol:'chat_standard',audioEncoding:'mp3',systemInstruction:'Old instruction'}
     mocks.settings.set('cloudAsr.profiles',[old])
     mocks.settings.set('cloudAsr.activeProfileId','a')
     mocks.settings.set('cloudAsr.apiKey','mixed-flat-key')
@@ -81,7 +93,8 @@ describe('buffered cloud recording run isolation', () => {
     provider.start({runId:1}); await settle()
     mocks.settings.set('cloudAsr.profiles',[{...old,apiKey:'new-key',model:'new'}])
     provider.sendAudio(new ArrayBuffer(16000)); provider.stop(); await settle()
-    expect(mocks.invoke.mock.calls[0][1].request.asr_config).toMatchObject({api_key:'old-key',extra:{model:'old',instructions:'Old instruction',userPrompt:'Old prompt'}})
+    expect(mocks.invoke.mock.calls[0][1].request.asr_config).toMatchObject({api_key:'old-key',extra:{model:'old',instructions:'Old instruction'}})
+    expect(mocks.invoke.mock.calls[0][1].request.asr_config.extra).not.toHaveProperty('userPrompt')
     record(provider,2); await settle()
     expect(mocks.invoke.mock.calls[1][1].request.asr_config).toMatchObject({api_key:'new-key',extra:{model:'new'}})
     expect(mocks.read).toHaveBeenCalledTimes(2)

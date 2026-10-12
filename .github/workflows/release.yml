@@ -80,10 +80,12 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Frontend tests and English UI verification
+      - name: Frontend lint, tests and English UI verification
         if: steps.preflight.outputs.release_needed == 'true'
         working-directory: client
         run: |
+          npm run lint
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend lint failed.' }
           npm test
           if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
           npm run i18n:check

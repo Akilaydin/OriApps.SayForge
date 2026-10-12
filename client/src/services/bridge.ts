@@ -129,11 +129,11 @@ export function getProbeResult() {
   return invoke<Record<string, unknown>>('get_probe_result')
 }
 
-export function getRecordingContext(includeTextContext = false) {
+export function getRecordingContext() {
   return invoke<{
     appContext: Record<string, unknown>
     probe: Record<string, unknown>
-  }>('get_recording_context', { includeTextContext })
+  }>('get_recording_context', {})
 }
 
 export function getActiveAppContext() {
@@ -277,21 +277,8 @@ export async function setAutoLaunchVerified(enable: boolean): Promise<boolean> {
 
 // ─── Tray ───
 
-export function setTrayAiEnabled(enabled: boolean) {
-  return invoke<void>('set_tray_ai_enabled', { enabled }).catch(() => { })
-}
 
-export function onAiCleanupChanged(cb: (enabled: boolean) => void) {
-  const unlisten = listen<{ enabled?: boolean }>('ai-cleanup-changed', (event) => {
-    cb(Boolean(event.payload?.enabled))
-  })
-  return () => { unlisten.then((fn) => fn()) }
-}
 
-export function onAiCleanupToggleRequested(cb: () => void) {
-  const unlisten = listen('toggle-ai-cleanup', () => cb())
-  return () => { unlisten.then((fn) => fn()) }
-}
 
 // ─── Diagnostics ───
 

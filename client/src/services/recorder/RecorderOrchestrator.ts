@@ -2,13 +2,11 @@ import * as bridge from '../bridge'
 import { startCapture, stopCapture } from '../audio'
 import { DEFAULT_MIC_GAIN_DB, DEFAULT_MIC_GAIN_ENABLED, normalizeMicGainDb } from '../micGain'
 import { getProvider, type TranscriptionProvider, type TranscriptionCallbacks, type FinalResult } from '../transcription'
-import { resolveAiPolicy, type AiConfigSnapshot } from '../transcription/aiPolicy'
 import { resolveAsrDisplayModel } from '@/lib/asrModels'
 import {
   addHistory,
   deleteHistory,
   getSetting,
-  updateHistoryRecord,
   type HistoryFailReasonCode,
   type HistoryRecord,
 } from '../store'
@@ -38,7 +36,6 @@ import type { ActiveAppContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'
 import { OverlayService, type FailureRecovery } from './OverlayService'
 import { PasteService, type ProbeResult } from './PasteService'
-import { getAiPrompt, buildHotwordInjectionPart } from '../aiPrompt'
 import type { PTTEventPayload, RecorderState } from './types'
 import { MAX_RECORDING_SEC, RECORDING_COUNTDOWN_SEC } from './types'
 import {
@@ -54,14 +51,6 @@ import {
 import { t } from '@/i18n'
 import { describeProviderError } from '@/lib/errorMessages'
 import { describeMicSource, micSourceChanged } from './micSourceReminder'
-import {
-  CONTEXT_SELECTION_EDIT_PROMPT,
-  CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY,
-  normalizeContextSelectionEditPrompt,
-  resolveContextAwareOutput,
-  usableTextContext,
-  withContextAwareInstructions,
-} from '../contextAware'
 
 type StateTransition =
   | ['idle', 'recording']
@@ -98,7 +87,6 @@ function classifyHistoryProviderFailure(message: string): HistoryFailReasonCode 
   }
 }
 
-interface PromptResolution { systemPrompt: string }
 
 interface TimedOutProcessingContext {
   runId: number
@@ -106,7 +94,6 @@ interface TimedOutProcessingContext {
   settled: boolean
   audioDurationSec: number
   wallTimeSec: number
-  promptResolution: PromptResolution | null
   appContext: ActiveAppContext | null
   probeResult: ProbeResult | null
 }
@@ -178,22 +165,12 @@ export class RecorderOrchestrator {
   private cachedProtectClipboard = true
   private systemMuteApplied = false
   private systemMuteTimerId: ReturnType<typeof setTimeout> | null = null
-  private cachedSystemPrompt = ''
-  private cachedAiEnabled = true
-  private cachedAiMinDurationSec = 0
-  private currentAiConfig: AiConfigSnapshot | undefined
   private currentOperationId: string | undefined
-  /** Reads bounded editor text only when explicitly enabled; default is false. */
-  private cachedContextAwareWriting = false
-  /** User-visible selection-edit prompt. Cached with other recording settings. */
-  private cachedContextSelectionEditPrompt = CONTEXT_SELECTION_EDIT_PROMPT
   private cachedClientRuntimeInfo: ClientRuntimeInfo | null = null
   private clientRuntimeInfoLoaded = false
   private cachedHotwords: string[] = []
-  private cachedInjectHotwords = false
   private cachedLanguage: string = ''
   private currentActiveAppContext: ActiveAppContext | null = null
-  private currentPromptResolution: PromptResolution | null = null
   /** Probe result captured at startRecording time (before audio capture begins).
    *  Used by handleTextInsertion so we inject into the window that was focused
    *  when the user started speaking, not whatever happens to be focused later. */
@@ -278,8 +255,6 @@ export class RecorderOrchestrator {
     failReason?: string
     failReasonCode?: HistoryFailReasonCode
     historyMeta: HistoryMetadata
-    aiSource?: HistoryRecord['aiSource']
-    aiStatus?: HistoryRecord['aiStatus']
   }): Promise<FailureRecovery> {
     const { runId } = params
     let artifact: { recordId: string } | null = null
@@ -307,8 +282,6 @@ export class RecorderOrchestrator {
         isEmpty: true,
         failReason: params.failReason,
         failReasonCode: params.failReasonCode,
-        aiSource: params.aiSource,
-        aiStatus: params.aiStatus,
       })
       if (this.isRunCanceled(runId)) {
         await this.discardCanceledHistory(artifact)
@@ -352,8 +325,6 @@ export class RecorderOrchestrator {
     historyMeta: HistoryMetadata
     asrMs?: number
     asrDurationSec?: number
-    aiSource?: HistoryRecord['aiSource']
-    aiStatus?: HistoryRecord['aiStatus']
   }): Promise<void> {
     const showCard = this.isRunCurrent(runId)
     if (showCard) {
@@ -375,8 +346,6 @@ export class RecorderOrchestrator {
       failReason: params.failReason,
       failReasonCode: params.failReasonCode,
       historyMeta: params.historyMeta,
-      aiSource: params.aiSource,
-      aiStatus: params.aiStatus,
     })
     if (showCard) this.overlayService.updateFailureRecovery(recovery, runId)
   }
@@ -392,7 +361,6 @@ export class RecorderOrchestrator {
     this.clearProcessingTimeout()
     this.processingCancelable = false
     const historyMeta = this.buildHistoryMetadata(
-      this.currentPromptResolution,
       this.currentActiveAppContext,
     )
     addRuntimeEvent('warn', 'recorder', 'Run failed without any result', {
@@ -631,14 +599,6 @@ export class RecorderOrchestrator {
     this.provider.disconnect()
   }
 
-  setAiEnabledCache(next: boolean) {
-    this.cachedAiEnabled = next
-  }
-
-  showAiEnabledToast(enabled: boolean) {
-    if (this.state === 'idle') this.overlayService.showAiCleanupToggled(enabled)
-  }
-
   setHotwordsCache(words: string[]) {
     this.cachedHotwords = Array.from(new Set(words.map((word) => word.trim()).filter(Boolean)))
   }
@@ -648,12 +608,6 @@ export class RecorderOrchestrator {
       micId,
       muteSystemAudio,
       protectClipboard,
-      systemPrompt,
-      aiEnabled,
-      aiMinDurationSec,
-      contextAwareWriting,
-      contextSelectionEditPrompt,
-      injectHotwords,
       noiseSuppression,
       micGainEnabled,
       micGainDb,
@@ -661,12 +615,6 @@ export class RecorderOrchestrator {
       getSetting('selectedMic', ''),
       getSetting('muteSystemAudioWhileRecording', false),
       getSetting('protectClipboard', true),
-      getAiPrompt(),
-      getSetting('aiEnabled', false),
-      getSetting('aiMinDurationSec', 0),
-      getSetting('contextAwareWritingEnabled', false),
-      getSetting(CONTEXT_SELECTION_EDIT_PROMPT_SETTING_KEY, CONTEXT_SELECTION_EDIT_PROMPT),
-      getSetting('injectHotwordsToPrompt', false),
       getSetting('micNoiseSuppression', true),
       getSetting('micGainEnabled', DEFAULT_MIC_GAIN_ENABLED),
       getSetting('micGainDb', DEFAULT_MIC_GAIN_DB),
@@ -678,12 +626,6 @@ export class RecorderOrchestrator {
     this.cachedMicId = String(micId || '')
     this.cachedMuteSystemAudio = Boolean(muteSystemAudio)
     this.cachedProtectClipboard = Boolean(protectClipboard)
-    this.cachedInjectHotwords = Boolean(injectHotwords)
-    this.cachedSystemPrompt = systemPrompt
-    this.cachedAiEnabled = Boolean(aiEnabled)
-    this.cachedAiMinDurationSec = Math.max(0, Math.min(MAX_RECORDING_SEC, Number(aiMinDurationSec) || 0))
-    this.cachedContextAwareWriting = Boolean(contextAwareWriting)
-    this.cachedContextSelectionEditPrompt = normalizeContextSelectionEditPrompt(contextSelectionEditPrompt)
     await this.overlayService.refreshSettings()
 
     const [hotwordsResult, languageResult] = await Promise.allSettled([
@@ -826,6 +768,7 @@ export class RecorderOrchestrator {
       if (!label) return
       await this.checkMicMuted(label, runId, probeSequence)
     } catch {
+      // Microphone mute probing is optional.
     }
   }
 
@@ -868,7 +811,6 @@ export class RecorderOrchestrator {
     this.finalReceivedAt = 0
     this.pendingHistoryArtifact = null
     this.currentActiveAppContext = null
-    this.currentPromptResolution = null
     this.cachedProbeResult = null
     this.consecutiveSilentSamples = 0
     this.consecutiveNonVoicedSamples = 0
@@ -896,7 +838,7 @@ export class RecorderOrchestrator {
     try {
       await deleteHistory(artifact.recordId)
       void bridge.emit('history-updated')
-    } catch {  }
+    } catch { /* Preserve cancellation even if history cleanup fails. */ }
   }
 
   private async cancelRecording(
@@ -1006,7 +948,6 @@ export class RecorderOrchestrator {
         const audioDur = this.getAudioDurationSec()
         const wallSec = this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : audioDur
         const historyMeta = this.buildHistoryMetadata(
-          this.currentPromptResolution,
           this.currentActiveAppContext,
         )
         const silenceProven = this.hasSilenceEvidence()
@@ -1034,8 +975,6 @@ export class RecorderOrchestrator {
             failReason: t('recorder.noTranscript'),
             failReasonCode: 'no_transcript',
             historyMeta,
-            aiSource: result.aiSource,
-            aiStatus: result.aiStatus,
           })
 
           if (!this.isRunCurrent(runId)) return
@@ -1054,7 +993,7 @@ export class RecorderOrchestrator {
             lateByMs: Date.now() - lateContext.timedOutAt,
             durationSec: result.durationSec,
             asrMs: result.asrMs,
-            llmMs: result.llmMs,
+            llmMs: 0,
           })
           this.provider.cancel()
 
@@ -1092,7 +1031,7 @@ export class RecorderOrchestrator {
           localAudioDurSec: localAudioDur.toFixed(2),
           audioSentSamples: this.audioSentSamples,
           asrMs: result.asrMs,
-          llmMs: result.llmMs,
+          llmMs: 0,
         })
 
         void this.processFinalResult(result, {
@@ -1101,7 +1040,6 @@ export class RecorderOrchestrator {
           settled: true,
           audioDurationSec: this.getAudioDurationSec(),
           wallTimeSec: this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : this.getAudioDurationSec(),
-          promptResolution: this.currentPromptResolution ? { ...this.currentPromptResolution } : null,
           appContext: this.currentActiveAppContext ? { ...this.currentActiveAppContext } : null,
           probeResult: this.cachedProbeResult ? { ...this.cachedProbeResult } : null,
         }, {
@@ -1121,7 +1059,6 @@ export class RecorderOrchestrator {
           const audioDur = this.getAudioDurationSec()
           const wallSec = this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : audioDur
           const historyMeta = this.buildHistoryMetadata(
-            this.currentPromptResolution,
             this.currentActiveAppContext,
           )
           addRuntimeEvent('warn', 'recorder', 'Provider finished without any result', {
@@ -1173,7 +1110,6 @@ export class RecorderOrchestrator {
         const audioDur = this.getAudioDurationSec()
         const wallSec = this.wallTimeAtStopSec > 0 ? this.wallTimeAtStopSec : audioDur
         const historyMeta = this.buildHistoryMetadata(
-          this.currentPromptResolution,
           this.currentActiveAppContext,
         )
         void (async () => {
@@ -1303,7 +1239,7 @@ export class RecorderOrchestrator {
     if (!this.isRunCurrent(runId)) return
     const pasteExecMs = Date.now() - pasteStartedAt
 
-    if (result.ok && isUnconfirmedPaste(result.strategy, pasteExecMs)) {
+    if (result.ok && isUnconfirmedPaste(result.strategy, result.uncertain)) {
       addRuntimeEvent('warn', 'recorder', 'External text insertion unconfirmed; showing fallback card', {
         strategy: result.strategy,
         gate: probe.gate,
@@ -1433,12 +1369,9 @@ export class RecorderOrchestrator {
     const targetCapture = captureActiveInsertionTarget(undefined, {
       preserveExistingOnFailure: true,
     })
-    let activeAppContext: ActiveAppContext | null = null
+    let activeAppContext: ActiveAppContext | null
     try {
-      // AI is the only consumer of editor text. If cleanup is off, do not read the text even when
-      // the preference remains enabled, so the privacy boundary matches actual behavior.
-      const includeTextContext = this.cachedContextAwareWriting && this.cachedAiEnabled
-      const recordingContext = await bridge.getRecordingContext(includeTextContext)
+      const recordingContext = await bridge.getRecordingContext()
       activeAppContext = recordingContext.appContext as unknown as ActiveAppContext
       this.cachedProbeResult = recordingContext.probe as unknown as ProbeResult
       addRuntimeEvent('info', 'recorder', 'Insertion probe cached at recording start', {
@@ -1453,26 +1386,7 @@ export class RecorderOrchestrator {
       activeAppContext = null
       this.cachedProbeResult = null
     }
-    const textContext = usableTextContext(activeAppContext?.textContext)
-    if (activeAppContext) {
-      if (textContext) activeAppContext.textContext = textContext
-      else delete activeAppContext.textContext
-    }
     this.currentActiveAppContext = activeAppContext
-
-    const hotwordPart = this.cachedInjectHotwords ? buildHotwordInjectionPart(this.cachedHotwords) : null
-    this.currentPromptResolution = { systemPrompt: [this.cachedSystemPrompt, hotwordPart].filter(Boolean).join('\n\n') }
-    if (textContext) {
-      this.currentPromptResolution.systemPrompt = withContextAwareInstructions(
-        this.currentPromptResolution.systemPrompt, textContext, this.cachedContextSelectionEditPrompt,
-      )
-      addRuntimeEvent('info', 'recorder', 'Text context captured', {
-        source: textContext.source,
-        beforeLen: textContext.textBefore.length,
-        selectedLen: textContext.selectedText.length,
-        afterLen: textContext.textAfter.length,
-      })
-    }
 
     addRuntimeEvent('info', 'recorder', 'Recording started', {
       micId: this.cachedMicId || 'default', targetCapture,
@@ -1518,39 +1432,15 @@ export class RecorderOrchestrator {
       }, (MAX_RECORDING_SEC - RECORDING_COUNTDOWN_SEC) * 1000)
     }
 
-    this.currentAiConfig = {
-      workMode: this.provider.mode,
-      aiEnabled: this.cachedAiEnabled,
-      aiMinDurationSec: this.cachedAiMinDurationSec,
-    }
     this.currentOperationId = `${runId}-${Date.now().toString(36)}`
-
-    const promptOpts = this.currentPromptResolution
-      ? {
-        runId,
-        operationId: this.currentOperationId,
-        aiConfig: this.currentAiConfig,
-        systemPrompt: this.cachedAiEnabled ? this.currentPromptResolution.systemPrompt : undefined,
-        disableAi: !this.cachedAiEnabled,
-        aiMinDurationSec: this.cachedAiMinDurationSec,
-        clientMeta: this.cachedClientRuntimeInfo,
-        appContext: activeAppContext,
-        textContext,
-        hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
-        language: this.cachedLanguage || undefined,
-      }
-      : {
-        runId,
-        operationId: this.currentOperationId,
-        aiConfig: this.currentAiConfig,
-        disableAi: !this.cachedAiEnabled,
-        aiMinDurationSec: this.cachedAiMinDurationSec,
-        clientMeta: this.cachedClientRuntimeInfo,
-        appContext: activeAppContext,
-        textContext,
-        hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
-        language: this.cachedLanguage || undefined,
-      }
+    const promptOpts = {
+      runId,
+      operationId: this.currentOperationId,
+      clientMeta: this.cachedClientRuntimeInfo,
+      appContext: activeAppContext,
+      hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
+      language: this.cachedLanguage || undefined,
+    }
 
     // Wrap the async setup so stopRecording can wait for it
     let resolveCaptureReady: () => void
@@ -1799,7 +1689,7 @@ export class RecorderOrchestrator {
           this.overlayService.clearWarning()
         }
       }
-    } catch {  }
+    } catch { /* Microphone mute probing is optional. */ }
   }
 
   private async stopRecording() {
@@ -1863,16 +1753,6 @@ export class RecorderOrchestrator {
     }
 
     //
-    const aiPolicy = resolveAiPolicy({
-      ...(this.currentAiConfig ?? {
-        workMode: this.provider.mode,
-        aiEnabled: this.cachedAiEnabled,
-        aiMinDurationSec: this.cachedAiMinDurationSec,
-        }),
-      audioDurationSec: audioDur,
-    })
-    const skipAiForShortSpeech = aiPolicy.reason === 'duration_below_min'
-
     const audioStats = this.audioStatsTotalFrames > 0 ? {
       avgRms: Math.round((this.audioStatsRmsSum / this.audioStatsTotalFrames) * 10000) / 10000,
       peakRms: Math.round(this.audioStatsPeakRms * 10000) / 10000,
@@ -1883,14 +1763,11 @@ export class RecorderOrchestrator {
 
     const stopAccepted = this.provider.stop({
       pttHoldMs,
-      aiPolicy,
       audioStats,
     })
     addRuntimeEvent('info', 'recorder', 'Stop sent', {
       audioSec: audioDur,
       pttHoldMs: Math.round(pttHoldMs),
-      aiMinDurationSec: this.cachedAiMinDurationSec || undefined,
-      skipAiForShortSpeech: skipAiForShortSpeech || undefined,
       stopAccepted,
     })
 
@@ -1949,7 +1826,6 @@ export class RecorderOrchestrator {
         settled: false,
         audioDurationSec: audioDur,
         wallTimeSec,
-        promptResolution: this.currentPromptResolution ? { ...this.currentPromptResolution } : null,
         appContext: this.currentActiveAppContext ? { ...this.currentActiveAppContext } : null,
         probeResult: this.cachedProbeResult ? { ...this.cachedProbeResult } : null,
       }
@@ -1964,7 +1840,7 @@ export class RecorderOrchestrator {
 
       this.overlayService.showAwaitingLateResult(LATE_FINAL_GRACE_MS / 1000, runId)
 
-      const historyMeta = this.buildHistoryMetadata(timedOutCtx.promptResolution, timedOutCtx.appContext)
+      const historyMeta = this.buildHistoryMetadata(timedOutCtx.appContext)
       window.setTimeout(() => {
         if (timedOutCtx.settled) return
         timedOutCtx.settled = true
@@ -2128,7 +2004,6 @@ export class RecorderOrchestrator {
   }
 
   private buildHistoryMetadata(
-    _promptResolution?: PromptResolution | null,
     appContext?: ActiveAppContext | null,
   ) {
     const ctx = appContext === undefined ? this.currentActiveAppContext : appContext
@@ -2140,30 +2015,10 @@ export class RecorderOrchestrator {
     }
   }
 
-  private async buildProviderMetadata(finalResult?: FinalResult): Promise<{
-    asrProvider?: string
-    aiProvider?: string
-    aiModel?: string
-    aiSource?: FinalResult['aiSource']
-    aiStatus?: FinalResult['aiStatus']
-  }> {
-    const mode = this.provider.mode
-    const executionMeta = {
-      aiSource: finalResult?.aiSource,
-      aiStatus: finalResult?.aiStatus,
-    }
-    if (mode === 'cloud_api') {
-      const asrProviderKey = await getSetting('cloudAsr.provider', '') as string
-      //
-      const asrSelectedModel = await getSetting('cloudAsr.model', '') as string
-      const asrProvider = asrProviderKey
-        ? resolveAsrDisplayModel(asrProviderKey, asrSelectedModel)
-        : 'cloud'
-      const aiProvider = finalResult?.aiProvider || await getSetting('cloudAi.provider', '') as string
-      const aiModel = finalResult?.aiModel || await getSetting('cloudAi.model', '') as string
-      return { asrProvider, aiProvider: aiProvider || undefined, aiModel: aiModel || undefined, ...executionMeta }
-    }
-    return executionMeta
+  private async buildProviderMetadata(): Promise<{ asrProvider?: string }> {
+    const asrProviderKey = await getSetting('cloudAsr.provider', '') as string
+    const asrSelectedModel = await getSetting('cloudAsr.model', '') as string
+    return { asrProvider: asrProviderKey ? resolveAsrDisplayModel(asrProviderKey, asrSelectedModel) : 'cloud' }
   }
 
   private computeProcessingTimeoutMs(audioDurationSec: number) {
@@ -2191,20 +2046,10 @@ export class RecorderOrchestrator {
     const runId = context.runId
     if (!this.isRunCurrent(runId)) return
 
-    // New clients may talk to an older server that does not understand text_context. In that case
-    // contextApplied is absent: paste the original selection back unchanged instead of replacing it
-    // with a spoken edit command.
-    const { baseText, rawAsr, selectedEditWasApplied } = resolveContextAwareOutput({
-      asrText: result.asrText,
-      llmText: result.llmText,
-      contextApplied: result.contextApplied,
-      textContext: context.appContext?.textContext,
-    })
+    const baseText = result.asrText
     let textToPaste: string
     try {
-      textToPaste = selectedEditWasApplied
-        ? await applyTextTransforms(baseText, { rawAsr })
-        : baseText
+      textToPaste = await applyTextTransforms(baseText)
     } catch (error) {
       if (!this.isRunCurrent(runId)) return
       addRuntimeEvent('warn', 'recorder', 'Text post-processing failed', { error: String(error), runId })
@@ -2229,7 +2074,6 @@ export class RecorderOrchestrator {
     const hasText = Boolean(textToPaste && textToPaste.trim())
     const audioDur = context.audioDurationSec
     const wallSec = context.wallTimeSec > 0 ? context.wallTimeSec : audioDur
-    const promptResolution = context.promptResolution
     const appContext = context.appContext
     let historyArtifact: { runId: number; recordId: string } | null = null
 
@@ -2237,12 +2081,10 @@ export class RecorderOrchestrator {
       runId,
       hasText,
       asrMs: result.asrMs,
-      llmMs: result.llmMs,
       durationSec: result.durationSec,
       audioSec: audioDur,
       textLen: textToPaste ? textToPaste.length : 0,
       source: options.source,
-      contextApplied: result.contextApplied,
     })
 
     try {
@@ -2256,7 +2098,7 @@ export class RecorderOrchestrator {
           await this.discardCanceledHistory(historyArtifact)
           return
         }
-        const providerMeta = await this.buildProviderMetadata(result)
+        const providerMeta = await this.buildProviderMetadata()
         if (this.isRunCanceled(runId)) {
           await this.discardCanceledHistory(historyArtifact)
           return
@@ -2269,7 +2111,7 @@ export class RecorderOrchestrator {
           asrText: result.asrText,
           llmText: textToPaste,
           asrMs: result.asrMs,
-          llmMs: result.llmMs,
+          llmMs: 0,
           durationSec: wallSec,
           audioDurationSec: audioDur > 0 ? audioDur : undefined,
           asrDurationSec: result.durationSec > 0 ? result.durationSec : undefined,
@@ -2285,7 +2127,7 @@ export class RecorderOrchestrator {
             : result.asrText?.trim()
               ? 'empty_after_processing'
               : 'no_transcript',
-          ...this.buildHistoryMetadata(promptResolution, appContext),
+          ...this.buildHistoryMetadata(appContext),
           ...providerMeta,
         })
         if (this.isRunCanceled(runId)) {
@@ -2314,9 +2156,8 @@ export class RecorderOrchestrator {
         mode: this.provider.mode,
         audioSec: Number(audioDur.toFixed(1)),
         asrMs: result.asrMs,
-        llmMs: result.llmMs,
+        llmMs: 0,
         asrLen: result.asrText?.length ?? 0,
-        llmLen: result.llmText?.length ?? 0,
         asrHadText,
         silenceProven,
         peakAmplitude: Math.round(this.audioStatsPeakAmplitude * 10000) / 10000,

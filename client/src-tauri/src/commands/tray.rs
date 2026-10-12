@@ -1,14 +1,13 @@
 //!
-use crate::storage::Storage;
 use serde_json::json;
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size,
     WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 
 pub const TRAY_MENU_LABEL: &str = "tray-menu";
 const TRAY_MENU_WIDTH: f64 = 140.0;
-const TRAY_MENU_HEIGHT: f64 = 112.0;
+const TRAY_MENU_HEIGHT: f64 = 80.0;
 
 pub fn create_tray_menu_window(app: &AppHandle) -> tauri::Result<()> {
     if app.get_webview_window(TRAY_MENU_LABEL).is_some() {
@@ -109,12 +108,7 @@ pub fn show_tray_menu(app: &AppHandle, position: PhysicalPosition<f64>) {
     let _ = window.set_always_on_top(true);
     let _ = window.set_focus();
 
-    let enabled = current_ai_enabled(app.state::<Storage>().inner());
-    let _ = window.emit("tray-menu-open", json!({ "enabled": enabled }));
-}
-
-fn current_ai_enabled(storage: &Storage) -> bool {
-    storage.get("aiEnabled", None).as_bool().unwrap_or(true)
+    let _ = window.emit("tray-menu-open", json!({}));
 }
 
 fn hide_menu(app: &AppHandle) {
@@ -130,41 +124,6 @@ fn show_main(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
-}
-
-#[tauri::command]
-pub fn set_tray_ai_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let _ = app.emit_to(
-        TRAY_MENU_LABEL,
-        "tray-ai-state",
-        json!({ "enabled": enabled }),
-    );
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_tray_ai_enabled(storage: State<'_, Storage>) -> bool {
-    current_ai_enabled(storage.inner())
-}
-
-#[tauri::command]
-pub fn toggle_tray_ai_enabled(
-    app: AppHandle,
-    storage: State<'_, Storage>,
-) -> Result<bool, String> {
-    let next = !current_ai_enabled(storage.inner());
-    storage
-        .set("aiEnabled", &json!(next))
-        .map_err(|error| error.to_string())?;
-
-    let _ = app.emit("ai-cleanup-changed", json!({ "enabled": next }));
-    let _ = app.emit_to(
-        TRAY_MENU_LABEL,
-        "tray-ai-state",
-        json!({ "enabled": next }),
-    );
-    log::info!("[tray-menu] AI cleanup toggled to {next}");
-    Ok(next)
 }
 
 #[tauri::command]

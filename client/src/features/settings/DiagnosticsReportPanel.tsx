@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, Info, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -55,7 +55,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
     { value: 'wrong_text', label: t('diagnosticsReport.issue.wrongText') },
     { value: 'shortcut_dead', label: t('diagnosticsReport.issue.shortcutDead') },
     { value: 'overlay', label: t('diagnosticsReport.issue.overlay') },
-    { value: 'ai_result', label: t('diagnosticsReport.issue.aiResult') },
     { value: 'crash', label: t('diagnosticsReport.issue.crash') },
     { value: 'update_failed', label: t('diagnosticsReport.issue.updateFailed') },
     { value: 'other', label: t('diagnosticsReport.issue.other') },
