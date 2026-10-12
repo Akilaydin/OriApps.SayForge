@@ -1,6 +1,6 @@
 {
   "productName": "SayForge",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "identifier": "com.oriapps.sayforge",
   "build": {
     "frontendDist": "../dist",
