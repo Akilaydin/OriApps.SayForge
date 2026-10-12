@@ -15,7 +15,7 @@ Technical reference for the current SayForge implementation. Product behavior be
 - A push to `release` prepares a version commit containing only the five version
   manifest/lock files. It chooses the next patch above reserved stable tags/releases
   unless a higher version is explicitly prepared. Retries reuse the version commit
-  identified by its original merge SHA. Bot pushes do not recursively start workflows.
+  identified by its original merge SHA while that commit remains the release tip; stale reruns fail before build/publication. Bot pushes do not recursively start workflows.
   Windows tests and one Tauri NSIS build run against that immutable prepared SHA. A separate
   job verifies transferred assets, updater signature metadata and checksums, then publishes a public release for that exact
   commit; existing version tags cannot be overwritten. See `docs/releasing.md`.

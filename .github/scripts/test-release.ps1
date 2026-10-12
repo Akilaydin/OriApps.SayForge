@@ -8,6 +8,7 @@ foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'RELEASE
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 $mock = [pscustomobject] @{
+    releaseTip = 'b' * 40
     remoteTags = @()
     remoteReleases = @()
     denyGitHub = $false
@@ -22,6 +23,7 @@ function gh {
     $mock.apiCalls.Add(($args -join ' '))
     $global:LASTEXITCODE = 0
     if ($mock.denyGitHub) { $global:LASTEXITCODE = 1; return }
+    if ($args[1] -like '*/git/ref/heads/release') { return @{ object = @{ sha = $mock.releaseTip } } | ConvertTo-Json }
     if ($args[1] -like '*/git/matching-refs/tags/v') { return $mock.remoteTags }
     if ($args[1] -like '*/releases') { return $mock.remoteReleases }
     if ($args[0] -eq 'api' -and $args[1] -eq '--method') {
@@ -90,6 +92,9 @@ try {
     $env:GITHUB_STEP_SUMMARY = "$fixture/summary.txt"
     $env:TAURI_APP_VERSION = '0.2.3'
 
+    $mock.releaseTip = 'c' * 40
+    Assert-Fails { Run-Stage Preflight } 'advanced beyond the tested commit'
+    $mock.releaseTip = $env:RELEASE_COMMIT_SHA
     Run-Stage Preflight
     if ('release_needed=true' -cnotin (Get-Content $env:GITHUB_OUTPUT)) { throw 'First release did not proceed.' }
     $mock.remoteTags = @('refs/tags/v0.2.2')
@@ -190,6 +195,10 @@ try {
     Assert-Fails { Run-Stage Publish } 'checksum verification failed'
     Set-Content -LiteralPath $checksumPath -Value $originalChecksums -NoNewline
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Guard tests wrote to GitHub.' }
+    $mock.releaseTip = 'c' * 40
+    Assert-Fails { Run-Stage Publish } 'advanced beyond the tested commit'
+    if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Stale prepared commit reached publication.' }
+    $mock.releaseTip = $env:RELEASE_COMMIT_SHA
     $mock.denyPublication = $true
     Assert-Fails { Run-Stage Publish } 'GitHub command failed'
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*/releases *' }).Count -ne 0) { throw 'Permission denial created a release.' }

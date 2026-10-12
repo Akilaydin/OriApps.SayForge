@@ -36,6 +36,12 @@ foreach ($otherVersion in @($package.version, $npmLock.version, $npmLock.package
     if ($otherVersion -cne $version) { throw "Version mismatch: Tauri=$version, manifest/lock=$otherVersion." }
 }
 
+function Assert-CurrentReleaseCommit {
+    if (-not $env:RELEASE_COMMIT_SHA) { return }
+    $ref = Invoke-GitHub @('api', "repos/$env:GITHUB_REPOSITORY/git/ref/heads/release") | ConvertFrom-Json
+    if ($ref.object.sha -cne $releaseCommit) { throw 'Release branch advanced beyond the tested commit.' }
+}
+
 function Test-NewRelease {
     $refs = @(Invoke-GitHub @('api', "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/v", '--jq', '.[].ref'))
     if ($refs -ccontains "refs/tags/$tag") {
@@ -99,6 +105,7 @@ function Assert-UpdaterAssets([System.IO.FileInfo] $Installer, [string] $Directo
 }
 
 if ($Stage -eq 'Preflight') {
+    Assert-CurrentReleaseCommit
     $needed = (Test-NewRelease).ToString().ToLowerInvariant()
     "version=$version", "release_needed=$needed" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
     return
@@ -161,6 +168,7 @@ if ($checksumLines.Count -ne 5 -or @(Compare-Object $expectedChecksums $checksum
 if ($releaseCommit -notmatch '^[a-f0-9]{40}$') { throw 'A full tested commit SHA is required.' }
 $checkedOutCommit = & git -C $RepositoryRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0 -or $checkedOutCommit -cne $releaseCommit) { throw 'Checkout differs from the tested release commit.' }
+Assert-CurrentReleaseCommit
 if (-not (Test-NewRelease)) { return }
 
 $source = "https://github.com/$env:GITHUB_REPOSITORY"

@@ -91,6 +91,10 @@ try {
     Assert-Equal (Prepare-ReleaseCommit) $fixtureCommit
     Assert-Equal $mock.commits 1; Assert-Equal $mock.pushes 1
     Assert-Equal (Get-ManifestVersion $fixture) '0.2.6'
+    $mock.remote = 'c' * 40
+    Assert-Fails { Prepare-ReleaseCommit } 'advanced beyond the prepared commit'
+    Assert-Equal $mock.commits 1; Assert-Equal $mock.pushes 1
+    $mock.remote = $fixtureCommit
     $mock.changed = @('unrelated.txt')
     Assert-Fails { Prepare-ReleaseCommit } 'changes beyond version files'
     $mock.changed = $versionFiles; $mock.parents = 'c' * 40

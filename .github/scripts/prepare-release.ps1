@@ -77,9 +77,11 @@ function Prepare-ReleaseCommit {
     }
     if (@(Invoke-ReleaseGit @('status', '--porcelain')).Count) { throw 'Release preparation requires a clean checkout.' }
     $null = Invoke-ReleaseGit @('fetch', 'origin', 'release')
+    $remote = Invoke-ReleaseGit @('rev-parse', 'origin/release')
     $prepared = @(Invoke-ReleaseGit @('log', 'origin/release', '--format=%H', '--fixed-strings', "--grep=SayForge-Release-Source: $SourceCommit"))
     if ($prepared.Count -gt 1) { throw 'Multiple prepared commits for the same source.' }
     if ($prepared.Count -eq 1) {
+        if ($remote -cne $prepared[0]) { throw 'Release branch advanced beyond the prepared commit.' }
         $parents = Invoke-ReleaseGit @('show', '-s', '--format=%P', $prepared[0])
         if ($parents -cne $SourceCommit) { throw 'Prepared commit has an unexpected parent.' }
         $changed = @(Invoke-ReleaseGit @('diff', '--name-only', $SourceCommit, $prepared[0]))
@@ -92,7 +94,6 @@ function Prepare-ReleaseCommit {
         return $prepared[0]
     }
 
-    $remote = Invoke-ReleaseGit @('rev-parse', 'origin/release')
     $head = Invoke-ReleaseGit @('rev-parse', 'HEAD')
     if ($remote -cne $SourceCommit -or $head -cne $SourceCommit) { throw 'Release branch advanced; run the workflow for its current commit.' }
     $current = Get-ManifestVersion $RepositoryRoot

@@ -17,7 +17,10 @@ There is no draft or approval step. Signed releases support an optional in-app u
    prepared commit. The `main` branch is not modified automatically. Bot pushes use
    `GITHUB_TOKEN`, so they do not recursively trigger the push workflow. Re-running
    the original workflow reuses its prepared commit/version, including after a
-   failed build or successful publication. No second version is allocated by a retry.
+   failed build or successful publication, provided it is still the release tip.
+   Preparation, build preflight and publication reject stale prepared commits after
+   a newer promotion; this also covers rerunning only failed jobs. No second version
+   is allocated by a retry.
 4. Follow **Actions → Windows release**. After tests, packaging and verification,
    CI creates `v<version>` at the exact tested prepared commit and publishes
    **SayForge v<version>** with one NSIS `.exe` installer, its `.exe.sig`,
