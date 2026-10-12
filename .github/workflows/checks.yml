@@ -36,6 +36,16 @@ jobs:
         with:
           workspaces: client/src-tauri -> target
           cache-on-failure: false
+      - name: Release version regression tests
+        run: ./.github/scripts/test-release-version.ps1
+      - name: Release publication guard regression tests
+        run: |
+          cargo test --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Updater verifier tests failed.' }
+          cargo build --release --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Updater verifier build failed.' }
+          $env:SAYFORGE_UPDATER_VERIFIER = Join-Path $PWD '.github/tools/updater-verifier/target/x86_64-pc-windows-msvc/release/sayforge-updater-verifier.exe'
+          ./.github/scripts/test-release.ps1
       - name: Install frontend dependencies
         working-directory: client
         run: npm ci

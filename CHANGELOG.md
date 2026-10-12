@@ -5,6 +5,9 @@ source history remains available in Git.
 
 ## Unreleased
 
+- Automatically prepare the next stable patch version when promoting main to release;
+  retries reuse the same version and published tags/assets remain immutable.
+
 ## 0.2.5
 
 - Add optional, signed in-app GitHub Release updates, a manual check in About,
