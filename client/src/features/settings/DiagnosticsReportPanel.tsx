@@ -55,7 +55,6 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
     { value: 'wrong_text', label: t('diagnosticsReport.issue.wrongText') },
     { value: 'shortcut_dead', label: t('diagnosticsReport.issue.shortcutDead') },
     { value: 'overlay', label: t('diagnosticsReport.issue.overlay') },
-    { value: 'ai_result', label: t('diagnosticsReport.issue.aiResult') },
     { value: 'crash', label: t('diagnosticsReport.issue.crash') },
     { value: 'update_failed', label: t('diagnosticsReport.issue.updateFailed') },
     { value: 'other', label: t('diagnosticsReport.issue.other') },

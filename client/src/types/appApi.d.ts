@@ -14,7 +14,6 @@ export type DiagnosticIssueType =
   | 'wrong_text'
   | 'shortcut_dead'
   | 'overlay'
-  | 'ai_result'
   | 'crash'
   | 'update_failed'
   | 'other'

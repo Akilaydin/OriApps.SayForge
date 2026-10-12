@@ -17,10 +17,6 @@ vi.mock('../../store', () => ({
   getSetting: (key: string, fallback: unknown) =>
     Promise.resolve(mocks.settings.has(key) ? mocks.settings.get(key) : fallback),
 }))
-vi.mock('../../aiPrompt', () => ({
-  getAiPrompt: () => Promise.resolve(''),
-  buildHotwordInjectionPart: () => null,
-}))
 vi.mock('../../bridge', () => ({
   updateOverlay: vi.fn(),
   presentOverlay: vi.fn(),

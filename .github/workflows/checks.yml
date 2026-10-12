@@ -1,0 +1,56 @@
+name: Windows PR checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sayforge-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: client/src-tauri -> target
+          cache-on-failure: false
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+      - name: Frontend checks
+        working-directory: client
+        run: |
+          npm run lint
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend lint failed.' }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
+          npm run i18n:check
+          if ($LASTEXITCODE -ne 0) { throw 'English UI verification failed.' }
+      - name: Rust tests
+        working-directory: client/src-tauri
+        run: cargo test --locked --target x86_64-pc-windows-msvc
+      - name: Build application without publishing or signing
+        working-directory: client
+        run: npx tauri build --no-bundle --target x86_64-pc-windows-msvc -- --locked

@@ -27,13 +27,13 @@ describe('shared synthetic Cloud ASR test path',()=>{
     ]) expect(()=>parseTestWav(mutate(fixture()))).toThrow('16 kHz mono PCM16 WAV')
   })
   it('tests explicit draft credentials, prompts and codec without reading saved settings',async()=>{
-    const profile={...emptyAsrProfile(),model:'draft-model',apiUrl:'https://draft.invalid/v1',apiKey:'draft-key',systemInstruction:'Synthetic instruction',userPrompt:'Synthetic prompt',protocol:'chat_standard' as const}
+    const profile={...emptyAsrProfile(),model:'draft-model',apiUrl:'https://draft.invalid/v1',apiKey:'draft-key',systemInstruction:'Synthetic instruction',protocol:'chat_standard' as const}
     const config=asrConfigFromProfile(profile)
     expect(Object.keys(config).sort()).toEqual(['api_key', 'extra', 'provider'])
     invoke.mockReset().mockResolvedValueOnce(Buffer.from(fixture()).toString('base64')).mockResolvedValueOnce({text:' Synthetic ',elapsed_ms:1})
     const audio=await prepareTestPcm(), result=await testCloudAsr(config,audio)
     expect(result.text).toBe('Synthetic')
-    expect(invoke).toHaveBeenLastCalledWith('cloud_transcribe',{request:{audio_b64:audio.pcmB64,sample_rate:16000,asr_config:expect.objectContaining({api_key:'draft-key',extra:expect.objectContaining({model:'draft-model',baseUrl:'https://draft.invalid/v1',audioEncoding:'mp3',instructions:'Synthetic instruction',userPrompt:'Synthetic prompt'})})}})
+    expect(invoke).toHaveBeenLastCalledWith('cloud_transcribe',{request:{audio_b64:audio.pcmB64,sample_rate:16000,asr_config:expect.objectContaining({api_key:'draft-key',extra:expect.objectContaining({model:'draft-model',baseUrl:'https://draft.invalid/v1',audioEncoding:'mp3',instructions:'Synthetic instruction'})})}})
     expect(invoke).toHaveBeenCalledTimes(2)
   })
   it('preserves empty results and propagates API/fixture errors',async()=>{

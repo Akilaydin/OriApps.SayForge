@@ -24,11 +24,8 @@ pub fn shortcuts_changed(
     let ptt_str = ptt_setting.as_str().unwrap_or("ControlRight");
     let hf_val = storage.get("shortcutHandsFree", None);
     let hf_key = hf_val.as_str().unwrap_or("AltRight");
-    let ai_toggle_val = storage.get("shortcutToggleAi", None);
-    let ai_toggle_key = ai_toggle_val.as_str().unwrap_or("");
-
-    // Reconfigure PTT + hands-free + AI cleanup single-key/mouse hook
-    hook.reconfigure(&app, ptt_str, hf_key, ai_toggle_key);
+    // Reconfigure PTT + hands-free single-key/mouse hook
+    hook.reconfigure(&app, ptt_str, hf_key);
 
     register_all_global_shortcuts(&app, storage.inner());
 }
@@ -57,20 +54,7 @@ pub fn register_all_global_shortcuts(app: &AppHandle, storage: &Storage) {
         }
     }
 
-    let ai_toggle = storage.get("shortcutToggleAi", None);
-    let ai_toggle_key = ai_toggle.as_str().unwrap_or("").to_string();
-    if !ai_toggle_key.is_empty() && ai_toggle_key.contains('+') {
-        let ai_toggle_for_log = ai_toggle_key.clone();
-        if let Err(e) = gs.on_shortcut(ai_toggle_key.as_str(), move |app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                let _ = app.emit("toggle-ai-cleanup", serde_json::json!({ "source": "globalShortcut" }));
-            }
-        }) {
-            log::warn!("Failed to register AI cleanup shortcut '{}': {}", ai_toggle_for_log, e);
-        } else {
-            log::info!("Registered AI cleanup shortcut: {}", ai_toggle_for_log);
-        }
-    }
+
 }
 
 ///

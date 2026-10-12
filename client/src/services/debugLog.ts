@@ -14,10 +14,6 @@ const WEBSOCKET_KEY_EVENT = /(Connection closed|Connection timed out|Failed to s
 const AUDIO_KEY_EVENT = /(Microphone capture started|AudioContext|First PCM frame received|First RMS received|ScriptProcessorNode fallback activated|Capture stop summary)/i
 const INSERTION_EVENT = /(Paste decision|External text insertion|fallback|Target is SayForge|Target is not editable)/i
 
-export const AI_LOG_SOURCE = 'ai'
-export const AI_EVENT_REQUEST = 'ai.request'
-export const AI_EVENT_OUTCOME = 'ai.outcome'
-const AI_KEY_EVENTS = new Set<string>([AI_EVENT_REQUEST, AI_EVENT_OUTCOME])
 
 function shouldMirrorPayload(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false
@@ -34,7 +30,6 @@ function shouldMirrorPayload(payload: unknown): boolean {
     return source === 'recorder' && RECORDER_KEY_EVENT.test(message)
       || source === 'websocket' && WEBSOCKET_KEY_EVENT.test(message)
       || source === 'audio' && AUDIO_KEY_EVENT.test(message)
-      || source === AI_LOG_SOURCE && AI_KEY_EVENTS.has(message)
       || source === 'backend'
       || source === 'update'
   }
@@ -45,7 +40,6 @@ function shouldMirrorPayload(payload: unknown): boolean {
 function shouldKeepRuntimeEvent(event: RuntimeEvent): boolean {
   if (event.level === 'error' || event.level === 'warn') return true
   if (event.source === 'backend') return true
-  if (event.source === AI_LOG_SOURCE) return AI_KEY_EVENTS.has(event.message)
   if (event.source === 'update') return true
   if (event.source === 'websocket') {
     return WEBSOCKET_KEY_EVENT.test(event.message)

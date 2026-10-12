@@ -1,5 +1,7 @@
 # SayForge simplification results
 
+Historical implementation report. Current behavior and architecture are described in `PRODUCT.md` and `ARCHITECTURE.md`; the separate AI cleanup stage described below has been retired.
+
 Date: 2026-10-09. Baseline: `13491766295382b2fa3c8d2b76f642ac26005f5c`.
 The implementation was completed on sequential task branches and merged/pushed to `main`.
 The release build used the application code at `928734aaa28fc33ae6dbdd91aa2d989cd15585e2`;

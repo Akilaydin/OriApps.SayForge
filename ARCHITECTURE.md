@@ -8,8 +8,8 @@ Technical reference for the current SayForge implementation. Product behavior be
 - React manages the UI, microphone capture, recording lifecycle and text processing.
 - Rust handles Win32 integration, persistence and cloud HTTP calls.
 - Speech mode: `cloud_api`. Retired `local`/server values normalize and persist as `cloud_api` at frontend startup.
-- Optional AI refinement uses an OpenAI-compatible endpoint and a single prompt; Ollama, preset shortcuts, per-app rules and personalization statistics are inactive.
-- AI provider diagnostics record HTTP status, structured error code and coarse transport/JSON failures; no response excerpts, request URLs, model names or editor text. Frontend AI failure events mirror only error categories, not raw exception messages. Diagnostics previews and ZIP exports redact legacy Rust and frontend AI-provider log entries as well.
+- ASR is the only remote text-producing operation. There is no separate AI refinement provider, context-aware writing stage or editor-text capture.
+- Diagnostics previews and ZIP exports still redact historical Rust and frontend AI-provider log entries. Active ASR diagnostics exclude private response bodies, endpoint/model details and prompt content.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - The Tauri 2 updater checks one public static GitHub Releases `latest.json` at startup or when requested in About. The signed NSIS is downloaded only after consent; a small UI prompt does not open a separate window and does not interrupt tray startup. On Windows the native updater launches the installer and exits the app.
 - A push to `release` runs Windows tests and one Tauri NSIS build. A separate
@@ -27,7 +27,7 @@ Global hotkey / UI
     -> RecorderOrchestrator
     -> microphone capture (16 kHz mono PCM)
        -> CloudAPIProvider -> Rust ASR adapter -> configured API
-    -> optional AI refinement and text transforms
+    -> local text transforms
     -> text history
     -> captured Windows text target
        -> native insertion, or copyable fallback card
@@ -52,8 +52,7 @@ Paths below are relative to `client/`.
   (defaults true/+6 dB). The recorder snapshots both with other runtime settings and
   passes them to `startCapture`; in-flight dictation is not altered by UI changes.
   The microphone test can update only its own `GainNode` during a 5-second test.
-- `services/transcription/` — provider interface, mode selection, buffered cloud delivery and AI execution policy.
-- `services/aiPrompt.ts` — a single editable AI prompt and legacy custom-prompt migration. `services/contextAware.ts` preserves bounded editor context.
+- `services/transcription/` — provider interface, mode selection, buffered cloud delivery and run isolation.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
 - Low/no-signal warnings use PCM RMS before speech detection. Once enough speech is
@@ -61,7 +60,6 @@ Paths below are relative to `client/`.
   remains independent.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
 - `stores/language.ts` — fixed English UI locale without stored language preferences; `stores/providerDefaults.ts` — provider startup defaults independent of UI language.
-- AI cleanup adopts custom presets when migrating to the single-prompt setting, without special treatment of retired localized defaults. Speech recognition languages remain provider-controlled.
 - `services/debugLog.ts` — bounded runtime diagnostics mirrored to native logs; no experimental session/audio viewer or separate PTT laboratory hook.
 
 ### Rust (`src-tauri/src/`)
@@ -69,7 +67,7 @@ Paths below are relative to `client/`.
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
 - `inject/mod.rs` — known Qt/vendor process names remain an editability fallback only when the target's UIA control is not explicitly disabled, read-only or non-editable. Detection of 360/QQ/Baidu security processes is diagnostic only and never grants insertion permission.
-- `providers/` — OpenAI-compatible HTTP ASR, optional AI cleanup and capability reporting.
+- `providers/` — OpenAI-compatible HTTP ASR and capability reporting.
 - ASR IPC uses provider, API key and protocol/model options; old vendor-specific app IDs, workspace credentials and catalog flags are not used.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
 - `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.
@@ -102,11 +100,28 @@ Paths below are relative to `client/`.
   event counts and console message delivery are never treated as verified text;
   only observable native edit-length changes confirm a WM_PASTE. Ambiguous
   delivery shows the fallback card without an automatic second paste.
-- Treat editor context as bounded, untrusted data. Do not replace selected text unless an AI edit was applied.
+- Capture only target metadata for insertion; do not read editor text or send selections to the ASR provider.
 - Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
-- Cloud ASR sends recorded audio; optional cloud AI refinement may transmit text/context. Retired model files/settings remain untouched.
+- Cloud ASR sends recorded audio and the selected Transcription Prompt. Retired model files/settings remain untouched.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.
+
+## Transcription Prompt
+
+One editable field retains the historical `systemInstruction` profile/flat-setting key.
+No destructive migration or new SQLite schema is needed. Nonempty historical `userPrompt`
+values are preserved in parsed profiles and backups only; they do not participate in requests.
+Retired AI settings/credentials and historical `llmText`/`llmMs` fields remain compatible.
+New history puts the locally transformed ASR output in `llmText` and writes `llmMs: 0`.
+
+The runtime sends this single prompt as `extra.instructions`. Standard chat puts it in
+the same `user` content array as the audio; its default transcription system message is
+used only when the user field is blank. Hotword hints remain independent. Legacy data-URL
+chat keeps custom instructions in `system`, avoiding user text that could mask discarded
+unsupported audio. Multipart uses the same prompt in its `prompt` form field, with the
+existing punctuation hint for blank input. Model/endpoint support controls what it means;
+no second refinement request compensates for unsupported instructions. Existing multipart
+unsupported-prompt retry remains a compatibility fallback and may omit the hint.
 
 ## ASR protocol selection
 

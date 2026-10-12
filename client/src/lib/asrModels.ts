@@ -10,7 +10,6 @@ export function resolveAsrDisplayModel(providerKey: string, selectedModel?: stri
 export interface AsrConfigExtra extends Record<string, unknown> {
   model?: string
   instructions?: string
-  userPrompt?: string
   audioEncoding?: string
   baseUrl?: string
   protocol?: string
@@ -21,7 +20,6 @@ export function buildAsrExtra(
   options: {
     model?: string
     instructions?: string
-    userPrompt?: string
     audioEncoding?: string
     baseUrl?: string
     protocol?: string
@@ -29,16 +27,14 @@ export function buildAsrExtra(
 ): AsrConfigExtra | undefined {
   const model = options.model?.trim() || ''
   const instructions = options.instructions?.trim() ?? ''
-  const userPrompt = options.userPrompt?.trim() ?? ''
   const audioEncoding = options.audioEncoding === 'mp3' ? 'mp3' : ''
   const baseUrl = options.baseUrl?.trim() ?? ''
   const protocol = options.protocol?.trim() ?? ''
   const explicitProtocol = protocol === 'auto' ? '' : protocol
-  if (!model && !instructions && !userPrompt && !audioEncoding && !baseUrl && !explicitProtocol) return undefined
+  if (!model && !instructions && !audioEncoding && !baseUrl && !explicitProtocol) return undefined
   return {
     ...(model ? { model } : {}),
     ...(instructions ? { instructions } : {}),
-    ...(userPrompt ? { userPrompt } : {}),
     ...(audioEncoding ? { audioEncoding } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(explicitProtocol ? { protocol: explicitProtocol } : {}),

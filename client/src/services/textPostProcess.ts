@@ -50,12 +50,6 @@ export interface TextPostProcessOptions {
   punctuationToSpace: boolean
 }
 
-export const APPLIES_WITH_AI: Record<keyof TextPostProcessOptions, boolean> = {
-  autoSegment: false,
-  stripTrailingPunctuation: false,
-  punctuationToSpace: false,
-}
-
 const STORAGE_KEY = 'textPostProcess'
 
 export const DEFAULT_POST_PROCESS: TextPostProcessOptions = {
@@ -78,19 +72,13 @@ export async function saveTextPostProcessOptions(opts: TextPostProcessOptions): 
   await setSetting(STORAGE_KEY, opts)
 }
 
-export interface ApplyTransformsOptions {
-  rawAsr?: boolean
-}
-
 export async function applyTextTransforms(
   text: string,
-  options: ApplyTransformsOptions = {},
 ): Promise<string> {
   if (!text) return text
   const opts = await getTextPostProcessOptions()
-  const ownFormat = options.rawAsr ?? true
   const active = (key: keyof TextPostProcessOptions) =>
-    opts[key] && (ownFormat || APPLIES_WITH_AI[key])
+    opts[key]
   let result = text
   if (active('autoSegment')) result = segmentAsrText(result)
   result = await applyTextReplacements(result)

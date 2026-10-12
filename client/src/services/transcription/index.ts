@@ -13,8 +13,6 @@ export type {
   ASRResult,
   WorkMode,
   ProviderState,
-  AiExecutionSource,
-  AiExecutionStatus,
 } from './types'
 
 let currentProvider: TranscriptionProvider | null = null

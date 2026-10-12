@@ -38,7 +38,7 @@ import {
   type AsrProfile,
 } from './asrProviderCatalog'
 import { loadAsrProfiles, saveAsrProfiles } from './asrProfileStore'
-import { formatCheckedAt, formatLatency, isCheckFresh } from './aiProviderCatalog'
+import { formatCheckedAt, formatLatency, isCheckFresh } from './asrProviderCatalog'
 import { t } from '@/i18n'
 import { useT } from '@/i18n/useT'
 
@@ -624,28 +624,16 @@ export default function CloudAPISection() {
                 <p className="mt-1 text-xs text-muted-foreground">{t('asr.audioEncodingHint')}</p>
               </div>
               <div>
-                <label htmlFor="asr-system-instruction" className="mb-1 block text-sm text-muted-foreground">{t('asr.systemInstruction')}</label>
+                <label htmlFor="asr-transcription-prompt" className="mb-1 block text-sm text-muted-foreground">{t('asr.transcriptionPrompt')}</label>
                 <textarea
-                  id="asr-system-instruction"
+                  id="asr-transcription-prompt"
                   value={draft.systemInstruction}
                   onChange={(e) => patchDraft({ systemInstruction: e.target.value })}
-                  placeholder={t('asr.systemInstructionPlaceholder')}
+                  placeholder={t('asr.transcriptionPromptPlaceholder')}
                   rows={3}
                   className="w-full resize-y rounded-md border border-input-border bg-input-bg px-3 py-2 text-sm"
                 />
-                <p className="mt-1 text-xs text-muted-foreground">{t('asr.systemInstructionHint')}</p>
-              </div>
-              <div>
-                <label htmlFor="asr-user-prompt" className="mb-1 block text-sm text-muted-foreground">{t('asr.userPrompt')}</label>
-                <textarea
-                  id="asr-user-prompt"
-                  value={draft.userPrompt}
-                  onChange={(e) => patchDraft({ userPrompt: e.target.value })}
-                  placeholder={t('asr.userPromptPlaceholder')}
-                  rows={2}
-                  className="w-full resize-y rounded-md border border-input-border bg-input-bg px-3 py-2 text-sm"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">{t('asr.userPromptHint')}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t('asr.transcriptionPromptHint')}</p>
               </div>
             </>
           )}

@@ -10,12 +10,9 @@ import History from './pages/History'
 import Dictionary from './pages/Dictionary'
 import Settings from './pages/Settings'
 import VoiceEnginePage from './features/settings/VoiceEnginePage'
-import AIServicePage from './features/settings/AIServicePage'
-import AIInstructionsPage from './features/settings/AIInstructionsPage'
 import About from './pages/About'
 import { initRecorder, cleanup } from './services/recorder'
 import { initTheme } from './stores/theme'
-import { initAiEnabled } from './stores/aiEnabled'
 import { getSetting, setSetting } from './services/store'
 import * as bridge from './services/bridge'
 import { checkForUpdates } from './services/appUpdates'
@@ -27,7 +24,6 @@ export default function App() {
 
   useEffect(() => {
     void initTheme()
-    void initAiEnabled()
     initRecorder()
     void checkForUpdates()
 
@@ -76,8 +72,6 @@ export default function App() {
             <Route path="/hotwords" element={<Dictionary />} />
             <Route path="/dictionary" element={<Navigate to="/hotwords" replace />} />
             <Route path="/voice-engine" element={<VoiceEnginePage />} />
-            <Route path="/ai-instructions" element={<AIInstructionsPage />} />
-            <Route path="/ai-service" element={<AIServicePage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/about" element={<About />} />
           </Routes>

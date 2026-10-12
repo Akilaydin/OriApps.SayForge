@@ -41,14 +41,6 @@ export async function refreshRecorderSettings() {
   await orchestrator.refreshRuntimeSettings()
 }
 
-export function setAiEnabledCache(next: boolean) {
-  orchestrator.setAiEnabledCache(next)
-}
-
-export function showAiEnabledToast(enabled: boolean) {
-  orchestrator.showAiEnabledToast(enabled)
-}
-
 export function setHotwordsCache(words: string[]) {
   orchestrator.setHotwordsCache(words)
 }

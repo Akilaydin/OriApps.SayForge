@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Sparkles, Globe, ArrowRight, ArrowLeft, CheckCircle2, Keyboard } from 'lucide-react'
+import { Mic, Globe, ArrowRight, ArrowLeft, CheckCircle2, Keyboard } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { getSetting, setSetting } from '@/services/store'
 import { getWorkMode } from '@/services/transcription'
@@ -269,7 +269,6 @@ export default function WelcomeGuide({ onComplete }: WelcomeGuideProps) {
             <div className="space-y-3">
               {[
                 { icon: Mic, title: t('welcome.feature.handsFree.title'), desc: t('welcome.feature.handsFree.desc'), color: 'text-blue-500 bg-blue-500/10' },
-                { icon: Sparkles, title: t('welcome.feature.ai.title'), desc: t('welcome.feature.ai.desc'), color: 'text-amber-500 bg-amber-500/10' },
                 { icon: Globe, title: t('welcome.feature.deploy.title'), desc: t('welcome.feature.deploy.desc'), color: 'text-emerald-500 bg-emerald-500/10' },
               ].map(({ icon: Icon, title, desc, color }) => (
                 <Card key={title}>

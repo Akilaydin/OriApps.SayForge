@@ -10,8 +10,7 @@ use crate::storage::Storage;
 #[tauri::command]
 pub fn collect_settings(storage: State<Storage>) -> Result<Value, String> {
     let keys = [
-        "shortcutPTT", "shortcutPTTCombo", "shortcutHandsFree", "shortcutToggleAi",
-        "aiEnabled", "aiMinDurationSec",
+        "shortcutPTT", "shortcutPTTCombo", "shortcutHandsFree",
         "autoLaunch", "selectedMic", "hotwords", "builtinHotwordSets",
         "stats", "activePresetId", "audioRetentionDays",
         "serverUrl", "language",

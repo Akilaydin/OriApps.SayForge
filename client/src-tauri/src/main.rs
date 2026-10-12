@@ -220,8 +220,6 @@ fn main() {
     let ptt_str = ptt_setting_val.as_str().unwrap_or("ControlRight").to_string();
     let hf_setting_val = storage.get("shortcutHandsFree", None);
     let hf_str = hf_setting_val.as_str().unwrap_or("AltRight").to_string();
-    let ai_toggle_setting_val = storage.get("shortcutToggleAi", None);
-    let ai_toggle_str = ai_toggle_setting_val.as_str().unwrap_or("").to_string();
     log::info!("PTT setting from DB: raw={:?} parsed={:?}", ptt_setting_val, ptt_str);
     log::info!("HF setting from DB: raw={:?} parsed={:?}", hf_setting_val, hf_str);
 
@@ -270,7 +268,7 @@ fn main() {
             }
 
             let hook: tauri::State<KeyboardHookManager> = app.state();
-            hook.start(app.handle(), &ptt_str, &hf_str, &ai_toggle_str);
+            hook.start(app.handle(), &ptt_str, &hf_str);
 
             keyboard::spawn_health_watchdog();
 
@@ -463,9 +461,6 @@ fn main() {
             commands::system::reveal_file_in_folder,
             commands::system::open_folder,
             // Tray
-            commands::tray::set_tray_ai_enabled,
-            commands::tray::get_tray_ai_enabled,
-            commands::tray::toggle_tray_ai_enabled,
             commands::tray::show_main_from_tray,
             commands::tray::hide_tray_menu,
             commands::tray::quit_from_tray,
@@ -497,10 +492,8 @@ fn main() {
             commands::diagnostics::copy_diagnostics_zip,
             commands::diagnostics::read_log_file,
             commands::diagnostics::open_log_folder,
-            // Providers (cloud ASR / AI)
-            providers::registry::cloud_polish,
+            // Providers (cloud ASR)
             providers::registry::cloud_transcribe,
-            providers::registry::test_ai_connection,
             providers::registry::test_asr_connection,
             providers::capabilities::asr_hotword_capability,
             providers::capabilities::asr_hotword_capability_matrix,
