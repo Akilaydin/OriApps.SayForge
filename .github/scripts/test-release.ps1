@@ -4,7 +4,7 @@ $releaseScript = Join-Path $PSScriptRoot 'release.ps1'
 $updaterFixtures = Join-Path $PSScriptRoot '../tools/updater-verifier/fixtures'
 $fixture = Join-Path ([System.IO.Path]::GetTempPath()) "sayforge-release-test-$([guid]::NewGuid())"
 $previousEnvironment = @{}
-foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_STEP_SUMMARY', 'TAURI_ARTIFACT_PATHS', 'TAURI_APP_VERSION', 'SAYFORGE_UPDATER_VERIFIER')) {
+foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'RELEASE_COMMIT_SHA', 'GITHUB_STEP_SUMMARY', 'TAURI_ARTIFACT_PATHS', 'TAURI_APP_VERSION', 'SAYFORGE_UPDATER_VERIFIER')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 $mock = [pscustomobject] @{
@@ -28,7 +28,7 @@ function gh {
         if ($mock.denyPublication) { $global:LASTEXITCODE = 1; return }
         if ($args[2] -eq 'DELETE') { return }
         if ($args[3] -like '*/git/refs') {
-            if ("sha=$env:GITHUB_SHA" -cnotin $args -or 'ref=refs/tags/v0.2.3' -cnotin $args) { throw 'Incorrect tag target.' }
+            if ("sha=$env:RELEASE_COMMIT_SHA" -cnotin $args -or 'ref=refs/tags/v0.2.3' -cnotin $args) { throw 'Incorrect tag target.' }
             return '{}'
         }
         if ('draft=false' -cnotin $args -or 'prerelease=false' -cnotin $args) { throw 'Release is not explicitly public.' }
@@ -47,12 +47,12 @@ function gh {
             assets = $remoteAssets; html_url = 'https://example.invalid/release' } | ConvertTo-Json -Depth 5
     }
     if ($args[1] -like '*/git/ref/tags/v0.2.3') {
-        return @{ object = @{ sha = $env:GITHUB_SHA } } | ConvertTo-Json
+        return @{ object = @{ sha = $env:RELEASE_COMMIT_SHA } } | ConvertTo-Json
     }
     throw "Unexpected GitHub call in test: $($args -join ' ')"
 }
 
-function git { $global:LASTEXITCODE = 0; return $env:GITHUB_SHA }
+function git { $global:LASTEXITCODE = 0; return $env:RELEASE_COMMIT_SHA }
 
 function Assert-Fails([scriptblock] $Action, [string] $Message) {
     try { & $Action } catch {
@@ -86,6 +86,7 @@ try {
     $env:GITHUB_OUTPUT = "$fixture/outputs.txt"
     $env:GITHUB_REPOSITORY = 'synthetic/sayforge'
     $env:GITHUB_SHA = 'a' * 40
+    $env:RELEASE_COMMIT_SHA = 'b' * 40
     $env:GITHUB_STEP_SUMMARY = "$fixture/summary.txt"
     $env:TAURI_APP_VERSION = '0.2.3'
 

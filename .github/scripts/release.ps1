@@ -24,6 +24,7 @@ if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
     throw 'Public Windows releases require a stable major.minor.patch version.'
 }
 $tag = "v$version"
+$releaseCommit = if ($env:RELEASE_COMMIT_SHA) { $env:RELEASE_COMMIT_SHA } else { $env:GITHUB_SHA }
 $package = Read-Json 'client/package.json'
 $npmLock = Read-Json 'client/package-lock.json'
 $cargo = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'client/src-tauri/Cargo.toml') -Raw
@@ -157,9 +158,9 @@ $expectedChecksums = @($assets | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-O
 if ($checksumLines.Count -ne 5 -or @(Compare-Object $expectedChecksums $checksumLines -CaseSensitive).Count -ne 0) {
     throw 'Release asset checksum verification failed.'
 }
-if ($env:GITHUB_SHA -notmatch '^[a-f0-9]{40}$') { throw 'A full tested commit SHA is required.' }
+if ($releaseCommit -notmatch '^[a-f0-9]{40}$') { throw 'A full tested commit SHA is required.' }
 $checkedOutCommit = & git -C $RepositoryRoot rev-parse HEAD
-if ($LASTEXITCODE -ne 0 -or $checkedOutCommit -cne $env:GITHUB_SHA) { throw 'Checkout differs from the tested release commit.' }
+if ($LASTEXITCODE -ne 0 -or $checkedOutCommit -cne $releaseCommit) { throw 'Checkout differs from the tested release commit.' }
 if (-not (Test-NewRelease)) { return }
 
 $source = "https://github.com/$env:GITHUB_REPOSITORY"
@@ -170,17 +171,17 @@ In-app updates are optional and cryptographically verified. Previous manual-only
 
 This installer is unsigned; Windows SmartScreen may warn about an unrecognized publisher.
 
-Source and changes: $source/tree/$env:GITHUB_SHA and $source/blob/$env:GITHUB_SHA/CHANGELOG.md
+Source and changes: $source/tree/$releaseCommit and $source/blob/$releaseCommit/CHANGELOG.md
 Corresponding source archives: $source/archive/refs/tags/$tag.zip and $source/archive/refs/tags/$tag.tar.gz
-AGPL-3.0 and LAME/LGPL-3.0 notices: $source/blob/$env:GITHUB_SHA/THIRD_PARTY_NOTICES.md
+AGPL-3.0 and LAME/LGPL-3.0 notices: $source/blob/$releaseCommit/THIRD_PARTY_NOTICES.md
 See the attached LICENSE, THIRD_PARTY_NOTICES.md, latest.json, .sig and SHA256SUMS.txt.
 "@
 
 # POST refuses an existing ref, including a tag created concurrently outside this workflow.
 $null = Invoke-GitHub @('api', '--method', 'POST', "repos/$env:GITHUB_REPOSITORY/git/refs",
-    '-f', "ref=refs/tags/$tag", '-f', "sha=$env:GITHUB_SHA")
+    '-f', "ref=refs/tags/$tag", '-f', "sha=$releaseCommit")
 $release = Invoke-GitHub @('api', '--method', 'POST', "repos/$env:GITHUB_REPOSITORY/releases",
-    '-f', "tag_name=$tag", '-f', "target_commitish=$env:GITHUB_SHA", '-f', "name=SayForge $tag",
+    '-f', "tag_name=$tag", '-f', "target_commitish=$releaseCommit", '-f', "name=SayForge $tag",
     '-f', "body=$notes", '-F', 'draft=false', '-F', 'prerelease=false') | ConvertFrom-Json
 
 try {
@@ -199,9 +200,9 @@ try {
         }
     }
     $ref = Invoke-GitHub @('api', "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag") | ConvertFrom-Json
-    if ($ref.object.sha -cne $env:GITHUB_SHA) { throw 'Release tag differs from the tested commit.' }
-    Write-Host "Published $($published.html_url) for $env:GITHUB_SHA."
-    "Published [$tag]($($published.html_url)) for commit $env:GITHUB_SHA." |
+    if ($ref.object.sha -cne $releaseCommit) { throw 'Release tag differs from the tested commit.' }
+    Write-Host "Published $($published.html_url) for $releaseCommit."
+    "Published [$tag]($($published.html_url)) for commit $releaseCommit." |
         Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 } catch {
     # Remove only the release ID this run created. Retain the tag to prevent automatic replay.

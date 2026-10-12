@@ -12,7 +12,11 @@ Technical reference for the current SayForge implementation. Product behavior be
 - Diagnostics previews and ZIP exports still redact historical Rust and frontend AI-provider log entries. Active ASR diagnostics exclude private response bodies, endpoint/model details and prompt content.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - The Tauri 2 updater checks one public static GitHub Releases `latest.json` at startup or when requested in About. The signed NSIS is downloaded only after consent; a small UI prompt does not open a separate window and does not interrupt tray startup. On Windows the native updater launches the installer and exits the app.
-- A push to `release` runs Windows tests and one Tauri NSIS build. A separate
+- A push to `release` prepares a version commit containing only the five version
+  manifest/lock files. It chooses the next patch above reserved stable tags/releases
+  unless a higher version is explicitly prepared. Retries reuse the version commit
+  identified by its original merge SHA. Bot pushes do not recursively start workflows.
+  Windows tests and one Tauri NSIS build run against that immutable prepared SHA. A separate
   job verifies transferred assets, updater signature metadata and checksums, then publishes a public release for that exact
   commit; existing version tags cannot be overwritten. See `docs/releasing.md`.
 - NSIS uses the built-in `installMode: both` selection for current-user or
