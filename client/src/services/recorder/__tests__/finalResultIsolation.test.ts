@@ -15,9 +15,9 @@ import { RecorderOrchestrator } from '../RecorderOrchestrator'
 
 const context = () => ({
   runId: 1, timedOutAt: Date.now(), settled: false, audioDurationSec: 1, wallTimeSec: 1,
-  promptResolution: null, appContext: null, probeResult: null,
+  appContext: null, probeResult: null,
 })
-const result: FinalResult = { asrText: 'Synthetic source', llmText: 'Synthetic text', asrMs: 10, llmMs: 0, durationSec: 1 }
+const result: FinalResult = { asrText: 'Synthetic text', asrMs: 10, durationSec: 1 }
 const options = { allowInsertionWhenIdle: false, source: 'processing' as const }
 
 // Exercise orchestration while native capture, storage and insertion remain synthetic.

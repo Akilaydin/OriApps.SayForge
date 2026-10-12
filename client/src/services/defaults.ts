@@ -6,7 +6,6 @@ export const DEFAULTS: Record<string, unknown> = {
 
   shortcutPTT: 'ControlRight',
   shortcutHandsFree: 'AltRight',
-  shortcutToggleAi: '',
 
   selectedMic: '',
   muteSystemAudioWhileRecording: false,
@@ -16,18 +15,7 @@ export const DEFAULTS: Record<string, unknown> = {
 
   protectClipboard: true,
 
-  aiEnabled: true,
-  aiMinDurationSec: 0,
-  contextAwareWritingEnabled: false,
-  aiPromptAppend: '',
 
-  'cloudAi.provider': 'openai_compat',
-  'cloudAi.apiUrl': '',
-  'cloudAi.apiKey': '',
-  'cloudAi.model': '',
-  'cloudAi.profiles': [],
-  'cloudAi.activeProfileId': '',
-  'cloudAi.profilesMigrated': false,
 
   'cloudAsr.provider': 'openai_compat',
   'cloudAsr.model': '',
@@ -42,7 +30,6 @@ export const DEFAULTS: Record<string, unknown> = {
   overlayShowDuration: true,
   overlayWidth: 'short',
 
-  injectHotwordsToPrompt: false,
 
   readySoundEnabled: true,
 

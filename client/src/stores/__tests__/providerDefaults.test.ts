@@ -16,10 +16,10 @@ import { initProviderDefaults } from '../providerDefaults'
 describe('provider defaults and retired settings preservation', () => {
   beforeEach(() => bridgeState.values.clear())
 
-  it('defaults to OpenAI-compatible without changing retired settings', async () => {
+  it('does not initialize retired AI settings', async () => {
     await initProviderDefaults()
     expect(bridgeState.values.has('localAsr.downloadSource')).toBe(false)
-    expect(bridgeState.values.get('cloudAi.provider')).toBe('openai_compat')
+    expect(bridgeState.values.has('cloudAi.provider')).toBe(false)
     expect(bridgeState.values.has('localAsr.modelId')).toBe(false)
   })
 

@@ -25,14 +25,14 @@ API key, upload format or prompts during recording applies to the next recording
   High gain levels may increase noise or clip loud speech. Input warnings are
   limited to before speech is detected, so normal pauses do not prompt the user.
 - Cloud speech recognition; cloud audio is uploaded after recording stops; live captions are not supported.
-- Optional AI cleanup with one editable prompt and an OpenAI-compatible endpoint.
-- Hotwords, text replacements, formatting and context-aware editing of selected text.
+- One Transcription Prompt sent in the ASR request; no separate cleanup provider or request.
+- Hotwords, local text replacements and formatting.
   Default text replacements cover common technical terms; an explicitly saved
   empty list disables replacements, and existing custom lists remain unchanged.
 - Dictionary shows hotword delivery for the active HTTP protocol. Multipart uses its
   prompt for punctuation; chat sends hotwords as context without guaranteeing a match.
 - Searchable local text history with copying and TXT export. Search matches
-  ASR/AI transcript text only, ignores letter case, and treats `%` and `_`
+  transcript text (including historical refined text) only, ignores letter case, and treats `%` and `_`
   literally. The list, result count and export use the same filter.
 - Local settings export/import and legacy ZIP restore, tray controls and diagnostics.
 - Windows autostart is an explicit choice in Settings; new installs leave it off.
@@ -42,7 +42,7 @@ API key, upload format or prompts during recording applies to the next recording
 
 1. Select a microphone, speech engine and recording shortcut.
 2. Record speech; the overlay shows the current state.
-3. Stop recording. Speech is transcribed and optionally refined.
+3. Stop recording. Speech is transcribed with the configured prompt, then local text replacements and formatting are applied.
 4. Insert the result into the captured editable target. If insertion fails or cannot be confirmed, show a copyable fallback card.
 
 Cancellation must not insert late results. Empty/silent recordings can produce no text. Not every Windows application permits automatic insertion.
@@ -59,14 +59,16 @@ copyable fallback card even if Windows accepted the input events.
 
 Legacy local-mode settings migrate to Cloud API. Downloaded model files and retired settings remain on disk.
 
-## AI and personal data
+## Transcription prompts and personal data
 
-- AI refinement is optional and configured separately from ASR. It may send recognized text and bounded editor context to a cloud provider.
-- If refinement is disabled or fails, preserve useful source text. Do not overwrite a selection unless the requested edit was actually applied.
+- Standard chat sends Transcription Prompt as text alongside audio in one `user` message. A blank prompt uses the built-in transcription instruction. Legacy chat keeps the supported system-instruction shape and WAV-only audio. Multipart sends the prompt through `/audio/transcriptions`; hints and instruction handling depend on the model and endpoint. A blank multipart prompt uses the existing punctuation hint.
+- Explicit `chat_standard` makes one ASR request. Existing `auto` protocol probing and multipart retry without an unsupported prompt are compatibility fallbacks, not cleanup calls. They do not emulate instruction support.
+- Editor text and selections are not read or sent to the provider. Ordinary focused-target insertion remains unchanged. ASR errors, empty responses and cancellation must not insert text.
+- Existing `systemInstruction` settings are the Transcription Prompt; their text is retained unchanged. Retired cleanup settings, credentials, presets and nonempty legacy `userPrompt` values remain stored/exportable but are inactive.
 - Settings and transcription history are stored locally. New recordings are not archived; older audio files and history remain untouched.
 - Text history can be disabled. Settings exports exclude history and audio; older ZIP backups can still be restored after confirmation. Backups are local and initiated by the user.
 - Legacy restore replaces archived settings/collections and matching audio files, preserving unrelated audio. Limits: 64 MiB JSON, 512 MiB per audio file, 8 GiB each for the ZIP file and extracted audio total, and 100,000 ZIP entries. Invalid archives are rejected; ordinary restore failures roll back database and audio changes. Process termination or power loss during restore is not covered by that rollback.
-- The app uses `%LOCALAPPDATA%\com.oriapps.sayforge`. Protect user transcripts, credentials and editor context.
+- The app uses `%LOCALAPPDATA%\com.oriapps.sayforge`. Protect audio, user transcripts, prompts and credentials.
 
 ## Scope and limitations
 

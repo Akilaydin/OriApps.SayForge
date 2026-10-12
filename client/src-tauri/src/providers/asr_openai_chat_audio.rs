@@ -181,19 +181,26 @@ pub(super) fn pcm_to_mp3(pcm: &[u8], sample_rate: u32) -> Result<Vec<u8>, String
     Ok(output)
 }
 
+fn transcription_prompt(config: &AsrProviderConfig) -> Option<&str> {
+    config.extra.get("instructions").and_then(|v| v.as_str())
+        .map(str::trim).filter(|s| !s.is_empty())
+}
+
 fn resolve_instruction(
     config: &AsrProviderConfig,
     model: &str,
     payload: AudioPayloadFormat,
     hotwords: &[String],
 ) -> Option<String> {
-    let mut instruction = config.extra.get("instructions")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .or_else(|| (needs_transcribe_instruction(model) || matches!(payload, AudioPayloadFormat::OpenAi))
-            .then(|| DEFAULT_TRANSCRIBE_INSTRUCTION.to_string()));
+    // Legacy data-URL gateways retain their supported system-instruction shape.
+    let custom = transcription_prompt(config);
+    let mut instruction = match (payload, custom) {
+        (AudioPayloadFormat::DataUrl, Some(text)) => Some(text.to_string()),
+        (AudioPayloadFormat::OpenAi, Some(_)) => None,
+        (_, None) if needs_transcribe_instruction(model) || matches!(payload, AudioPayloadFormat::OpenAi) =>
+            Some(DEFAULT_TRANSCRIBE_INSTRUCTION.to_string()),
+        _ => None,
+    };
     let terms: Vec<&str> = hotwords.iter().map(String::as_str)
         .map(str::trim).filter(|term| !term.is_empty()).take(100).collect();
     if !terms.is_empty() {
@@ -204,14 +211,8 @@ fn resolve_instruction(
 }
 
 fn resolve_user_prompt(config: &AsrProviderConfig, payload: AudioPayloadFormat) -> Option<&str> {
-    // Only the standard OpenAI audio object uses the optional user text. A
-    // legacy gateway may silently discard an unsupported data-URL audio part;
-    // user text would then make the request look successful without transcription.
-    if !matches!(payload, AudioPayloadFormat::OpenAi) {
-        return None;
-    }
-    config.extra.get("userPrompt").and_then(|v| v.as_str())
-        .map(str::trim).filter(|s| !s.is_empty())
+    // Legacy gateways may silently discard data-URL audio when user text is present.
+    if matches!(payload, AudioPayloadFormat::OpenAi) { transcription_prompt(config) } else { None }
 }
 
 fn build_body(
@@ -541,18 +542,19 @@ mod tests {
     }
 
     #[test]
-    fn custom_system_instruction_and_user_prompt_are_separate_messages() {
+    fn transcription_prompt_is_user_text_without_a_conflicting_default_system() {
         let config = config_for("openai_chat_audio_standard", serde_json::json!({
-            "instructions": "Transcribe in Russian.", "userPrompt": "Keep C# and RabbitMQ unchanged."
+            "instructions": "Transcribe in Russian.", "userPrompt": "Retired and ignored."
         }));
         let instruction = resolve_instruction(&config, "gemini-example", AudioPayloadFormat::OpenAi, &[]);
-        assert_eq!(instruction.as_deref(), Some("Transcribe in Russian."));
+        assert_eq!(instruction, None);
         let body = build_body("gemini-example", &[1, 2], instruction.as_deref(), resolve_user_prompt(&config, AudioPayloadFormat::OpenAi), None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav);
-        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(body["messages"][0]["role"], "user");
         assert_eq!(body["messages"][0]["content"][0]["text"], "Transcribe in Russian.");
-        assert_eq!(body["messages"][1]["content"][0]["text"], "Keep C# and RabbitMQ unchanged.");
-        assert_eq!(body["messages"][1]["content"][1]["type"], "input_audio");
+        assert_eq!(body["messages"][0]["content"][1]["type"], "input_audio");
         assert_eq!(resolve_user_prompt(&config, AudioPayloadFormat::DataUrl), None);
+        assert_eq!(resolve_instruction(&config, "gemini-example", AudioPayloadFormat::DataUrl, &[]).as_deref(), Some("Transcribe in Russian."));
     }
 
     #[test]

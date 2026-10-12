@@ -4,8 +4,6 @@ import { restoreHotwordSpacing } from '../textPostProcess'
 import { addRuntimeEvent } from '../debugLog'
 import { notifyAsrCapabilityMaybeChanged } from '../bridge'
 import { BufferedProvider } from './BufferedProvider'
-import { polishWithClientAi } from './clientAiPolish'
-import { policyFromSnapshot, resolveAndLogAiOutcome, type AiOutcomeContext } from './aiPolicy'
 import type { TranscriptionCallbacks, StartOptions, StopOptions, WorkMode } from './types'
 
 interface AsrResult { text: string; elapsed_ms: number }
@@ -15,14 +13,13 @@ export class CloudAPIProvider extends BufferedProvider {
   private config: Promise<{ value: AsrProviderConfig } | { error: Error }> | undefined
 
   protected async onConnect(callbacks: TranscriptionCallbacks): Promise<void> {
-    callbacks.onReady?.({ asr: true, llm: true })
+    callbacks.onReady?.({ asr: true })
   }
 
   start(opts: StartOptions): boolean {
     const started = super.start({
       ...opts,
       hotwords: opts.hotwords ? [...opts.hotwords] : undefined,
-      textContext: opts.textContext ? { ...opts.textContext } : undefined,
     })
     if (started) this.config = loadAsrConfig().then(value => ({ value }), error => ({ error }))
     return started
@@ -74,43 +71,7 @@ export class CloudAPIProvider extends BufferedProvider {
     this.callbacks.onASR?.({ text: asrText, asrMs, durationSec })
     if (!this.isRunCurrent(runId)) return
 
-    const policy = policyFromSnapshot(startOpts.aiConfig, 'cloud_api', durationSec)
-    const outcomeContext: AiOutcomeContext = {
-      operationId: startOpts.operationId || `cloud-${runId}`,
-      trigger: startOpts.source === 'history_reprocess' ? 'history_reprocess' : 'live',
-    }
-
-    if (!asrText.trim()) {
-      const outcome = resolveAndLogAiOutcome(outcomeContext, policy, { asrTextEmpty: true })
-      this.callbacks.onFinal?.({
-        asrText: '',
-        llmText: '',
-        asrMs,
-        llmMs: 0,
-        durationSec,
-        aiSource: outcome.source,
-        aiStatus: outcome.status,
-      })
-      if (this.isRunCurrent(runId)) this.callbacks.onDone?.()
-      return
-    }
-
-    const polish = await polishWithClientAi({
-      asrText,
-      startOptions: startOpts,
-      policy,
-      outcomeContext,
-      logSource: 'cloud_api',
-      isCurrent: () => this.isRunCurrent(runId),
-    })
-    if (!polish || !this.isRunCurrent(runId)) return
-
-    this.callbacks.onFinal?.({
-      asrText,
-      asrMs,
-      durationSec,
-      ...polish,
-    })
+    this.callbacks.onFinal?.({ asrText, asrMs, durationSec })
     if (this.isRunCurrent(runId)) this.callbacks.onDone?.()
   }
 }

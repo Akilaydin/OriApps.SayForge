@@ -87,11 +87,10 @@ pub fn get_probe_result(detector: State<ContextDetector>) -> Result<Value, Strin
 
 #[tauri::command]
 pub fn get_recording_context(
-    include_text_context: Option<bool>,
     detector: State<ContextDetector>,
 ) -> Result<Value, String> {
     let started_at = chrono::Utc::now().timestamp_millis();
-    let ctx = detector.capture_recording("recording_start", include_text_context.unwrap_or(false));
+    let ctx = detector.capture("recording_start");
     let completed_at = chrono::Utc::now().timestamp_millis();
     let app_context = serde_json::to_value(&ctx).map_err(|e| e.to_string())?;
     let probe = probe_result_for_context(&ctx, started_at, completed_at);

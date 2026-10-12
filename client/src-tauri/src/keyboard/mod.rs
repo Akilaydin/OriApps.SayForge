@@ -473,9 +473,6 @@ struct HookSharedState {
     /// VK codes for hands-free toggle key (empty = not using hook for hands-free)
     hf_vk_codes: Vec<u32>,
     hf_setting: String,
-        ai_toggle_key_down: AtomicBool,
-    ai_toggle_vk_codes: Vec<u32>,
-    ai_toggle_setting: String,
     app_handle: AppHandle,
 }
 
@@ -486,7 +483,6 @@ enum HookAction {
     PttDown { vk: u32, gen: u64 },
     PttUp { vk: u32, gen: u64, reason: &'static str },
     HfToggle { vk: u32 },
-    AiToggle { vk: u32 },
     Escape { mode: u32, token: u64 },
         CardHotkey { action: u32, token: u64 },
     Diag { vk: u32, msg_name: &'static str, flags: u32, scan_code: u32 },
@@ -1047,10 +1043,10 @@ impl KeyboardHookManager {
     }
 
     /// Start the keyboard hook with PTT, hands-free, and AI-cleanup single-key settings.
-    pub fn start(&self, app: &AppHandle, ptt_setting: &str, hf_setting: &str, ai_toggle_setting: &str) {
+    pub fn start(&self, app: &AppHandle, ptt_setting: &str, hf_setting: &str) {
         crate::commands::system::write_log_line(&format!(
-            "[ptt-lifecycle] start() called ptt_setting={} hf_setting={} ai_toggle_setting={}",
-            ptt_setting, hf_setting, ai_toggle_setting,
+            "[ptt-lifecycle] start() called ptt_setting={} hf_setting={}",
+            ptt_setting, hf_setting,
         ));
         let has_hook_thread = self.hook_thread.lock().unwrap().is_some();
         if self.running.load(Ordering::SeqCst) || has_hook_thread {
@@ -1060,11 +1056,6 @@ impl KeyboardHookManager {
         let ptt_config = ptt_key_config(ptt_setting);
         let hf_vk_codes = if is_single_key_setting(hf_setting) {
             vk_codes_for_setting(hf_setting)
-        } else {
-            vec![] // combo key — handled by global_shortcut, not hook
-        };
-        let ai_toggle_vk_codes = if is_single_key_setting(ai_toggle_setting) {
-            vk_codes_for_setting(ai_toggle_setting)
         } else {
             vec![] // combo key — handled by global_shortcut, not hook
         };
@@ -1092,9 +1083,6 @@ impl KeyboardHookManager {
             hf_key_down: AtomicBool::new(false),
             hf_vk_codes,
             hf_setting: hf_setting.to_string(),
-            ai_toggle_key_down: AtomicBool::new(false),
-            ai_toggle_vk_codes,
-            ai_toggle_setting: ai_toggle_setting.to_string(),
             app_handle: app.clone(),
         });
 
@@ -1184,14 +1172,14 @@ impl KeyboardHookManager {
     }
 
     /// Reconfigure with new PTT, hands-free, and AI-cleanup settings.
-    pub fn reconfigure(&self, app: &AppHandle, ptt_setting: &str, hf_setting: &str, ai_toggle_setting: &str) {
+    pub fn reconfigure(&self, app: &AppHandle, ptt_setting: &str, hf_setting: &str) {
         let count = RECONFIGURE_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
         crate::commands::system::write_log_line(&format!(
-            "[ptt-lifecycle] reconfigure() #{} ptt_setting={} hf_setting={} ai_toggle_setting={} — waiting for old hook shutdown",
-            count, ptt_setting, hf_setting, ai_toggle_setting,
+            "[ptt-lifecycle] reconfigure() #{} ptt_setting={} hf_setting={} — waiting for old hook shutdown",
+            count, ptt_setting, hf_setting,
         ));
         self.stop();
-        self.start(app, ptt_setting, hf_setting, ai_toggle_setting);
+        self.start(app, ptt_setting, hf_setting);
     }
 
     /// Set hands-free mode active (suppresses PTT up events temporarily)
@@ -1268,15 +1256,6 @@ impl KeyboardHookManager {
                             &format!("[RUST] [hf] toggle vk={} setting={}", vk, dispatch_state.hf_setting)
                         );
                         let _ = dispatch_state.app_handle.emit("toggle-hands-free", serde_json::json!({
-                            "source": "rust_hook",
-                            "vk": vk,
-                        }));
-                    }
-                    HookAction::AiToggle { vk } => {
-                        crate::commands::system::write_log_line(
-                            &format!("[RUST] [ai-toggle] vk={} setting={}", vk, dispatch_state.ai_toggle_setting)
-                        );
-                        let _ = dispatch_state.app_handle.emit("toggle-ai-cleanup", serde_json::json!({
                             "source": "rust_hook",
                             "vk": vk,
                         }));
@@ -1515,10 +1494,7 @@ unsafe extern "system" fn low_level_mouse_proc(
             let is_hf_key = !state.hf_vk_codes.is_empty()
                 && state.hf_vk_codes.contains(&vk)
                 && !is_ptt_key;
-            let is_ai_toggle_key = !state.ai_toggle_vk_codes.is_empty()
-                && state.ai_toggle_vk_codes.contains(&vk)
-                && !is_ptt_key
-                && !is_hf_key;
+
 
             if let Some(member_index) = ptt_member {
                 consumed = true;
@@ -1584,23 +1560,6 @@ unsafe extern "system" fn low_level_mouse_proc(
                 }
             }
 
-            if is_ai_toggle_key {
-                if is_down {
-                    consumed = true;
-                    if begin_hf_press(&state.ai_toggle_key_down) {
-                        HOOK_ACTION_TX.with(|tx| {
-                            if let Some(sender) = tx.borrow().as_ref() {
-                                if sender.send(HookAction::AiToggle { vk }).is_err() {
-                                    TRY_SEND_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-                                }
-                            }
-                        });
-                    }
-                }
-                if is_up && end_hf_press(&state.ai_toggle_key_down) {
-                    consumed = true;
-                }
-            }
         }
     });
 
@@ -1783,10 +1742,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 let is_hf_key = !state.hf_vk_codes.is_empty()
                     && state.hf_vk_codes.contains(&vk)
                     && !is_ptt_key; // PTT takes priority if same key
-                let is_ai_toggle_key = !state.ai_toggle_vk_codes.is_empty()
-                    && state.ai_toggle_vk_codes.contains(&vk)
-                    && !is_ptt_key
-                    && !is_hf_key; // PTT / hands-free take priority if misconfigured
+
 
                 let is_alt_key = vk == 0xA4 || vk == 0xA5;
 
@@ -1929,25 +1885,6 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 }
 
-                if is_ai_toggle_key {
-                    let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
-                    let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-                    if is_down && !modifiers_block_down {
-                        consumed = true;
-                        if begin_hf_press(&state.ai_toggle_key_down) {
-                            HOOK_ACTION_TX.with(|tx| {
-                                if let Some(sender) = tx.borrow().as_ref() {
-                                    if sender.send(HookAction::AiToggle { vk }).is_err() {
-                                        TRY_SEND_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-                                    }
-                                }
-                            });
-                        }
-                    }
-                    if is_up && (end_hf_press(&state.ai_toggle_key_down) || is_alt_key) {
-                        consumed = true;
-                    }
-                }
             }
         });
 
