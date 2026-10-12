@@ -38,8 +38,8 @@ downloaded or installed without confirmation; use **About → Check for updates*
 to check manually. Older versions without the updater require one manual install
 from GitHub Releases before they can update in-app.
 
-Releases are built and published automatically when a new version reaches the
-`release` branch. See [Releasing SayForge](docs/releasing.md). Initial CI installers
+Each promotion to `release` automatically prepares the next stable patch version,
+then builds and publishes it. Workflow retries reuse the prepared version. See [Releasing SayForge](docs/releasing.md). Initial CI installers
 are unsigned for Windows Authenticode; Windows SmartScreen may warn about an
 unrecognized publisher. Updater signatures use a separate Tauri signing key.
 

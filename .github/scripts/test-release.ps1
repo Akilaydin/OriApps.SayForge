@@ -4,10 +4,11 @@ $releaseScript = Join-Path $PSScriptRoot 'release.ps1'
 $updaterFixtures = Join-Path $PSScriptRoot '../tools/updater-verifier/fixtures'
 $fixture = Join-Path ([System.IO.Path]::GetTempPath()) "sayforge-release-test-$([guid]::NewGuid())"
 $previousEnvironment = @{}
-foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_STEP_SUMMARY', 'TAURI_ARTIFACT_PATHS', 'TAURI_APP_VERSION', 'SAYFORGE_UPDATER_VERIFIER')) {
+foreach ($name in @('GITHUB_OUTPUT', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'RELEASE_COMMIT_SHA', 'GITHUB_STEP_SUMMARY', 'TAURI_ARTIFACT_PATHS', 'TAURI_APP_VERSION', 'SAYFORGE_UPDATER_VERIFIER')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 $mock = [pscustomobject] @{
+    releaseTip = 'b' * 40
     remoteTags = @()
     remoteReleases = @()
     denyGitHub = $false
@@ -22,13 +23,14 @@ function gh {
     $mock.apiCalls.Add(($args -join ' '))
     $global:LASTEXITCODE = 0
     if ($mock.denyGitHub) { $global:LASTEXITCODE = 1; return }
+    if ($args[1] -like '*/git/ref/heads/release') { return @{ object = @{ sha = $mock.releaseTip } } | ConvertTo-Json }
     if ($args[1] -like '*/git/matching-refs/tags/v') { return $mock.remoteTags }
     if ($args[1] -like '*/releases') { return $mock.remoteReleases }
     if ($args[0] -eq 'api' -and $args[1] -eq '--method') {
         if ($mock.denyPublication) { $global:LASTEXITCODE = 1; return }
         if ($args[2] -eq 'DELETE') { return }
         if ($args[3] -like '*/git/refs') {
-            if ("sha=$env:GITHUB_SHA" -cnotin $args -or 'ref=refs/tags/v0.2.3' -cnotin $args) { throw 'Incorrect tag target.' }
+            if ("sha=$env:RELEASE_COMMIT_SHA" -cnotin $args -or 'ref=refs/tags/v0.2.3' -cnotin $args) { throw 'Incorrect tag target.' }
             return '{}'
         }
         if ('draft=false' -cnotin $args -or 'prerelease=false' -cnotin $args) { throw 'Release is not explicitly public.' }
@@ -47,12 +49,12 @@ function gh {
             assets = $remoteAssets; html_url = 'https://example.invalid/release' } | ConvertTo-Json -Depth 5
     }
     if ($args[1] -like '*/git/ref/tags/v0.2.3') {
-        return @{ object = @{ sha = $env:GITHUB_SHA } } | ConvertTo-Json
+        return @{ object = @{ sha = $env:RELEASE_COMMIT_SHA } } | ConvertTo-Json
     }
     throw "Unexpected GitHub call in test: $($args -join ' ')"
 }
 
-function git { $global:LASTEXITCODE = 0; return $env:GITHUB_SHA }
+function git { $global:LASTEXITCODE = 0; return $env:RELEASE_COMMIT_SHA }
 
 function Assert-Fails([scriptblock] $Action, [string] $Message) {
     try { & $Action } catch {
@@ -86,9 +88,13 @@ try {
     $env:GITHUB_OUTPUT = "$fixture/outputs.txt"
     $env:GITHUB_REPOSITORY = 'synthetic/sayforge'
     $env:GITHUB_SHA = 'a' * 40
+    $env:RELEASE_COMMIT_SHA = 'b' * 40
     $env:GITHUB_STEP_SUMMARY = "$fixture/summary.txt"
     $env:TAURI_APP_VERSION = '0.2.3'
 
+    $mock.releaseTip = 'c' * 40
+    Assert-Fails { Run-Stage Preflight } 'advanced beyond the tested commit'
+    $mock.releaseTip = $env:RELEASE_COMMIT_SHA
     Run-Stage Preflight
     if ('release_needed=true' -cnotin (Get-Content $env:GITHUB_OUTPUT)) { throw 'First release did not proceed.' }
     $mock.remoteTags = @('refs/tags/v0.2.2')
@@ -189,6 +195,10 @@ try {
     Assert-Fails { Run-Stage Publish } 'checksum verification failed'
     Set-Content -LiteralPath $checksumPath -Value $originalChecksums -NoNewline
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Guard tests wrote to GitHub.' }
+    $mock.releaseTip = 'c' * 40
+    Assert-Fails { Run-Stage Publish } 'advanced beyond the tested commit'
+    if (@($mock.apiCalls | Where-Object { $_ -like '*POST*' }).Count -ne 0) { throw 'Stale prepared commit reached publication.' }
+    $mock.releaseTip = $env:RELEASE_COMMIT_SHA
     $mock.denyPublication = $true
     Assert-Fails { Run-Stage Publish } 'GitHub command failed'
     if (@($mock.apiCalls | Where-Object { $_ -like '*POST*/releases *' }).Count -ne 0) { throw 'Permission denial created a release.' }
