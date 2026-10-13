@@ -41,6 +41,8 @@ import { loadAsrProfiles, saveAsrProfiles } from './asrProfileStore'
 import { formatCheckedAt, formatLatency, isCheckFresh } from './asrProviderCatalog'
 import { t } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { runAction, showToast } from '@/services/actionFeedback'
+import { useActionPending } from '@/components/ActionFeedback'
 
 const inputClass = 'h-9 w-full rounded-md border border-input-border bg-input-bg px-3 text-sm transition-colors focus:border-input-focus-border'
 const selectClass = 'h-9 w-full rounded-md border border-input-border bg-input-bg px-2 text-sm transition-colors focus:border-input-focus-border'
@@ -113,7 +115,8 @@ export default function CloudAPISection() {
   const [draftBaseline, setDraftBaseline] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const busy = testingId !== '' || saving || batch !== null
+  const mutationPending = useActionPending('asr-mutation')
+  const busy = testingId !== '' || saving || batch !== null || mutationPending
   const isTesting = (id: string) => testingId === id || testingIds.includes(id)
   const draftEntry = draft ? findAsrProvider(draft.provider) : undefined
   const draftPlatform = draftEntry?.platform ?? 'openai_compat'
@@ -125,7 +128,7 @@ export default function CloudAPISection() {
 
   useEffect(() => {
     mounted.current = true
-    void load()
+    void load().catch(() => showToast('error', t('feedback.loadFailed')))
     return () => { mounted.current = false; testGeneration.current++; setEngineDraftDirty(false) }
   }, [])
 
@@ -146,16 +149,18 @@ export default function CloudAPISection() {
   }
 
   async function persist(next: AsrProfile[], nextActiveId: string) {
+    await saveAsrProfiles({ profiles: next, activeId: nextActiveId })
     setProfiles(next)
     setActiveId(nextActiveId)
-    await saveAsrProfiles({ profiles: next, activeId: nextActiveId })
     void refreshModeStatus()
   }
 
   async function handleActivate(id: string) {
     if (id === activeId) return
     setNotice(null)
-    await persist(profiles, id)
+    await runAction('asr-mutation', () => persist(profiles, id), {
+      success: t('feedback.saved'), error: t('feedback.saveFailed'),
+    })
   }
 
 
@@ -332,7 +337,7 @@ export default function CloudAPISection() {
   }
 
   async function handleSaveDraft() {
-    if (!draft || saving || testBusy.current) return
+    if (!draft || busy || testBusy.current) return
     setSaving(true)
     try {
       const before = profiles.find((p) => p.id === draft.id)
@@ -343,7 +348,10 @@ export default function CloudAPISection() {
       const next = draftIsNew
         ? [...profiles, saved]
         : profiles.map((p) => (p.id === saved.id ? saved : p))
-      await persist(next, draftIsNew ? saved.id : activeId)
+      const succeeded = await runAction('asr-mutation', () => persist(next, draftIsNew ? saved.id : activeId), {
+        success: t('feedback.saved'), error: t('feedback.saveFailed'),
+      })
+      if (!succeeded) return
 
       setDraft(null)
       setEngineDraftDirty(false)
@@ -358,7 +366,10 @@ export default function CloudAPISection() {
 
   async function handleDelete(id: string) {
     const next = profiles.filter((p) => p.id !== id)
-    await persist(next, id === activeId ? (next[0]?.id ?? '') : activeId)
+    const succeeded = await runAction('asr-mutation', () => persist(next, id === activeId ? (next[0]?.id ?? '') : activeId), {
+      success: t('feedback.deleted'), error: t('feedback.deleteFailed'),
+    })
+    if (!succeeded) return
     setPendingDeleteId('')
     setNotice(null)
   }
@@ -711,7 +722,7 @@ export default function CloudAPISection() {
               </p>
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <button type="button" onClick={() => void shellOpen(platformInfo.consoleUrl)} className={linkClass}>
+              <button type="button" onClick={() => void runAction('external-link', () => shellOpen(platformInfo.consoleUrl), { error: t('feedback.openFailed') })} className={linkClass}>
                 {t('asr.openConsole', { platform: platformInfo.label })}
                 <ExternalLink className="h-3 w-3" aria-hidden />
               </button>
@@ -793,14 +804,14 @@ export default function CloudAPISection() {
       {renderEditor()}
 
       {pendingDelete && (
-        <Modal title={t('asr.deleteTitle')} onClose={() => setPendingDeleteId('')} showCloseButton panelClassName="w-[420px]">
+        <Modal title={t('asr.deleteTitle')} locked={mutationPending} onClose={() => setPendingDeleteId('')} showCloseButton panelClassName="w-[420px]">
           <div className="mt-3 space-y-4">
             <p className="text-sm text-muted-foreground">
               {t('asr.deleteBody', { name: asrCardTitle(pendingDelete, profiles.filter((p) => p.provider === pendingDelete.provider).length) })}
             </p>
             <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPendingDeleteId('')}>{t('common.cancel')}</Button>
-              <Button size="sm" onClick={() => void handleDelete(pendingDelete.id)}>{t('common.delete')}</Button>
+              <Button variant="outline" size="sm" disabled={mutationPending} onClick={() => setPendingDeleteId('')}>{t('common.cancel')}</Button>
+              <Button size="sm" disabled={busy} onClick={() => void handleDelete(pendingDelete.id)}>{t('common.delete')}</Button>
             </div>
           </div>
         </Modal>

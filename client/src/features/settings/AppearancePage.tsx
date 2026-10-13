@@ -10,6 +10,8 @@ import { OVERLAY_WIDTH_PRESETS, type OverlayWidthPreset } from '@/services/recor
 import { type OverlayWaveTheme } from './utils'
 import { type TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { runAction } from '@/services/actionFeedback'
+import { SaveStatus, useActionPending } from '@/components/ActionFeedback'
 
 const OVERLAY_OPTIONS: Array<{
   theme: OverlayWaveTheme
@@ -120,6 +122,8 @@ function OverlayPreview({ theme, showDuration, barCount }: { theme: OverlayWaveT
 
 export default function AppearancePage() {
   const t = useT()
+  const savePending = useActionPending('appearance-settings')
+  const saveChange = (operation: () => Promise<unknown>) => runAction('appearance-settings', operation, { error: t('feedback.applyFailed') })
   const [activeTheme, setActiveTheme] = useState(getActiveThemeId)
   const [overlayWaveTheme, setOverlayWaveTheme] = useState<OverlayWaveTheme>('black-rainbow')
   const [overlayShowDuration, setOverlayShowDuration] = useState(true)
@@ -151,32 +155,38 @@ export default function AppearancePage() {
   }, [])
 
   const handleThemeChange = async (themeId: string) => {
-    await switchTheme(themeId)
-    setActiveTheme(themeId)
+    await saveChange(async () => { await switchTheme(themeId); setActiveTheme(themeId) })
   }
 
   const handleOverlayThemeChange = async (theme: OverlayWaveTheme) => {
-    setOverlayWaveTheme(theme)
-    await setSetting('overlayWaveTheme', theme)
-    await refreshOverlaySettings()
+    await saveChange(async () => {
+      setOverlayWaveTheme(theme)
+      await setSetting('overlayWaveTheme', theme)
+      await refreshOverlaySettings()
+    })
   }
 
   const handleToggleDuration = async () => {
-    const next = !overlayShowDuration
-    setOverlayShowDuration(next)
-    await setSetting('overlayShowDuration', next)
-    await refreshOverlaySettings()
+    await saveChange(async () => {
+      const next = !overlayShowDuration
+      setOverlayShowDuration(next)
+      await setSetting('overlayShowDuration', next)
+      await refreshOverlaySettings()
+    })
   }
 
   const handleOverlayWidthChange = async (preset: OverlayWidthPreset) => {
-    setOverlayWidth(preset)
-    await setSetting('overlayWidth', preset)
-    await refreshOverlaySettings()
+    await saveChange(async () => {
+      setOverlayWidth(preset)
+      await setSetting('overlayWidth', preset)
+      await refreshOverlaySettings()
+    })
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <fieldset disabled={savePending || !ready} className="mx-auto min-w-0 max-w-4xl p-8">
       <h1 className="mb-6 text-2xl font-bold">{t('appearance.title')}</h1>
+      <SaveStatus actionKey="appearance-settings" />
 
       <div className="space-y-6">
         <Card>
@@ -280,6 +290,6 @@ export default function AppearancePage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </fieldset>
   )
 }

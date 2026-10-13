@@ -14,6 +14,14 @@ profile. The active-profile test uses saved settings and the bundled audio sampl
 Cloud ASR settings are captured when recording starts. Changing the active profile,
 API key, upload format or prompts during recording applies to the next recording.
 
+Explicit saves, exports, imports, copies and deletions report their completed result.
+Compact notifications use green for success and red for failure; cancellation is
+neutral. Repeated notifications are grouped, can be dismissed with the keyboard,
+and pause while hovered or focused. Frequent setting/dictionary changes use a
+saving/saved indicator instead of a notification for each change. Destructive
+deletion, reset, replacement import, draft clearing and tray Quit require confirmation.
+Existing recording, ASR-test and updater progress/results remain inline.
+
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
 - Microphone boost is optional and adjustable in Settings → Microphone from 0–18 dB in
   1 dB steps. New installs and existing installs without these settings default to
@@ -50,8 +58,9 @@ When clipboard protection is enabled, insertion backs up supported clipboard for
 and restores them if the clipboard has not changed.
 If a format cannot be backed up safely or the clipboard is unavailable, SayForge
 leaves the original contents untouched and shows the copyable fallback card.
-For keyboard-only insertion and other unverified results, SayForge shows the
-copyable fallback card even if Windows accepted the input events.
+Keyboard insertion can be confirmed when the same focused editor exposes a changed
+text length. Unavailable or unchanged length, including equal-length replacements,
+keeps the copyable fallback even if Windows accepted the input events.
 
 ## Speech engines
 

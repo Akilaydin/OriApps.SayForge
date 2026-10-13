@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FinalResult } from '../../transcription/types'
 import type { ProbeResult } from '../PasteService'
 
-const mocks = vi.hoisted(() => ({ add: vi.fn(), remove: vi.fn(), transform: vi.fn(), emit: vi.fn() }))
+const mocks = vi.hoisted(() => ({ add: vi.fn(), remove: vi.fn(), transform: vi.fn(), emit: vi.fn(), paste: vi.fn() }))
 vi.mock('../../store', () => ({
   addHistory: mocks.add, deleteHistory: mocks.remove, updateHistoryRecord: vi.fn(),
   getSetting: (_key: string, fallback: unknown) => Promise.resolve(fallback),
 }))
-vi.mock('../../bridge', () => ({ emit: mocks.emit }))
+vi.mock('../../bridge', () => ({ emit: mocks.emit, pasteText: mocks.paste }))
 vi.mock('../../debugLog', () => ({ addRuntimeEvent: vi.fn() }))
 vi.mock('../../transcription', () => ({ getProvider: () => ({ mode: 'cloud_api' }) }))
 vi.mock('../../textPostProcess', () => ({ applyTextTransforms: mocks.transform }))
@@ -30,6 +30,7 @@ interface TestRecorder {
   showFallbackAndReset: (text: string, reason: string, runId: number) => void
   markRunCanceled: (runId: number) => void
   consumeTimedOutProcessingContext: () => ReturnType<typeof context> | null
+  resetToIdle: () => void
 }
 
 function session() {
@@ -93,6 +94,43 @@ describe('final result isolation after removing the audio archive', () => {
     const recorder = session(), fallback = vi.spyOn(recorder, 'showFallbackAndReset').mockImplementation(() => {})
     await recorder.handleTextInsertion('Synthetic text', { runId: 1, probeResult: { editable: false, hwnd: '0', process: '-', detail: 'synthetic' } })
     expect(fallback).toHaveBeenCalledWith('Synthetic text', 'not_editable', 1)
+  })
+
+  it('finishes verified keyboard insertion without a fallback or second paste', async () => {
+    mocks.paste.mockResolvedValue({ ok: true, strategy: 'send_input_verified', uncertain: false })
+    const recorder = session()
+    const fallback = vi.spyOn(recorder, 'showFallbackAndReset').mockImplementation(() => {})
+    const reset = vi.spyOn(recorder, 'resetToIdle').mockImplementation(() => {})
+    await recorder.handleTextInsertion('Synthetic text', {
+      runId: 1, probeResult: { editable: true, hwnd: '101', focusHwnd: '102', process: 'synthetic', detail: '' },
+    })
+    expect(mocks.paste).toHaveBeenCalledOnce()
+    expect(mocks.paste).toHaveBeenCalledWith('Synthetic text', '101', '102', true)
+    expect(fallback).not.toHaveBeenCalled()
+    expect(reset).toHaveBeenCalledOnce()
+    expect(recorder.activeRunId).toBe(0)
+  })
+
+  it.each(['paste_unconfirmed', 'focus_not_confirmed', 'invalid_target', 'input_blocked_access_denied'])
+    ('preserves fallback text for %s without retrying', async (reason) => {
+      mocks.paste.mockResolvedValue({ ok: false, reason, strategy: 'send_input', uncertain: true })
+      const recorder = session()
+      const fallback = vi.spyOn(recorder, 'showFallbackAndReset').mockImplementation(() => {})
+      await recorder.handleTextInsertion('Synthetic text', {
+        runId: 1, probeResult: { editable: true, hwnd: '101', process: 'synthetic', detail: '' },
+      })
+      expect(fallback).toHaveBeenCalledWith('Synthetic text', reason, 1)
+      expect(mocks.paste).toHaveBeenCalledOnce()
+    })
+
+  it('never pastes a canceled run', async () => {
+    const recorder = session()
+    recorder.markRunCanceled(1)
+    recorder.activeRunId = 0
+    await recorder.handleTextInsertion('Canceled synthetic text', {
+      runId: 1, probeResult: { editable: true, hwnd: '101', process: 'synthetic', detail: '' },
+    })
+    expect(mocks.paste).not.toHaveBeenCalled()
   })
 
   it('accepts only a recent timeout context from the current run', () => {

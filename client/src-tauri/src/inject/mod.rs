@@ -11,6 +11,9 @@
 use serde::Serialize;
 
 #[cfg(windows)]
+mod observation;
+
+#[cfg(windows)]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(windows)]
 use std::sync::{Arc, Mutex};
@@ -571,6 +574,17 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         return rejected_focus("focus_not_confirmed");
     }
 
+    let observation = observation::PasteObservation::capture(target);
+    // UIA queries can take time. Recheck both native and logical editor focus.
+    if !keyboard_focus_is_confirmed(target, focus)
+        || observation.as_ref().is_some_and(|observer| !observer.focused())
+    {
+        return rejected_focus("focus_not_confirmed");
+    }
+    if !clipboard_still_ours(text, paste_id) {
+        return clipboard_changed_result();
+    }
+
     // SendInput Ctrl+V
     let vk_ctrl = VIRTUAL_KEY(0x11);
     let vk_v = VIRTUAL_KEY(0x56);
@@ -592,7 +606,26 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     );
 
     if sent >= 4 {
-        return unconfirmed_paste("send_input", detail);
+        let before = observation.as_ref().map(|observer| observer.before);
+        let mut after = None;
+        let started = Instant::now();
+        if let Some(observer) = observation.as_ref() {
+            while started.elapsed().as_millis() < VERIFY_WAIT_MS as u128 {
+                if !keyboard_focus_is_confirmed(target, focus) || !observer.focused() {
+                    break;
+                }
+                after = observer.length();
+                if wm_paste_has_observed_effect(true, before, after) || after.is_none() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+        }
+        let focused = keyboard_focus_is_confirmed(target, focus)
+            && observation.as_ref().is_some_and(|observer| observer.focused());
+        let detail = format!("{} lenBefore={} lenAfter={} editorFocused={}",
+            detail, fmt_opt(before), fmt_opt(after), focused);
+        return keyboard_paste_result(focused, before, after, detail);
     }
 
     //
@@ -631,7 +664,7 @@ fn rejected_focus(reason: &str) -> InjectResult {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 fn unconfirmed_paste(strategy: &str, detail: String) -> InjectResult {
     InjectResult {
         ok: false,
@@ -640,6 +673,25 @@ fn unconfirmed_paste(strategy: &str, detail: String) -> InjectResult {
         detail: Some(detail),
         uncertain: true,
     }
+}
+
+#[cfg(any(windows, test))]
+fn keyboard_paste_result(
+    focus_confirmed: bool,
+    before: Option<usize>,
+    after: Option<usize>,
+    detail: String,
+) -> InjectResult {
+    if wm_paste_has_observed_effect(focus_confirmed, before, after) {
+        return InjectResult {
+            ok: true,
+            strategy: Some("send_input_verified".to_string()),
+            reason: None,
+            detail: Some(detail),
+            uncertain: false,
+        };
+    }
+    unconfirmed_paste("send_input", detail)
 }
 
 #[cfg(any(windows, test))]
@@ -1573,6 +1625,28 @@ mod tests {
         assert!(!wm_paste_has_observed_effect(true, Some(5), Some(5)));
         assert!(!wm_paste_has_observed_effect(true, None, Some(10)));
         assert!(!wm_paste_has_observed_effect(true, Some(5), None));
+    }
+
+    #[test]
+    fn keyboard_paste_accepts_observed_text_change_in_the_same_focused_editor() {
+        let result = super::keyboard_paste_result(true, Some(0), Some(14), String::new());
+        assert!(result.ok, "observed insertion was rejected: {:?}", result.reason);
+        assert!(!result.uncertain);
+    }
+
+    #[test]
+    fn keyboard_delivery_alone_or_lost_focus_cannot_confirm_insertion() {
+        for (focused, before, after) in [
+            (true, None, None),
+            (true, Some(0), None),
+            (true, Some(14), Some(14)),
+            (false, Some(0), Some(14)),
+        ] {
+            let result = super::keyboard_paste_result(focused, before, after, String::new());
+            assert!(!result.ok);
+            assert!(result.uncertain);
+            assert_eq!(result.reason.as_deref(), Some("paste_unconfirmed"));
+        }
     }
 
             fn weixin_4x_ctx(process_name: &str) -> AppContext {

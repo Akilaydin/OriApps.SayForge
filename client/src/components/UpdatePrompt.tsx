@@ -11,6 +11,7 @@ import {
   postponeUpdate, subscribeUpdates, checkForUpdates,
 } from '@/services/appUpdates'
 import { showUpdatePrompt, updateErrorMessageKey } from './updatePromptState'
+import { runAction } from '@/services/actionFeedback'
 
 const RELEASES_URL = 'https://github.com/Akilaydin/OriApps.SayForge/releases/latest'
 
@@ -80,7 +81,7 @@ export default function UpdatePrompt() {
               <Download className="mr-1.5 h-4 w-4" />{t('updater.install')}
             </Button>
             <Button size="sm" variant="outline" onClick={postponeUpdate}>{t('updater.later')}</Button>
-            <Button size="sm" variant="ghost" onClick={() => void shellOpen(RELEASES_URL)}>
+            <Button size="sm" variant="ghost" onClick={() => void runAction('external-link', () => shellOpen(RELEASES_URL), { error: t('feedback.openFailed') })}>
               <ExternalLink className="mr-1.5 h-3.5 w-3.5" />{t('updater.changes')}
             </Button>
           </div>

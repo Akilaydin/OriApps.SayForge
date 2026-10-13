@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import appIcon from '@/assets/icon-128.png'
 import { useT } from '@/i18n/useT'
 import { checkForUpdates, getUpdateStatus, subscribeUpdates } from '@/services/appUpdates'
+import { runAction } from '@/services/actionFeedback'
 
 const REPO_URL = 'https://github.com/Akilaydin/OriApps.SayForge'
 const RELEASES_URL = `${REPO_URL}/releases`
@@ -29,7 +30,7 @@ export default function About() {
               <p className="text-sm text-muted-foreground">{t('about.tagline')}</p>
               <p className="mt-0.5 text-xs text-muted-foreground/70">{t('about.oriApps')}</p>
               <div className="mt-2 flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => void shellOpen(REPO_URL)}>
+                <Button variant="outline" size="sm" onClick={() => void runAction('external-link', () => shellOpen(REPO_URL), { error: t('feedback.openFailed') })}>
                   <Github className="mr-1.5 h-4 w-4" />
                   GitHub
                 </Button>
@@ -46,7 +47,7 @@ export default function About() {
                 <RefreshCw className="mr-1.5 h-4 w-4" />
                 {checking ? t('updater.checking') : t('updater.checkNow')}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void shellOpen(RELEASES_URL)}>
+              <Button variant="outline" size="sm" onClick={() => void runAction('external-link', () => shellOpen(RELEASES_URL), { error: t('feedback.openFailed') })}>
                 <ExternalLink className="mr-1.5 h-4 w-4" />
                 {t('about.openReleases')}
               </Button>
@@ -58,14 +59,14 @@ export default function About() {
 
           <div className="mt-5 border-t border-border pt-5">
             <h3 className="mb-2 text-sm font-medium">{t('about.acknowledgements')}</h3>
-            <Button variant="ghost" size="sm" onClick={() => void shellOpen(ATTRIBUTION_URL)}>
+            <Button variant="ghost" size="sm" onClick={() => void runAction('external-link', () => shellOpen(ATTRIBUTION_URL), { error: t('feedback.openFailed') })}>
               <ExternalLink className="mr-1.5 h-4 w-4" />
               {t('about.viewAttributions')}
             </Button>
             <p className="mt-2 text-xs text-muted-foreground">
               GNU Affero General Public License v3.0 (AGPL-3.0). {t('about.noWarranty')}
             </p>
-            <Button variant="ghost" size="sm" onClick={() => void shellOpen(LICENSE_URL)}>
+            <Button variant="ghost" size="sm" onClick={() => void runAction('external-link', () => shellOpen(LICENSE_URL), { error: t('feedback.openFailed') })}>
               <ExternalLink className="mr-1.5 h-4 w-4" />
               {t('about.viewLicense')}
             </Button>

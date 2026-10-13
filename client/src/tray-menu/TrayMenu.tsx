@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { confirm } from '@tauri-apps/plugin-dialog'
 import { AppWindow, Power } from 'lucide-react'
 import { t } from '@/i18n'
 import { useT } from '@/i18n/useT'
@@ -9,6 +10,9 @@ import { useT } from '@/i18n/useT'
 export default function TrayMenu() {
   useT()
   const firstItemRef = useRef<HTMLButtonElement>(null)
+  const commandBusy = useRef(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const unlistenOpen = listen('tray-menu-open', () => {
@@ -25,13 +29,22 @@ export default function TrayMenu() {
     }
   }, [])
 
-  const openMain = () => void invoke('show_main_from_tray')
-
-  const quit = () => void invoke('quit_from_tray')
+  const perform = async (command: 'show_main_from_tray' | 'quit_from_tray') => {
+    if (commandBusy.current) return
+    commandBusy.current = true; setBusy(true); setError('')
+    try {
+      if (command === 'quit_from_tray' && !await confirm(t('feedback.confirmQuit'), {
+        title: t('feedback.confirmTitle'), kind: 'warning', okLabel: t('tray.quit'), cancelLabel: t('common.cancel'),
+      })) return
+      await invoke(command)
+    }
+    catch { setError(t('feedback.actionFailed')) }
+    finally { commandBusy.current = false; setBusy(false) }
+  }
 
   return (
     <div className="tray-menu-shell" role="menu" aria-label="SayForge">
-      <button ref={firstItemRef} className="tray-menu-item" role="menuitem" onClick={openMain}>
+      <button ref={firstItemRef} disabled={busy} className="tray-menu-item" role="menuitem" onClick={() => void perform('show_main_from_tray')}>
         <span className="tray-menu-leading" aria-hidden>
           <AppWindow size={14} strokeWidth={1.8} />
         </span>
@@ -40,12 +53,13 @@ export default function TrayMenu() {
 
       <div className="tray-menu-divider" role="separator" />
 
-      <button className="tray-menu-item tray-menu-quit" role="menuitem" onClick={quit}>
+      <button disabled={busy} className="tray-menu-item tray-menu-quit" role="menuitem" onClick={() => void perform('quit_from_tray')}>
         <span className="tray-menu-leading" aria-hidden>
           <Power size={14} strokeWidth={1.8} />
         </span>
         <span>{t('tray.quit')}</span>
       </button>
+      {error && <p role="alert" className="px-3 py-1 text-xs text-destructive">{error}</p>}
     </div>
   )
 }
