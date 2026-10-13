@@ -44,3 +44,16 @@ fn fallback_copy_writes_exact_unicode() {
         assert_eq!(native_get_clipboard_text().as_deref(), Some(text));
     }
 }
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn failed_write_keeps_previous_clipboard_contents() {
+    unsafe {
+        let owner = TestWindow::new();
+        let previous = "Previous synthetic text must survive a failed Copy";
+        put_fixture(owner.0, previous);
+        FAIL_NEXT_CLIPBOARD_WRITE.with(|flag| flag.set(true));
+        assert!(!set_clipboard_with_retry_pub("Replacement", 1, 0));
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(previous));
+    }
+}

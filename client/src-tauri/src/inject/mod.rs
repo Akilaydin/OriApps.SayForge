@@ -16,6 +16,11 @@ mod observation;
 #[cfg(all(windows, test))]
 mod clipboard_tests;
 
+#[cfg(all(windows, test))]
+std::thread_local! {
+    static FAIL_NEXT_CLIPBOARD_WRITE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 #[cfg(windows)]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(windows)]
@@ -1491,6 +1496,11 @@ unsafe fn native_set_clipboard_text(text: &str) -> Result<(), String> {
         let _ = GlobalUnlock(hmem);
 
         // CF_UNICODETEXT = 13
+        #[cfg(test)]
+        if FAIL_NEXT_CLIPBOARD_WRITE.with(|flag| flag.replace(false)) {
+            let _ = GlobalFree(hmem);
+            return Err("synthetic clipboard write failure".to_string());
+        }
         if let Err(e) = SetClipboardData(13, HANDLE(hmem.0 as *mut _)) {
             let err = windows::Win32::Foundation::GetLastError().0;
             return Err(format!("step=SetClipboardData err={} detail={}", err, e));
