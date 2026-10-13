@@ -1,6 +1,6 @@
 [package]
 name = "sayforge"
-version = "0.2.9"
+version = "0.2.10"
 authors = ["Liu Qianglong", "Claude", "OriApps"]
 edition = "2021"
 
