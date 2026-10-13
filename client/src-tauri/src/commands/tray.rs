@@ -137,6 +137,8 @@ pub fn hide_tray_menu(app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn quit_from_tray(app: AppHandle) {
+pub fn quit_from_tray(app: AppHandle) -> Result<(), String> {
+    crate::commands::audio_mute::prepare_system_output_for_exit()?;
     app.exit(0);
+    Ok(())
 }

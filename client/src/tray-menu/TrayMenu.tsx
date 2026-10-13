@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/services/bridge'
 import { listen } from '@tauri-apps/api/event'
-import { confirm } from '@tauri-apps/plugin-dialog'
+import { confirm, message } from '@tauri-apps/plugin-dialog'
 import { AppWindow, Power } from 'lucide-react'
 import { t } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { failureMessage } from '@/lib/errorMessages'
 
 
 export default function TrayMenu() {
@@ -38,7 +39,13 @@ export default function TrayMenu() {
       })) return
       await invoke(command)
     }
-    catch { setError(t('feedback.actionFailed')) }
+    catch (error) {
+      const description = failureMessage(error, t(command === 'quit_from_tray' ? 'tray.quitFailed' : 'feedback.actionFailed'))
+      if (command === 'quit_from_tray') {
+        // The fixed-size tray menu cannot display a multiline recovery message.
+        await message(description, { title: t('tray.quit'), kind: 'error' }).catch(() => setError(description))
+      } else setError(description)
+    }
     finally { commandBusy.current = false; setBusy(false) }
   }
 

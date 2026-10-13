@@ -164,6 +164,8 @@ export class RecorderOrchestrator {
   private cachedMuteSystemAudio = false
   private cachedProtectClipboard = true
   private systemMuteApplied = false
+  private systemMuteOperation: Promise<unknown> = Promise.resolve()
+  private systemMutePending = 0
   private systemMuteTimerId: ReturnType<typeof setTimeout> | null = null
   private currentOperationId: string | undefined
   private cachedClientRuntimeInfo: ClientRuntimeInfo | null = null
@@ -218,7 +220,7 @@ export class RecorderOrchestrator {
     if (this.updaterInstalling || this.state !== 'idle' || this.startRecordingLock
       || this.activeRunId !== 0 || this.textInsertionInFlight || this.finalizingLateRunId !== 0
       || this.timedOutProcessingContext !== null || this.lateResultRunId !== 0
-      || this.activeFallbackToken !== 0) return false
+      || this.activeFallbackToken !== 0 || this.systemMutePending !== 0) return false
     this.updaterInstalling = true
     return true
   }
@@ -412,10 +414,15 @@ export class RecorderOrchestrator {
   private applySystemMute() {
     if (this.systemMuteApplied) return
     this.systemMuteApplied = true
-    void bridge.muteSystemOutput().catch((e) => {
-      this.systemMuteApplied = false
-      addRuntimeEvent('warn', 'recorder', 'Failed to mute system audio', { error: String(e) })
-    })
+    this.queueSystemMute(() => bridge.muteSystemOutput(), 'Failed to mute system audio')
+  }
+
+  private queueSystemMute(operation: () => Promise<unknown>, failureMessage: string) {
+    this.systemMutePending++
+    this.systemMuteOperation = this.systemMuteOperation.then(operation).catch((error) => {
+      try { addRuntimeEvent('warn', 'recorder', failureMessage, { error: String(error) }) }
+      catch { /* Logging must not break the restoration queue. */ }
+    }).finally(() => { this.systemMutePending-- })
   }
 
   private clearSystemMuteTimer() {
@@ -429,9 +436,7 @@ export class RecorderOrchestrator {
     this.clearSystemMuteTimer()
     if (!this.systemMuteApplied) return
     this.systemMuteApplied = false
-    void bridge.restoreSystemOutput().catch((e) => {
-      addRuntimeEvent('warn', 'recorder', 'Failed to restore system audio', { error: String(e) })
-    })
+    this.queueSystemMute(() => bridge.restoreSystemOutput(), 'Failed to restore system audio')
   }
 
   private notReadyMessage(): string {

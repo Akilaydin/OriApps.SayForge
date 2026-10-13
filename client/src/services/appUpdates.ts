@@ -2,6 +2,7 @@ import { isTauri } from '@tauri-apps/api/core'
 import { check, type Update, type DownloadEvent } from '@tauri-apps/plugin-updater'
 import { beginUpdateInstallation, endUpdateInstallation } from './recorder'
 import { reportRuntimeFailure } from './debugLog'
+import { restoreSystemOutput } from './bridge'
 import { failureMessage } from '@/lib/errorMessages'
 import { t } from '@/i18n'
 
@@ -123,6 +124,8 @@ export function installAvailableUpdate(): Promise<void> {
       }
 
       publish({ phase: 'installing', version: update.version })
+      // The Windows installer exits directly, bypassing Tauri's ExitRequested event.
+      await restoreSystemOutput()
       // On Windows this launches the signed NSIS installer and exits the app.
       await update.install()
     } catch (error) {

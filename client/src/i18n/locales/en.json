@@ -15,6 +15,7 @@
   "feedback.actionFailed": "Could not complete the action. Try again.",
   "startup.failed": "SayForge could not start. Try again, or restart the app if the problem continues.",
   "history.loadFailed": "History could not be loaded. Try opening History again.",
+  "tray.quitFailed": "System sound could not be restored. SayForge is still running; reconnect the output device and try Quit again.",
   "err.operation.timeout": "The request timed out. Check your connection and try again.",
   "err.operation.http": "The service returned HTTP {status}. Try again later.",
   "err.operation.dns": "The server address could not be resolved. Check your connection and try again.",
