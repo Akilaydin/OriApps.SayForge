@@ -269,6 +269,13 @@ there is no automatic recovery after forced process termination/power loss.
 The existing `zip` 0.6.6 dependency remains required by diagnostics creation/reading.
 Removal needs a separately agreed migration path for old archives.
 
+## Development CI
+
+PR checks also run on trusted main pushes to warm shared Rust test/release dependencies.
+Complete and failed-run cache snapshots use separate keys; Cargo validates restored artifacts.
+Both PR and release builds publish Cargo timings for comparison. Manual profile experiments
+check EXE startup and synthetic audio on disposable Windows runners. See [Development CI](docs/development-ci.md).
+
 ## Open questions
 
 - Verified minimum Windows version.

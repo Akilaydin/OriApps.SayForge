@@ -26,6 +26,9 @@ If updates trigger a new automated review, evaluate that feedback in the same wa
 - Rust changes should pass `cargo test --manifest-path client/src-tauri/Cargo.toml`
   on a configured Windows development environment.
 - Never commit API keys, private endpoints, user audio or personal settings.
+- Review the final diff and prepare the required documentation before the first push.
+  Check current-HEAD CI/review and avoid duplicating an already running review.
+  Cache recovery and manual build comparisons: [Development CI](docs/development-ci.md).
 - AI-assisted changes are acceptable, but the contributor must understand,
   test and be able to explain their code.
 
