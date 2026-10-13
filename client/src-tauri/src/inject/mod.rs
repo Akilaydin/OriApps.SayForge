@@ -1164,7 +1164,7 @@ unsafe fn allocate_clipboard_bytes(bytes: &[u8]) -> Result<HGLOBAL, String> {
 unsafe fn capture_clipboard_open() -> Result<ClipboardSnapshot, String> {
     const MAX_BACKUP_BYTES: usize = 128 * 1024 * 1024;
     const MAX_FORMATS: usize = 128;
-    let mut formats = Vec::new();
+    let mut formats: Vec<ClipboardFormat> = Vec::new();
     let mut total_bytes = 0usize;
     let mut format = 0u32;
     loop {
@@ -1176,24 +1176,30 @@ unsafe fn capture_clipboard_open() -> Result<ClipboardSnapshot, String> {
             }
             break;
         }
-        if !can_snapshot_format(format) || formats.len() >= MAX_FORMATS {
+        // CF_BITMAP is a GDI handle. Windows exposes the same image as an
+        // HGLOBAL-backed DIBV5 and recreates CF_BITMAP from it after restoration.
+        let snapshot_format = if format == 2 { 17 } else { format };
+        if formats.iter().any(|saved| saved.id == snapshot_format) {
+            continue;
+        }
+        if !can_snapshot_format(snapshot_format) || formats.len() >= MAX_FORMATS {
             return Err(format!("unsupported clipboard format {}", format));
         }
-        let data = GetClipboardData(format)
-            .map_err(|e| format!("step=GetClipboardData format={} err={e}", format))?;
+        let data = GetClipboardData(snapshot_format)
+            .map_err(|e| format!("step=GetClipboardData format={} err={e}", snapshot_format))?;
         let handle = HGLOBAL(data.0);
         let size = GlobalSize(handle);
         if size == 0 || size > MAX_BACKUP_BYTES.saturating_sub(total_bytes) {
-            return Err(format!("clipboard format {} is not a bounded HGLOBAL", format));
+            return Err(format!("clipboard format {} is not a bounded HGLOBAL", snapshot_format));
         }
         let ptr = GlobalLock(handle);
         if ptr.is_null() {
-            return Err(format!("step=GlobalLock format={}", format));
+            return Err(format!("step=GlobalLock format={}", snapshot_format));
         }
         let bytes = std::slice::from_raw_parts(ptr as *const u8, size).to_vec();
         let _ = GlobalUnlock(handle);
         total_bytes += size;
-        formats.push(ClipboardFormat { id: format, bytes });
+        formats.push(ClipboardFormat { id: snapshot_format, bytes });
     }
     Ok(ClipboardSnapshot { formats })
 }

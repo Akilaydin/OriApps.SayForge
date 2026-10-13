@@ -99,7 +99,10 @@ Paths below are relative to `client/`.
 - Run IDs and cancellation must prevent late results from updating another recording or editor field.
 - Probe and preserve the original edit target; provide fallback text when native insertion fails or is unconfirmed.
 - Protected Win32 paste snapshots HGLOBAL clipboard formats under one OpenClipboard lock
-  before replacing the contents. GDI, owner-display, private or inaccessible formats
+  before replacing the contents. CF_BITMAP is captured through Windows' CF_DIBV5
+  conversion, retaining the image without copying a GDI handle as HGLOBAL. Snapshot
+  format IDs are deduplicated; Windows synthesizes CF_BITMAP on restore. Other GDI,
+  owner-display, private or inaccessible formats
   cause a fallback without changing the clipboard. Restore is serialized with later
   paste operations, requires the committed clipboard sequence number and text, and
   retries with the original snapshot until restoration succeeds or the clipboard
