@@ -19,6 +19,8 @@ mod clipboard_tests;
 #[cfg(all(windows, test))]
 std::thread_local! {
     static FAIL_NEXT_CLIPBOARD_WRITE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static FAIL_NEXT_CLIPBOARD_RESTORE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static AFTER_CLIPBOARD_CLOSE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(windows)]
@@ -141,7 +143,7 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 #[cfg(windows)]
 use windows::Win32::System::DataExchange::{
     OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData, GetClipboardData,
-    GetOpenClipboardWindow, GetClipboardSequenceNumber, EnumClipboardFormats,
+    GetOpenClipboardWindow, GetClipboardOwner, GetClipboardSequenceNumber, EnumClipboardFormats,
 };
 #[cfg(windows)]
 use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GlobalSize, GMEM_MOVEABLE};
@@ -1220,7 +1222,14 @@ unsafe fn restore_snapshot_open(snapshot: &ClipboardSnapshot) -> Result<(), (Str
         return Err((format!("step=EmptyClipboard err={err}"), false));
     }
     for (index, (format, handle)) in prepared.iter().copied().enumerate() {
-        if let Err(err) = SetClipboardData(format, HANDLE(handle.0)) {
+        let write = (|| -> windows::core::Result<HANDLE> {
+            #[cfg(test)]
+            if index == 1 && FAIL_NEXT_CLIPBOARD_RESTORE.with(|flag| flag.replace(false)) {
+                return Err(windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005u32 as i32)));
+            }
+            SetClipboardData(format, HANDLE(handle.0))
+        })();
+        if let Err(err) = write {
             for (_, remaining) in prepared.into_iter().skip(index) {
                 let _ = GlobalFree(remaining);
             }
@@ -1228,6 +1237,24 @@ unsafe fn restore_snapshot_open(snapshot: &ClipboardSnapshot) -> Result<(), (Str
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+unsafe fn close_owned_clipboard(owner: HWND) -> u32 {
+    if CloseClipboard().is_err() { return 0; }
+    #[cfg(test)]
+    if let Some(hook) = AFTER_CLIPBOARD_CLOSE.with(|hook| hook.borrow_mut().take()) {
+        hook();
+    }
+    // Windows can synthesize formats on close, advancing the sequence. Accept
+    // that committed version only while our owner and both samples still agree.
+    // A copy racing with close must not become eligible for our later restore.
+    let sequence = GetClipboardSequenceNumber();
+    if GetClipboardOwner().ok() == Some(owner) && GetClipboardSequenceNumber() == sequence {
+        sequence
+    } else {
+        0
+    }
 }
 
 #[cfg(windows)]
@@ -1260,7 +1287,7 @@ unsafe fn set_clipboard_preserving(
         return Err((format!("step=OpenClipboard {}", describe_clipboard_holder()), None));
     }
     let mut recovery = None;
-    let result = (|| -> Result<(Arc<ClipboardSnapshot>, u32), String> {
+    let result = (|| -> Result<Arc<ClipboardSnapshot>, String> {
         let current_sequence = GetClipboardSequenceNumber();
         let previous = match pending {
             Some(state) if pending_clipboard_matches(
@@ -1284,18 +1311,19 @@ unsafe fn set_clipboard_preserving(
             let _ = GlobalFree(handle);
             // The previous data was already removed; restore it immediately.
             if restore_snapshot_open(&previous).is_err() {
-                recovery = Some((Arc::clone(&previous), GetClipboardSequenceNumber()));
+                recovery = Some(Arc::clone(&previous));
             }
             return Err(format!("step=SetClipboardData err={err}"));
         }
         mark_clipboard_history_excluded();
-        Ok((previous, GetClipboardSequenceNumber()))
+        Ok(previous)
     })();
-    let _ = CloseClipboard();
+    let sequence = close_owned_clipboard(owner);
     if let Some(handle) = replacement {
         let _ = GlobalFree(handle);
     }
-    result.map_err(|reason| (reason, recovery))
+    result.map(|previous| (previous, sequence))
+        .map_err(|reason| (reason, recovery.map(|previous| (previous, sequence))))
 }
 
 #[cfg(windows)]
@@ -1313,6 +1341,7 @@ unsafe fn restore_clipboard_if_unchanged(state: &mut PendingClipboard) -> Restor
     if !opened {
         return RestoreOutcome::Unavailable;
     }
+    let mut restore_modified = false;
     let restored = if pending_clipboard_matches(
         state.sequence,
         GetClipboardSequenceNumber(),
@@ -1327,10 +1356,7 @@ unsafe fn restore_clipboard_if_unchanged(state: &mut PendingClipboard) -> Restor
                     state.paste_id, modified, reason
                 ));
                 if modified {
-                    // Still holding OpenClipboard: only this restore attempt
-                    // caused this version change. Keep the original snapshot
-                    // and retry while the clipboard stays at this sequence.
-                    state.sequence = GetClipboardSequenceNumber();
+                    restore_modified = true;
                     state.restoring = true;
                 }
                 RestoreOutcome::Unavailable
@@ -1339,7 +1365,10 @@ unsafe fn restore_clipboard_if_unchanged(state: &mut PendingClipboard) -> Restor
     } else {
         RestoreOutcome::Changed
     };
-    let _ = CloseClipboard();
+    let sequence = close_owned_clipboard(HWND(state.owner_hwnd as *mut _));
+    if restore_modified {
+        state.sequence = sequence;
+    }
     restored
 }
 

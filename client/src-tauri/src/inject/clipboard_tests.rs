@@ -50,6 +50,76 @@ fn protected_write_records_the_closed_clipboard_version() {
 
 #[test]
 #[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn external_copy_racing_with_close_is_not_adopted() {
+    unsafe {
+        let owner = TestWindow::new();
+        let external = TestWindow::new();
+        let text = "Same synthetic text copied by another application";
+        put_fixture(owner.0, "Original synthetic clipboard");
+        let external_hwnd = external.0;
+        AFTER_CLIPBOARD_CLOSE.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || put_fixture(external_hwnd, text)));
+        });
+        let _lock = PASTE_LOCK.lock().unwrap();
+        let id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
+        assert!(replace_clipboard(text, true, owner.0, id, 1, 0));
+        assert!(!clipboard_still_ours(text, id));
+        let mut state = PENDING_CLIPBOARD.lock().unwrap().take().unwrap();
+        assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Changed));
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(text));
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn partial_restore_keeps_the_committed_version_for_retry() {
+    unsafe {
+        let owner = TestWindow::new();
+        let original = "Original synthetic clipboard";
+        let text = "Synthetic dictation";
+        put_fixture(owner.0, original);
+        let (previous, sequence) = set_clipboard_preserving(text, None, owner.0, 1, 0)
+            .unwrap_or_else(|(reason, _)| panic!("{reason}"));
+        let mut state = PendingClipboard {
+            paste_id: 0, sequence, owner_hwnd: owner.0.0 as isize,
+            injected_text: text.to_owned(), previous, restoring: false,
+        };
+        FAIL_NEXT_CLIPBOARD_RESTORE.with(|flag| flag.set(true));
+        assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Unavailable));
+        assert!(state.restoring);
+        assert_eq!(state.sequence, GetClipboardSequenceNumber());
+        assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Restored));
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(original));
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn failed_write_and_partial_rollback_retain_a_restorable_version() {
+    unsafe {
+        let owner = TestWindow::new();
+        let original = "Original synthetic clipboard";
+        put_fixture(owner.0, original);
+        FAIL_NEXT_CLIPBOARD_WRITE.with(|flag| flag.set(true));
+        FAIL_NEXT_CLIPBOARD_RESTORE.with(|flag| flag.set(true));
+        let (reason, recovery) = match set_clipboard_preserving("Replacement", None, owner.0, 1, 0) {
+            Err(error) => error,
+            Ok(_) => panic!("injected write failure unexpectedly succeeded"),
+        };
+        assert!(reason.contains("SetClipboardData"));
+        let (previous, sequence) = recovery.expect("partial rollback must retain its snapshot");
+        assert_eq!(sequence, GetClipboardSequenceNumber());
+        let mut state = PendingClipboard {
+            paste_id: 0, sequence, owner_hwnd: owner.0.0 as isize,
+            injected_text: "Replacement".to_owned(), previous, restoring: true,
+        };
+        assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Restored));
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(original));
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
 fn fallback_copy_writes_exact_unicode() {
     unsafe {
         let owner = TestWindow::new();
@@ -133,6 +203,68 @@ fn unprotected_paste_inserts_into_a_synthetic_win32_editor() {
         assert_eq!(String::from_utf16(&contents[..length]).unwrap(), text);
         assert_eq!(native_get_clipboard_text().as_deref(), Some(text));
         assert!(PENDING_CLIPBOARD.lock().unwrap().is_none());
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard and creates an editor; disposable Windows CI only"]
+fn protected_paste_inserts_and_restores_the_previous_clipboard() {
+    unsafe {
+        let owner = TestWindow::new();
+        let editor = TestWindow(CreateWindowExW(
+            WINDOW_EX_STYLE::default(), w!("EDIT"), w!(""), WS_POPUP | WS_VISIBLE,
+            0, 0, 200, 80, None, None, None, None,
+        ).unwrap());
+        let previous = "Original synthetic clipboard";
+        put_fixture(owner.0, previous);
+        let format = windows::Win32::System::DataExchange::RegisterClipboardFormatW(w!("SayForge synthetic protected paste format"));
+        let custom = b"original synthetic custom bytes";
+        let handle = allocate_clipboard_bytes(custom).unwrap();
+        OpenClipboard(owner.0).unwrap();
+        SetClipboardData(format, HANDLE(handle.0)).unwrap();
+        CloseClipboard().unwrap();
+        let text = "Protected synthetic Привет 😀";
+        let result = do_inject(editor.0, editor.0, text, true, owner.0);
+        let mut contents = [0u16; 128];
+        let length = GetWindowTextW(editor.0, &mut contents) as usize;
+        let pasted = String::from_utf16(&contents[..length]).unwrap();
+        // Keep the owner alive until the restore worker has finished, even if paste failed.
+        let started = Instant::now();
+        while PENDING_CLIPBOARD.lock().unwrap().is_some() && started.elapsed().as_secs() < 3 {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        let pending = PENDING_CLIPBOARD.lock().unwrap().take();
+        assert!(pending.is_none(), "clipboard restore did not finish");
+        assert!(result.ok, "{:?}: {:?}", result.reason, result.detail);
+        assert_eq!(result.strategy.as_deref(), Some("wm_paste"));
+        assert_eq!(pasted, text);
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(previous));
+        OpenClipboard(owner.0).unwrap();
+        let restored = HGLOBAL(GetClipboardData(format).unwrap().0);
+        let ptr = GlobalLock(restored);
+        assert!(!ptr.is_null());
+        assert_eq!(std::slice::from_raw_parts(ptr as *const u8, custom.len()), custom);
+        let _ = GlobalUnlock(restored);
+        CloseClipboard().unwrap();
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn newer_external_copy_of_the_same_text_is_not_restored() {
+    unsafe {
+        let owner = TestWindow::new();
+        let external = TestWindow::new();
+        let text = "Synthetic dictation copied again by the user";
+        put_fixture(owner.0, "Original synthetic clipboard");
+        let _lock = PASTE_LOCK.lock().unwrap();
+        let id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
+        assert!(replace_clipboard(text, true, owner.0, id, 1, 0));
+        put_fixture(external.0, text);
+        assert!(!clipboard_still_ours(text, id));
+        let mut state = PENDING_CLIPBOARD.lock().unwrap().take().unwrap();
+        assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Changed));
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(text));
     }
 }
 

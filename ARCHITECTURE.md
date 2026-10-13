@@ -101,10 +101,13 @@ Paths below are relative to `client/`.
 - Protected Win32 paste snapshots HGLOBAL clipboard formats under one OpenClipboard lock
   before replacing the contents. GDI, owner-display, private or inaccessible formats
   cause a fallback without changing the clipboard. Restore is serialized with later
-  paste operations, requires the original clipboard sequence number and text, and
+  paste operations, requires the committed clipboard sequence number and text, and
   retries with the original snapshot until restoration succeeds or the clipboard
   changes. Partial write failures remain owned by their updated clipboard
   sequence, permitting recovery without replacing a newer user copy.
+  Record sequences after CloseClipboard, including failed rollback/restore attempts:
+  Windows can synthesize formats when closing. Require the SayForge owner window
+  and stable sequence samples so a copy racing with close cannot be adopted.
 - Explicit Copy and unprotected paste use the same owned-window snapshot/rollback
   path under the paste mutex. Successful writes supersede any pending restoration;
   failed writes retain or recover the previous clipboard formats. The Tauri Copy
