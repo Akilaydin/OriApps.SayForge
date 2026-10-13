@@ -101,9 +101,13 @@ Paths below are relative to `client/`.
   sequence, permitting recovery without replacing a newer user copy.
 - Keyboard injection requires an existing enabled target, matching foreground
   window and confirmed keyboard focus immediately before Ctrl+V. Win32 input
-  event counts and console message delivery are never treated as verified text;
-  only observable native edit-length changes confirm a WM_PASTE. Ambiguous
-  delivery shows the fallback card without an automatic second paste.
+  event counts and console message delivery are never treated as verified text.
+  Native edit-length changes confirm WM_PASTE. Keyboard paste additionally observes
+  UIA TextPattern range length before/after one Ctrl+V, without fetching editor text
+  or values, and requires the same UIA element and native focus to remain active.
+  Password/unavailable metadata, absent TextPattern, unchanged length and documents
+  reaching the bounded one-million-unit query remain unconfirmed. Ambiguous delivery
+  shows the fallback card without an automatic second paste.
 - Capture only target metadata for insertion; do not read editor text or send selections to the ASR provider.
 - Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
 - Cloud ASR sends recorded audio and the selected Transcription Prompt. Retired model files/settings remain untouched.
