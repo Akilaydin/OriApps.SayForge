@@ -13,6 +13,9 @@ use serde::Serialize;
 #[cfg(windows)]
 mod observation;
 
+#[cfg(all(windows, test))]
+mod clipboard_tests;
+
 #[cfg(windows)]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(windows)]
