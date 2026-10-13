@@ -54,10 +54,19 @@ Existing recording, ASR-test and updater progress/results remain inline.
 4. Insert the result into the captured editable target. If insertion fails or cannot be confirmed, show a copyable fallback card.
 
 Cancellation must not insert late results. Empty/silent recordings can produce no text. Not every Windows application permits automatic insertion.
+Cloud processing waits within a bounded budget based on audio duration and a conservative
+WAV/base64 upload at 128 Kibit/s, regardless of the selected codec or HTTP protocol.
+For a five-minute recording this allows about twenty minutes for upload and response;
+faster responses are used immediately and the user can cancel while waiting.
+At the final time limit, the app reports that audio is not saved and must be recorded
+again. It never promises an audio retry from history.
 When clipboard protection is enabled, insertion backs up supported clipboard formats
 and restores them if the clipboard has not changed.
 If a format cannot be backed up safely or the clipboard is unavailable, SayForge
 leaves the original contents untouched and shows the copyable fallback card.
+Explicit Copy and insertion with clipboard protection disabled also preserve supported
+previous formats if writing fails. They leave the new text on the clipboard after success.
+If the clipboard cannot be safely backed up, these operations report failure before clearing it.
 Keyboard insertion can be confirmed when the same focused editor exposes a changed
 text length. Unavailable or unchanged length, including equal-length replacements,
 keeps the copyable fallback even if Windows accepted the input events.

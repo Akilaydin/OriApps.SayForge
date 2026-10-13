@@ -105,6 +105,10 @@ Paths below are relative to `client/`.
   retries with the original snapshot until restoration succeeds or the clipboard
   changes. Partial write failures remain owned by their updated clipboard
   sequence, permitting recovery without replacing a newer user copy.
+- Explicit Copy and unprotected paste use the same owned-window snapshot/rollback
+  path under the paste mutex. Successful writes supersede any pending restoration;
+  failed writes retain or recover the previous clipboard formats. The Tauri Copy
+  command resolves the main-window HWND without changing its frontend arguments.
 - Keyboard injection requires an existing enabled target, matching foreground
   window and confirmed keyboard focus immediately before Ctrl+V. Win32 input
   event counts and console message delivery are never treated as verified text.
@@ -117,6 +121,15 @@ Paths below are relative to `client/`.
 - Capture only target metadata for insertion; do not read editor text or send selections to the ASR provider.
 - Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
 - Cloud ASR sends recorded audio and the selected Transcription Prompt. Retired model files/settings remain untouched.
+- Multipart and chat share the bundled `asrTimeout.json` policy: 120 seconds plus
+  one second per audio second and a WAV/base64 upload budget at 16 KiB/s (4 KiB
+  payload overhead). Duration is bounded to five minutes and native requests to
+  thirty minutes. At 16 kHz, five-minute PCM receives 1,202 seconds. The registry
+  applies one Tokio deadline across encoding, compatibility retries and responses;
+  individual HTTP requests use the same budget. Frontend waiting adds 30 seconds
+  before its existing 15-second late-result grace period. Cancellation/run gates
+  continue to suppress stale results; canceled HTTP work may continue until its
+  native deadline, as before. No recording archive or automatic retry was added.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.
 
@@ -255,6 +268,13 @@ there is no automatic recovery after forced process termination/power loss.
 
 The existing `zip` 0.6.6 dependency remains required by diagnostics creation/reading.
 Removal needs a separately agreed migration path for old archives.
+
+## Development CI
+
+PR checks also run on trusted main pushes to warm shared Rust test/release dependencies.
+Complete and failed-run cache snapshots use separate keys; Cargo validates restored artifacts.
+Both PR and release builds publish Cargo timings for comparison. Manual profile experiments
+check EXE startup and synthetic audio on disposable Windows runners. See [Development CI](docs/development-ci.md).
 
 ## Open questions
 

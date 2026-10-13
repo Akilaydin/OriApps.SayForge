@@ -136,6 +136,10 @@ describe('isModifierPTTSetting', () => {
 })
 
 describe('computeProcessingTimeoutMs', () => {
+  it('allows upload and processing of five-minute WAV/chat audio on a slow uplink', () => {
+    // 12.8 MB chat payload at 16 KiB/s plus response time exceeds twenty minutes.
+    expect(computeProcessingTimeoutMs(300, 'cloud_api')).toBeGreaterThan(1_200_000)
+  })
   it('preserves the legacy server timeout', () => {
     const ms = computeProcessingTimeoutMs(5, 'server')
     expect(ms).toBeGreaterThanOrEqual(15000)
@@ -158,9 +162,19 @@ describe('computeProcessingTimeoutMs', () => {
     expect(long).toBeGreaterThan(short)
   })
 
-  it('caps cloud_api timeout at 90 seconds', () => {
-    const ms = computeProcessingTimeoutMs(600, 'cloud_api')
-    expect(ms).toBeLessThanOrEqual(90000)
+  it('caps the duration budget at the supported five-minute recording limit', () => {
+    expect(computeProcessingTimeoutMs(600, 'cloud_api')).toBe(computeProcessingTimeoutMs(300, 'cloud_api'))
+  })
+
+  it('keeps frontend waiting beyond the complete native request budget', () => {
+    expect(computeProcessingTimeoutMs(300, 'cloud_api')).toBe(1_232_000)
+    expect(computeProcessingTimeoutMs(1, 'cloud_api')).toBe(154_000)
+  })
+
+  it('keeps invalid durations finite and conservative', () => {
+    for (const duration of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(computeProcessingTimeoutMs(duration, 'cloud_api')).toBe(151_000)
+    }
   })
 })
 

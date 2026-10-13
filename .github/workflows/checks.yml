@@ -3,19 +3,40 @@ name: Windows PR checks
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      cache_mode:
+        description: 'Use the dependency cache or measure a cold build'
+        type: choice
+        options: [normal, cold]
+        default: normal
+      profile:
+        description: 'Release profile for a manual comparison; current uses Cargo.toml'
+        type: choice
+        options: [current, fat, thin-8, thin-16]
+        default: current
+      probe_cache_failure:
+        description: 'Fail after Rust tests to verify partial-cache recovery'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: sayforge-checks-${{ github.ref }}
-  cancel-in-progress: true
+  group: sayforge-checks-${{ github.ref }}-${{ inputs.profile || 'current' }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   check:
+    name: ${{ github.event_name == 'workflow_dispatch' && format('CI benchmark ({0})', inputs.profile) || 'check' }}
     runs-on: windows-2025
     timeout-minutes: 60
+    env:
+      CARGO_INCREMENTAL: '0'
+      SAYFORGE_BENCH_PROFILE: ${{ inputs.profile || 'current' }}
     defaults:
       run:
         shell: pwsh
@@ -32,17 +53,45 @@ jobs:
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Select the manual benchmark profile
+        run: |
+          switch ($env:SAYFORGE_BENCH_PROFILE) {
+            'current' { }
+            'fat' { "CARGO_PROFILE_RELEASE_LTO=fat" >> $env:GITHUB_ENV; "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $env:GITHUB_ENV }
+            'thin-8' { "CARGO_PROFILE_RELEASE_LTO=thin" >> $env:GITHUB_ENV; "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8" >> $env:GITHUB_ENV }
+            'thin-16' { "CARGO_PROFILE_RELEASE_LTO=thin" >> $env:GITHUB_ENV; "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> $env:GITHUB_ENV }
+            default { throw 'Unknown benchmark profile.' }
+          }
+          rustc -Vv
+      - name: Identify Rust dependency cache
+        id: rust-cache-key
+        run: |
+          ./.github/scripts/test-rust-cache-key.ps1
+          ./.github/scripts/rust-cache-key.ps1
+      - name: Restore complete Rust dependency cache
+        id: rust-cache
+        if: inputs.cache_mode != 'cold'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          workspaces: client/src-tauri -> target
-          cache-on-failure: false
+          path: ${{ steps.rust-cache-key.outputs.paths }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+          restore-keys: ${{ steps.rust-cache-key.outputs.restore-prefix }}
+      - name: Restore dependencies from an interrupted build
+        id: rust-partial-cache
+        if: inputs.cache_mode != 'cold' && steps.rust-cache.outputs.cache-matched-key == ''
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.rust-cache-key.outputs.paths }}
+          key: ${{ steps.rust-cache-key.outputs.partial-key }}
+          restore-keys: ${{ steps.rust-cache-key.outputs.partial-prefix }}
       - name: Release version regression tests
         run: ./.github/scripts/test-release-version.ps1
       - name: Release publication guard regression tests
+        id: verifier
         run: |
-          cargo test --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc
+          cargo test --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc --timings
           if ($LASTEXITCODE -ne 0) { throw 'Updater verifier tests failed.' }
-          cargo build --release --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc
+          cargo build --release --locked --manifest-path .github/tools/updater-verifier/Cargo.toml --target x86_64-pc-windows-msvc --timings
           if ($LASTEXITCODE -ne 0) { throw 'Updater verifier build failed.' }
           $env:SAYFORGE_UPDATER_VERIFIER = Join-Path $PWD '.github/tools/updater-verifier/target/x86_64-pc-windows-msvc/release/sayforge-updater-verifier.exe'
           ./.github/scripts/test-release.ps1
@@ -59,8 +108,62 @@ jobs:
           npm run i18n:check
           if ($LASTEXITCODE -ne 0) { throw 'English UI verification failed.' }
       - name: Rust tests
+        id: rust-tests
         working-directory: client/src-tauri
-        run: cargo test --locked --target x86_64-pc-windows-msvc
+        run: cargo test --locked --target x86_64-pc-windows-msvc --timings
+      - name: Clipboard regression tests on disposable Windows runner
+        working-directory: client/src-tauri
+        run: cargo test --locked --target x86_64-pc-windows-msvc inject::clipboard_tests -- --ignored --test-threads=1
+      - name: Probe recovery after a failed test
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_cache_failure
+        run: throw 'Intentional cache-recovery probe after compiled Rust tests.'
       - name: Build application without publishing or signing
+        id: app-build
         working-directory: client
-        run: npx tauri build --no-bundle --target x86_64-pc-windows-msvc -- --locked
+        run: npx tauri build --no-bundle --target x86_64-pc-windows-msvc -- --locked --timings
+
+      - name: Check startup and synthetic audio for a benchmark profile
+        if: github.event_name == 'workflow_dispatch' && inputs.profile != 'current'
+        run: |
+          ./.github/scripts/test-built-app.ps1 -Executable client/src-tauri/target/x86_64-pc-windows-msvc/release/sayforge.exe
+          cargo test --release --locked --manifest-path client/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --timings providers::asr_openai_compat::tests::selected_codec_reaches_multipart_standard_chat_and_legacy_chat -- --exact
+          if ($LASTEXITCODE -ne 0) { throw 'Release-profile synthetic audio test failed.' }
+          cargo test --release --locked --manifest-path client/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc providers::asr_openai_compat::tests::benchmark_cloud_audio_formats -- --exact --ignored --nocapture | Tee-Object -FilePath target/ci-metrics/audio-benchmark.log
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic encoding benchmark failed.' }
+      - name: Save complete Rust dependency cache
+        if: success() && steps.rust-cache.outputs.cache-hit != 'true' && inputs.cache_mode != 'cold'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.rust-cache-key.outputs.paths }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+      - name: Save dependencies after a failed build or test
+        if: failure() && !cancelled() && steps.rust-cache.outputs.cache-hit != 'true' && (steps.verifier.outcome == 'success' || steps.verifier.outcome == 'failure')
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.rust-cache-key.outputs.paths }}
+          key: ${{ steps.rust-cache-key.outputs.partial-key }}
+      - name: Record cache and build metrics
+        if: always()
+        env:
+          COMPLETE_CACHE: ${{ steps.rust-cache.outputs.cache-matched-key }}
+          PARTIAL_CACHE: ${{ steps.rust-partial-cache.outputs.cache-matched-key }}
+        run: |
+          New-Item -ItemType Directory -Path target/ci-metrics -Force | Out-Null
+          @{
+            sha = (git rev-parse HEAD)
+            compiler = (rustc -V)
+            completeCache = $env:COMPLETE_CACHE
+            partialCache = $env:PARTIAL_CACHE
+          } | ConvertTo-Json | Set-Content target/ci-metrics/build.json
+          "Complete cache: $env:COMPLETE_CACHE; partial cache: $env:PARTIAL_CACHE" >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload Cargo timings and build metrics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-cargo-timings-${{ github.run_attempt }}${{ inputs.profile && format('-{0}', inputs.profile) || '' }}
+          path: |
+            client/src-tauri/target/cargo-timings/*.html
+            .github/tools/updater-verifier/target/cargo-timings/*.html
+            target/ci-metrics/*
+          if-no-files-found: warn
+          retention-days: 7
