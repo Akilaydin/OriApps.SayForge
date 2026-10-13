@@ -36,6 +36,20 @@ unsafe fn put_fixture(owner: HWND, text: &str) {
 
 #[test]
 #[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn protected_write_records_the_closed_clipboard_version() {
+    unsafe {
+        let owner = TestWindow::new();
+        put_fixture(owner.0, "Original synthetic clipboard");
+        let (_, sequence) = set_clipboard_preserving("Synthetic dictation", None, owner.0, 1, 0)
+            .unwrap_or_else(|(reason, _)| panic!("{reason}"));
+        assert_eq!(sequence, GetClipboardSequenceNumber(), "stored version must identify the committed clipboard");
+        assert_eq!(native_get_clipboard_text().as_deref(), Some("Synthetic dictation"));
+        assert_eq!(sequence, GetClipboardSequenceNumber(), "our verification read must retain the same version");
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
 fn fallback_copy_writes_exact_unicode() {
     unsafe {
         let owner = TestWindow::new();
