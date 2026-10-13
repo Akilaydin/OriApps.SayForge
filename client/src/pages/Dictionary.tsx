@@ -22,6 +22,8 @@ import { useSortable, DragHandle } from '@/components/ui/sortable'
 import { t, type TranslationKey } from '@/i18n'
 import { RichText } from '@/i18n/RichText'
 import { useT } from '@/i18n/useT'
+import { runAction } from '@/services/actionFeedback'
+import { SaveStatus, useActionPending } from '@/components/ActionFeedback'
 
 type Tab = 'hotwords' | 'replacement'
 
@@ -181,25 +183,45 @@ export default function Dictionary() {
     setSearch,
     setShowUnknown,
     setThemeInput,
-    addTheme,
-    addWordsToTheme,
-    removeTheme,
-    moveTheme,
-    toggleCustomTheme,
-    removeWord,
-    toggleBuiltinSet,
-    resetBuiltinSet,
+    addTheme: addThemeOperation,
+    addWordsToTheme: addWordsOperation,
+    removeTheme: removeThemeOperation,
+    moveTheme: moveThemeOperation,
+    toggleCustomTheme: toggleThemeOperation,
+    removeWord: removeWordOperation,
+    toggleBuiltinSet: toggleSetOperation,
+    resetBuiltinSet: resetSetOperation,
   } = useHotwordsManager()
+
+  const mutationPending = useActionPending('dictionary-mutation')
+  const exportPending = useActionPending('dictionary-export')
+  const mutate = (operation: () => Promise<unknown>, confirmation?: string, success?: string) => runAction('dictionary-mutation', operation, {
+    error: t('feedback.saveFailed'), confirmation, success,
+  })
+  const addTheme = () => mutate(addThemeOperation)
+  const addWordsToTheme = (id: string) => mutate(() => addWordsOperation(id))
+  const removeTheme = (id: string) => mutate(() => removeThemeOperation(id), t('feedback.confirmDeleteGroup'), t('feedback.deleted'))
+  const moveTheme = (from: number, to: number) => mutate(() => moveThemeOperation(from, to))
+  const toggleCustomTheme = (id: string) => mutate(() => toggleThemeOperation(id))
+  const removeWord = (word: string) => mutate(() => removeWordOperation(word), t('feedback.confirmDeleteWord'), t('feedback.deleted'))
+  const toggleBuiltinSet = (key: string) => mutate(() => toggleSetOperation(key))
+  const resetBuiltinSet = (key: string) => mutate(() => resetSetOperation(key), t('feedback.confirmReset'), t('feedback.saved'))
 
   const themeSortable = useSortable({ onMove: (from, to) => void moveTheme(from, to) })
 
   const handleExport = async () => {
-    const result = await exportHotwords()
-    setExportMessage(result.canceled ? t('history.exportCanceled') : t('history.savedTo', { path: result.filePath ?? '' }))
+    await runAction('dictionary-export', async () => {
+      setExportMessage('')
+      const result = await exportHotwords()
+      if (result.filePath) setExportMessage(t('history.savedTo', { path: result.filePath }))
+      return !result.canceled
+    }, {
+      success: t('feedback.exported'), canceled: t('feedback.canceled'), error: t('feedback.exportFailed'),
+    })
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <fieldset disabled={loading || mutationPending} className="mx-auto min-w-0 max-w-4xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold">{t('nav.hotwords')}</h1>
@@ -243,6 +265,7 @@ export default function Dictionary() {
                 size="icon"
                 className="h-8 w-8 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
                 onClick={() => void handleExport()}
+                disabled={exportPending}
                 aria-label={t('history.export')}
               >
                 <Download className="h-4 w-4" />
@@ -252,9 +275,8 @@ export default function Dictionary() {
         )}
       </div>
 
-      {exportMessage && tab === 'hotwords' && (
-        <p className="mb-2 text-sm text-muted-foreground">{exportMessage}</p>
-      )}
+      <SaveStatus actionKey="dictionary-mutation" />
+      {exportMessage && tab === 'hotwords' && <p className="mb-2 text-sm text-muted-foreground">{exportMessage}</p>}
 
       {tab === 'replacement' && (
         <>
@@ -496,6 +518,6 @@ export default function Dictionary() {
           )}
         </>
       )}
-    </div>
+    </fieldset>
   )
 }

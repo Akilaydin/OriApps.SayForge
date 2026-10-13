@@ -63,6 +63,12 @@ Paths below are relative to `client/`.
   detected, subsequent quiet gaps do not raise volume warnings; OS-mute confirmation
   remains independent.
 - `services/store.ts` and `services/bridge.ts` — access to Tauri commands and persisted state.
+- `services/actionFeedback.ts` owns transient main-window notifications and synchronous
+  guards for user-triggered operations. Success follows the awaited operation; native
+  dialog confirmation precedes destructive work. `components/ActionFeedback.tsx`
+  reuses Feedback for a bounded accessible toast stack and inline save status.
+  `hooks/useAutosaveFeedback.ts` serializes formatting/replacement snapshots and
+  reports only the latest save outcome. No notification state is persisted.
 - `stores/language.ts` — fixed English UI locale without stored language preferences; `stores/providerDefaults.ts` — provider startup defaults independent of UI language.
 - `services/debugLog.ts` — bounded runtime diagnostics mirrored to native logs; no experimental session/audio viewer or separate PTT laboratory hook.
 

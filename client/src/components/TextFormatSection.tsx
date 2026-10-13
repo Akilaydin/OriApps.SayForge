@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { HelpCircle } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -11,6 +11,8 @@ import {
 } from '@/services/textPostProcess'
 import type { TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { showToast } from '@/services/actionFeedback'
+import { useAutosaveFeedback } from '@/hooks/useAutosaveFeedback'
 
 interface ToggleDef {
   key: keyof TextPostProcessOptions
@@ -43,26 +45,22 @@ const TOGGLES: ToggleDef[] = [
 export default function TextFormatSection() {
   const t = useT()
   const [opts, setOpts] = useState<TextPostProcessOptions>(DEFAULT_POST_PROCESS)
-  const initialized = useRef(false)
   const [ready, setReady] = useState(false)
   const [animate, setAnimate] = useState(false)
+  const saveStatus = useAutosaveFeedback(opts, ready, saveTextPostProcessOptions)
 
   useEffect(() => {
     getTextPostProcessOptions()
       .then((loaded) => {
         setOpts(loaded)
-        initialized.current = true
-      })
-      .finally(() => {
         setReady(true)
+      })
+      .catch(() => showToast('error', t('feedback.loadFailed')))
+      .finally(() => {
         requestAnimationFrame(() => requestAnimationFrame(() => setAnimate(true)))
       })
   }, [])
 
-  useEffect(() => {
-    if (!initialized.current) return
-    void saveTextPostProcessOptions(opts)
-  }, [opts])
 
   const toggle = (key: keyof TextPostProcessOptions) => {
     setOpts((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -77,6 +75,7 @@ export default function TextFormatSection() {
         </p>
       </div>
       <div className="divide-y divide-border/60">
+        {saveStatus && <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{saveStatus}</p>}
         {TOGGLES.map((def) => {
           return (
             <div key={def.key} className="flex items-center gap-2.5 px-4 py-2.5">

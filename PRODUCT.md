@@ -14,6 +14,14 @@ profile. The active-profile test uses saved settings and the bundled audio sampl
 Cloud ASR settings are captured when recording starts. Changing the active profile,
 API key, upload format or prompts during recording applies to the next recording.
 
+Explicit saves, exports, imports, copies and deletions report their completed result.
+Compact notifications use green for success and red for failure; cancellation is
+neutral. Repeated notifications are grouped, can be dismissed with the keyboard,
+and pause while hovered or focused. Frequent setting/dictionary changes use a
+saving/saved indicator instead of a notification for each change. Destructive
+deletion, reset, replacement import, draft clearing and tray Quit require confirmation.
+Existing recording, ASR-test and updater progress/results remain inline.
+
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
 - Microphone boost is optional and adjustable in Settings → Microphone from 0–18 dB in
   1 dB steps. New installs and existing installs without these settings default to

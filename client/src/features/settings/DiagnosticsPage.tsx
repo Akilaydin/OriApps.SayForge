@@ -12,6 +12,7 @@ import DiagnosticsReportPanel from './DiagnosticsReportPanel'
 import { t } from '@/i18n'
 import { RichText } from '@/i18n/RichText'
 import { useLocale } from '@/i18n/useT'
+import { runAction, showToast } from '@/services/actionFeedback'
 
 type HealthStatus = 'ok' | 'error' | 'unknown' | 'disabled'
 
@@ -78,15 +79,16 @@ export default function DiagnosticsPage() {
 
   async function doHealthCheck() {
     setChecking(true)
-    await runHealthCheck()
-    setChecking(false)
+    try { await runHealthCheck() }
+    catch { showToast('error', t('feedback.actionFailed')) }
+    finally { setChecking(false) }
   }
 
   async function handleRefresh() {
-    setChecking(true)
-    setEvents(getRuntimeEvents())
-    await runHealthCheck()
-    setChecking(false)
+    await runAction('diagnostics-refresh', async () => {
+      setEvents(getRuntimeEvents())
+      await doHealthCheck()
+    })
   }
 
   async function runHealthCheck() {
@@ -159,7 +161,7 @@ export default function DiagnosticsPage() {
   }
 
   async function openLogFolder() {
-    try { await invoke('open_log_folder') } catch { /* ignore */ }
+    await runAction('diagnostics-folder', () => invoke('open_log_folder'), { error: t('feedback.openFailed') })
   }
 
   function formatTime(ts: number) {

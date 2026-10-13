@@ -6,6 +6,8 @@ import * as bridge from '@/services/bridge'
 import { countHistory, deleteHistory, listHistory, type HistoryRecord } from '@/services/store'
 import { exportHistory } from '@/services/exports'
 import { useT } from '@/i18n/useT'
+import { runAction } from '@/services/actionFeedback'
+import { useActionPending } from '@/components/ActionFeedback'
 
 const PAGE_SIZE = 100
 
@@ -18,6 +20,8 @@ export default function History() {
   const [total, setTotal] = useState(0)
   const [status, setStatus] = useState('')
   const request = useRef(0)
+  const exportPending = useActionPending('history-export')
+  const deletePending = useActionPending('history-delete')
 
   const reload = useCallback(async () => {
     const id = ++request.current
@@ -29,6 +33,7 @@ export default function History() {
       if (id !== request.current) return
       setRecords(items)
       setTotal(count)
+      setStatus('')
     } catch (error) {
       if (id === request.current) setStatus(String(error))
     }
@@ -46,17 +51,18 @@ export default function History() {
   }, [reload])
 
   const remove = async (id: string) => {
-    try {
+    await runAction('history-delete', async () => {
       await deleteHistory(id)
       await reload()
-    } catch (error) { setStatus(String(error)) }
+    }, { confirmation: t('feedback.confirmDeleteRecord'), success: t('feedback.deleted'), error: t('feedback.deleteFailed') })
   }
 
   const download = async () => {
-    try {
+    await runAction('history-export', async () => {
       const result = await exportHistory({ keyword: search })
-      setStatus(result.filePath ? t('history.savedTo', { path: result.filePath }) : t('history.exportCanceled'))
-    } catch (error) { setStatus(String(error)) }
+      setStatus(result.filePath ? t('history.savedTo', { path: result.filePath }) : '')
+      return !result.canceled
+    }, { success: t('feedback.exported'), canceled: t('feedback.canceled'), error: t('feedback.exportFailed') })
   }
 
   return (
@@ -70,13 +76,13 @@ export default function History() {
               aria-label={t('history.searchPlaceholder')}
               className="rounded-md border border-input-border bg-input-bg py-1.5 pl-8 pr-3 text-sm" />
           </div>
-          <Button variant="outline" size="sm" onClick={() => void download()} aria-label={t('history.export')}>
+          <Button variant="outline" size="sm" disabled={exportPending} onClick={() => void download()} aria-label={t('history.export')}>
             <Download className="h-4 w-4" />
           </Button>
         </div>
       </div>
       {status && <p role="status" className="mb-3 break-all text-xs text-muted-foreground">{status}</p>}
-      <HistoryRecordList records={records} onDelete={remove}
+      <HistoryRecordList records={records} onDelete={remove} deletePending={deletePending}
         emptyText={search.trim() ? t('history.emptyNoMatch') : t('history.empty')} />
       {total > records.length && (
         <div className="mt-4 flex justify-center">

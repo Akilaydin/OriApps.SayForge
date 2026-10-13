@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { AlertCircle, CheckCircle2, ChevronDown, Download, FileArchive, Image as ImageIcon, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import * as bridge from '@/services/bridge'
 import type { DiagnosticIssueType, DiagnosticOccurrence, DiagnosticsPreview } from '@/types/appApi'
 import { t } from '@/i18n'
 import { useLocale } from '@/i18n/useT'
+import { runAction, showToast } from '@/services/actionFeedback'
 
 interface DiagnosticsReportPanelProps {
   embedded?: boolean
@@ -42,6 +43,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   const [errorMessage, setErrorMessage] = useState('')
   const [preview, setPreview] = useState<DiagnosticsPreview | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
+  const downloadBusy = useRef(false)
 
   const imageValidation = useMemo(() => validateDiagnosticImages(images), [images, locale])
   const occurrenceOptions: Array<{ value: DiagnosticOccurrence; label: string }> = [
@@ -110,6 +112,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
   }
 
   const handleDownload = async () => {
+    if (downloadBusy.current) return
     const blocker = describeBlocker()
     if (blocker) {
       setErrorMessage(blocker)
@@ -120,6 +123,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
       return
     }
 
+    downloadBusy.current = true
     setDownloading(true)
     setStatus('idle')
     setErrorMessage('')
@@ -137,7 +141,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
       })
 
       if (!dest) {
-        setDownloading(false)
+        showToast('info', t('feedback.canceled'))
         return
       }
 
@@ -150,6 +154,7 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
       setStatus('error')
       setErrorMessage(String(error))
     } finally {
+      downloadBusy.current = false
       setDownloading(false)
     }
   }
@@ -375,13 +380,13 @@ export default function DiagnosticsReportPanel({ embedded = false }: Diagnostics
                 variant="outline"
                 size="sm"
                 disabled={busy}
-                onClick={() => {
+                onClick={() => void runAction('diagnostics-clear', async () => {
                   setDescription('')
                   setIssueType(null)
                   setImages([])
                   setStatus('idle')
                   setErrorMessage('')
-                }}
+                }, { confirmation: description || images.length ? t('feedback.confirmClear') : undefined })}
               >
                 {t('diagnosticsReport.clear')}
               </Button>
