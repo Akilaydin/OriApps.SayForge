@@ -34,6 +34,91 @@ unsafe fn put_fixture(owner: HWND, text: &str) {
     CloseClipboard().unwrap();
 }
 
+unsafe fn put_bitmap_fixture(owner: HWND) {
+    use windows::Win32::Graphics::Gdi::CreateBitmap;
+    let pixels: [u8; 16] = [
+        0, 0, 255, 0, 0, 255, 0, 0,
+        255, 0, 0, 0, 255, 255, 255, 0,
+    ];
+    let bitmap = CreateBitmap(2, 2, 1, 32, Some(pixels.as_ptr() as *const _));
+    assert!(!bitmap.0.is_null());
+    OpenClipboard(owner).unwrap();
+    EmptyClipboard().unwrap();
+    SetClipboardData(2, HANDLE(bitmap.0)).unwrap();
+    CloseClipboard().unwrap();
+}
+
+unsafe fn dib_fixture_bytes() -> Vec<u8> {
+    OpenClipboard(HWND(std::ptr::null_mut())).unwrap();
+    let handle = HGLOBAL(GetClipboardData(8).unwrap().0);
+    let size = GlobalSize(handle);
+    let ptr = GlobalLock(handle);
+    assert!(!ptr.is_null());
+    let bytes = std::slice::from_raw_parts(ptr as *const u8, size).to_vec();
+    let _ = GlobalUnlock(handle);
+    CloseClipboard().unwrap();
+    bytes
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn fallback_copy_succeeds_when_the_clipboard_contains_a_bitmap() {
+    unsafe {
+        let owner = TestWindow::new();
+        put_bitmap_fixture(owner.0);
+        let text = "Synthetic dictation copied over a screenshot";
+        assert!(set_clipboard_with_retry_pub(text, 1, 0, owner.0.0 as isize));
+        assert_eq!(native_get_clipboard_text().as_deref(), Some(text));
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard and creates an editor; disposable Windows CI only"]
+fn protected_paste_inserts_and_restores_a_bitmap_clipboard() {
+    unsafe {
+        let owner = TestWindow::new();
+        let editor = TestWindow(CreateWindowExW(
+            WINDOW_EX_STYLE::default(), w!("EDIT"), w!(""), WS_POPUP | WS_VISIBLE,
+            0, 0, 200, 80, None, None, None, None,
+        ).unwrap());
+        put_bitmap_fixture(owner.0);
+        let previous = dib_fixture_bytes();
+        let text = "Synthetic protected dictation over a screenshot";
+        let result = do_inject(editor.0, editor.0, text, true, owner.0);
+        let mut contents = [0u16; 128];
+        let length = GetWindowTextW(editor.0, &mut contents) as usize;
+        let pasted = String::from_utf16(&contents[..length]).unwrap();
+        let started = Instant::now();
+        while PENDING_CLIPBOARD.lock().unwrap().is_some() && started.elapsed().as_secs() < 3 {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        let pending = PENDING_CLIPBOARD.lock().unwrap().take();
+        assert!(pending.is_none(), "bitmap clipboard restore did not finish");
+        assert!(result.ok, "{:?}: {:?}", result.reason, result.detail);
+        assert_eq!(pasted, text);
+        assert_eq!(dib_fixture_bytes(), previous);
+        OpenClipboard(owner.0).unwrap();
+        assert!(GetClipboardData(2).is_ok(), "restored image must still expose CF_BITMAP");
+        CloseClipboard().unwrap();
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn failed_copy_preserves_a_bitmap_clipboard() {
+    unsafe {
+        let owner = TestWindow::new();
+        put_bitmap_fixture(owner.0);
+        let previous = dib_fixture_bytes();
+        FAIL_NEXT_CLIPBOARD_WRITE.with(|flag| flag.set(true));
+        let copied = set_clipboard_with_retry_pub("Synthetic failed Copy", 1, 0, owner.0.0 as isize);
+        let fault_was_triggered = FAIL_NEXT_CLIPBOARD_WRITE.with(|flag| !flag.replace(false));
+        assert!(!copied);
+        assert!(fault_was_triggered, "bitmap backup must reach the attempted text write");
+        assert_eq!(dib_fixture_bytes(), previous);
+    }
+}
+
 #[test]
 #[ignore = "changes the system clipboard; disposable Windows CI only"]
 fn protected_write_records_the_closed_clipboard_version() {
