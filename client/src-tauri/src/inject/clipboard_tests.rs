@@ -94,13 +94,13 @@ unsafe fn put_indexed_dib_fixture(owner: HWND, format: u32) {
 
 #[test]
 #[ignore = "changes the system clipboard; disposable Windows CI only"]
-fn indexed_dib_images_with_synthesized_palettes_can_be_copied_and_restored() {
+fn indexed_dib_and_dibv5_images_can_be_copied_and_restored() {
     unsafe {
         let owner = TestWindow::new();
         for format in [8, 17] {
             put_indexed_dib_fixture(owner.0, format);
-            assert!(windows::Win32::System::DataExchange::IsClipboardFormatAvailable(9).is_ok());
             assert!(set_clipboard_with_retry_pub("Synthetic Copy over a palette image", 1, 0, owner.0.0 as isize), "source format {format}");
+            assert_eq!(native_get_clipboard_text().as_deref(), Some("Synthetic Copy over a palette image"));
             put_indexed_dib_fixture(owner.0, format);
             let original = dib_fixture_bytes();
             let text = "Synthetic protected paste over a palette image";
@@ -113,9 +113,32 @@ fn indexed_dib_images_with_synthesized_palettes_can_be_copied_and_restored() {
             assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Restored));
             assert_eq!(dib_fixture_bytes(), original, "source format {format}");
             OpenClipboard(owner.0).unwrap();
-            assert!(GetClipboardData(9).is_ok(), "restored indexed image must expose its palette");
+            assert!(GetClipboardData(2).is_ok(), "restored indexed image must expose CF_BITMAP");
             CloseClipboard().unwrap();
         }
+    }
+}
+
+#[test]
+#[ignore = "changes the system clipboard; disposable Windows CI only"]
+fn standalone_palette_is_not_discarded_to_allow_copy() {
+    unsafe {
+        use windows::Win32::Graphics::Gdi::{CreatePalette, LOGPALETTE, PALETTEENTRY};
+        let owner = TestWindow::new();
+        let data = LOGPALETTE {
+            palVersion: 0x300, palNumEntries: 1,
+            palPalEntry: [PALETTEENTRY { peRed: 32, peGreen: 64, peBlue: 128, peFlags: 0 }],
+        };
+        let palette = CreatePalette(&data);
+        assert!(!palette.0.is_null());
+        OpenClipboard(owner.0).unwrap();
+        EmptyClipboard().unwrap();
+        SetClipboardData(9, HANDLE(palette.0)).unwrap();
+        CloseClipboard().unwrap();
+        assert!(!set_clipboard_with_retry_pub("Synthetic Copy", 1, 0, owner.0.0 as isize));
+        OpenClipboard(owner.0).unwrap();
+        assert_eq!(GetClipboardData(9).unwrap().0, palette.0);
+        CloseClipboard().unwrap();
     }
 }
 
