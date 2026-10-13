@@ -22,6 +22,14 @@ saving/saved indicator instead of a notification for each change. Destructive
 deletion, reset, replacement import, draft clearing and tray Quit require confirmation.
 Existing recording, ASR-test and updater progress/results remain inline.
 
+Failures report the action that failed and a known cause with a recovery hint.
+Startup initialization failures offer Retry instead of an empty window. Clipboard
+failures distinguish unsafe formats, unavailable clipboard, lost focus and
+unconfirmed delivery; unconfirmed delivery warns against duplicate insertion.
+Background update failures remain silent. Technical causes are retained in the
+existing rotating log files without recording audio, speech, credentials or
+provider response bodies; there is no additional log interface.
+
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
 - Microphone boost is optional and adjustable in Settings → Microphone from 0–18 dB in
   1 dB steps. New installs and existing installs without these settings default to

@@ -105,7 +105,7 @@ export default function UpdatePrompt() {
       {phase === 'installing' && <p className="mt-3 text-sm text-muted-foreground">{t('updater.installing')}</p>}
       {phase === 'error' && (
         <div className="mt-3">
-          <p className="text-sm text-muted-foreground">{t(updateErrorMessageKey(update.errorStage))}</p>
+          <p className="text-sm text-muted-foreground">{update.errorMessage ?? t(updateErrorMessageKey(update.errorStage))}</p>
           <Button size="sm" variant="outline" className="mt-2" onClick={() => void checkForUpdates(true)}>{t('updater.retry')}</Button>
         </div>
       )}

@@ -1,5 +1,5 @@
 use rusqlite::functions::FunctionFlags;
-use rusqlite::{params, params_from_iter, Connection, Result as SqlResult};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Result as SqlResult};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -30,6 +30,18 @@ const COLLECTION_KEYS: &[&str] = &[
 
 fn is_collection_key(key: &str) -> bool {
     COLLECTION_KEYS.contains(&key)
+}
+
+fn default_setting_value(key: &str, fallback: Option<&Value>) -> Value {
+    DEFAULT_SETTINGS.iter().find(|(name, _)| *name == key)
+        .map(|(_, json)| serde_json::from_str(json).unwrap_or(Value::Null))
+        .unwrap_or_else(|| fallback.cloned().unwrap_or(Value::Null))
+}
+
+fn parse_stored_json(json: &str) -> SqlResult<Value> {
+    serde_json::from_str(json).map_err(|error| rusqlite::Error::FromSqlConversionFailure(
+        0, rusqlite::types::Type::Text, Box::new(error),
+    ))
 }
 
 #[cfg(test)]
@@ -240,8 +252,17 @@ impl Storage {
     // ─── Get / Set / Delete ───
 
     pub fn get(&self, key: &str, fallback: Option<&Value>) -> Value {
+        self.try_get(key, fallback).unwrap_or_else(|error| {
+            if is_collection_key(key) { Value::Array(vec![]) }
+            else if matches!(error, rusqlite::Error::FromSqlConversionFailure(..)) {
+                fallback.cloned().unwrap_or(Value::Null)
+            } else { default_setting_value(key, fallback) }
+        })
+    }
+
+    pub fn try_get(&self, key: &str, fallback: Option<&Value>) -> SqlResult<Value> {
         if is_collection_key(key) {
-            return self.read_collection(key).unwrap_or(Value::Array(vec![]));
+            return self.read_collection(key);
         }
 
         let db = self.db.lock().unwrap();
@@ -251,21 +272,11 @@ impl Storage {
                 params![key],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
 
         match result {
-            Some(json_str) => serde_json::from_str(&json_str).unwrap_or_else(|_| {
-                fallback.cloned().unwrap_or(Value::Null)
-            }),
-            None => {
-                // Check defaults
-                for &(k, v) in DEFAULT_SETTINGS {
-                    if k == key {
-                        return serde_json::from_str(v).unwrap_or(Value::Null);
-                    }
-                }
-                fallback.cloned().unwrap_or(Value::Null)
-            }
+            Some(json_str) => parse_stored_json(&json_str),
+            None => Ok(default_setting_value(key, fallback)),
         }
     }
 
@@ -278,7 +289,7 @@ impl Storage {
             for key in keys {
                 let mut rows = statement.query(params![key])?;
                 let value = match rows.next()? {
-                    Some(row) => serde_json::from_str::<Value>(&row.get::<_, String>(0)?).unwrap_or(Value::Null),
+                    Some(row) => parse_stored_json(&row.get::<_, String>(0)?)?,
                     None => Value::Null,
                 };
                 values.insert(key.clone(), value);
@@ -322,6 +333,10 @@ impl Storage {
     // ─── History ───
 
     pub fn history_list(&self, keyword: Option<&str>, favorite_only: bool, limit: Option<i64>, offset: Option<i64>) -> Vec<Value> {
+        self.try_history_list(keyword, favorite_only, limit, offset).unwrap_or_default()
+    }
+
+    pub fn try_history_list(&self, keyword: Option<&str>, favorite_only: bool, limit: Option<i64>, offset: Option<i64>) -> SqlResult<Vec<Value>> {
         let db = self.db.lock().unwrap();
         let (where_sql, pattern) = history_filter(keyword, favorite_only);
 
@@ -338,25 +353,27 @@ impl Storage {
             where_sql, limit_sql
         );
 
-        let mut stmt = db.prepare(&sql).unwrap();
+        let mut stmt = db.prepare(&sql)?;
         let rows = stmt
             .query_map(params_from_iter(pattern.iter()), |row| {
                 let json_str: String = row.get(0)?;
                 Ok(json_str)
             })
-            .unwrap();
+            ?;
 
-        rows.filter_map(|r| r.ok())
-            .filter_map(|s| serde_json::from_str(&s).ok())
-            .collect()
+        rows.map(|row| parse_stored_json(&row?)).collect()
     }
 
     pub fn history_count(&self, keyword: Option<&str>, favorite_only: bool) -> i64 {
+        self.try_history_count(keyword, favorite_only).unwrap_or(0)
+    }
+
+    pub fn try_history_count(&self, keyword: Option<&str>, favorite_only: bool) -> SqlResult<i64> {
         let db = self.db.lock().unwrap();
         let (where_sql, pattern) = history_filter(keyword, favorite_only);
 
         let sql = format!("SELECT COUNT(*) FROM history_records {}", where_sql);
-        db.query_row(&sql, params_from_iter(pattern.iter()), |row| row.get(0)).unwrap_or(0)
+        db.query_row(&sql, params_from_iter(pattern.iter()), |row| row.get(0))
     }
 
     pub fn history_add(&self, record: &Value) -> SqlResult<()> {

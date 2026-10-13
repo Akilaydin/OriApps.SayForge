@@ -18,6 +18,7 @@ static LOG_FILE: std::sync::LazyLock<Mutex<Option<std::fs::File>>> =
 const MAX_LOG_SIZE: u64 = 5 * 1024 * 1024;
 /// Number of rotated files to keep
 const ROTATED_FILES_KEEP: usize = 3;
+const MAX_LOG_LINE_BYTES: usize = 8192;
 
 fn log_dir() -> std::path::PathBuf {
     dirs::data_local_dir()
@@ -26,17 +27,17 @@ fn log_dir() -> std::path::PathBuf {
         .join("logs")
 }
 
-fn log_file_path() -> std::path::PathBuf {
-    log_dir().join(crate::identity::LOG_FILE)
-}
-
 fn open_log_file() -> Option<std::fs::File> {
     let dir = log_dir();
-    if let Err(e) = std::fs::create_dir_all(&dir) {
+    open_log_file_in(&dir)
+}
+
+fn open_log_file_in(dir: &std::path::Path) -> Option<std::fs::File> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
         eprintln!("[log] failed to create log dir {:?}: {}", dir, e);
         return None;
     }
-    let path = log_file_path();
+    let path = dir.join(crate::identity::LOG_FILE);
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -44,8 +45,8 @@ fn open_log_file() -> Option<std::fs::File> {
         .ok()
 }
 
-fn rotate_if_needed(file: &mut Option<std::fs::File>) {
-    let path = log_file_path();
+fn rotate_if_needed(file: &mut Option<std::fs::File>, dir: &std::path::Path) {
+    let path = dir.join(crate::identity::LOG_FILE);
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     if size < MAX_LOG_SIZE {
         return;
@@ -54,7 +55,6 @@ fn rotate_if_needed(file: &mut Option<std::fs::File>) {
     *file = None;
 
     // Rotate: sayforge.log -> sayforge.1.log, sayforge.1.log -> sayforge.2.log, etc.
-    let dir = log_dir();
     for i in (1..ROTATED_FILES_KEEP).rev() {
         let from = dir.join(format!("sayforge.{}.log", i));
         let to = dir.join(format!("sayforge.{}.log", i + 1));
@@ -62,20 +62,75 @@ fn rotate_if_needed(file: &mut Option<std::fs::File>) {
     }
     let rotated = dir.join("sayforge.1.log");
     let _ = std::fs::rename(&path, &rotated);
-    *file = open_log_file();
+    *file = open_log_file_in(dir);
 }
 
 pub fn write_log_line(line: &str) {
     let mut guard = LOG_FILE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    append_log_line(&mut guard, &log_dir(), line);
+}
+
+fn append_log_line(file: &mut Option<std::fs::File>, dir: &std::path::Path, line: &str) {
     // Rotate check — reopen file if needed
-    rotate_if_needed(&mut guard);
-    if guard.is_none() {
-        *guard = open_log_file();
+    rotate_if_needed(file, dir);
+    if file.is_none() {
+        *file = open_log_file_in(dir);
     }
-    if let Some(ref mut f) = *guard {
+    if let Some(ref mut f) = *file {
         let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        let mut end = line.len().min(MAX_LOG_LINE_BYTES);
+        while !line.is_char_boundary(end) { end -= 1; }
+        let line = line[..end].replace(['\r', '\n'], " ");
         let _ = writeln!(f, "[{}] {}", ts, line);
         let _ = f.flush();
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+
+    fn fixture_dir() -> std::path::PathBuf {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/log-tests");
+        let dir = root.join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(dir.canonicalize().unwrap().starts_with(root.canonicalize().unwrap()));
+        dir
+    }
+
+    #[test]
+    fn persistent_failures_survive_reopen_and_an_unavailable_sink_does_not_panic() {
+        let dir = fixture_dir();
+        let blocked = dir.join("not-a-directory");
+        std::fs::write(&blocked, b"synthetic blocker").unwrap();
+        let mut file = None;
+        append_log_line(&mut file, &blocked, "[ERROR] [update] operation=check HTTP=504");
+        assert!(file.is_none());
+        append_log_line(&mut file, &dir, "[ERROR] [update] operation=check HTTP=504");
+        drop(file.take());
+        append_log_line(&mut file, &dir, "[WARN] [clipboard] operation=copy reason=unsupported_format");
+        drop(file);
+        let contents = std::fs::read_to_string(dir.join(crate::identity::LOG_FILE)).unwrap();
+        assert!(contents.contains("operation=check HTTP=504"));
+        assert!(contents.contains("operation=copy reason=unsupported_format"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn individual_entries_are_bounded_and_rotation_keeps_only_three_backups() {
+        let dir = fixture_dir();
+        let mut file = None;
+        append_log_line(&mut file, &dir, &"Synthetic Ω line ".repeat(2000));
+        assert!(file.as_ref().unwrap().metadata().unwrap().len() <= 8192 + 80);
+        for _ in 0..5 {
+            std::fs::OpenOptions::new().write(true).open(dir.join(crate::identity::LOG_FILE))
+                .unwrap().set_len(MAX_LOG_SIZE).unwrap();
+            append_log_line(&mut file, &dir, "[ERROR] [synthetic] operation=retry");
+        }
+        drop(file);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 4);
+        assert!(std::fs::read_to_string(dir.join(crate::identity::LOG_FILE)).unwrap().contains("operation=retry"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
 

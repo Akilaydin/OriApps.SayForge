@@ -24,6 +24,14 @@ export type FriendlyErrorCode =
   | 'download_checksum'
   | 'download_failed'
   | 'connect_failed'
+  | 'clipboard_unsupported_format'
+  | 'clipboard_unavailable'
+  | 'clipboard_write_failed'
+  | 'storage_failed'
+  | 'storage_locked'
+  | 'storage_readonly'
+  | 'storage_invalid_data'
+  | 'storage_no_space'
 
 export interface FriendlyError {
   code: FriendlyErrorCode
@@ -60,6 +68,14 @@ const FRIENDLY_ERROR_CODES = new Set<FriendlyErrorCode>([
   'download_checksum',
   'download_failed',
   'connect_failed',
+  'clipboard_unsupported_format',
+  'clipboard_unavailable',
+  'clipboard_write_failed',
+  'storage_failed',
+  'storage_locked',
+  'storage_readonly',
+  'storage_invalid_data',
+  'storage_no_space',
 ])
 
 /**
@@ -94,7 +110,86 @@ function isNetworkFailure(text: string): boolean {
 }
 
 function isTimeout(text: string): boolean {
-  return /timeout|timed out/i.test(text)
+  return /timeout|timed out|deadline (?:elapsed|exceeded)|etimedout/i.test(text)
+}
+
+export interface FailureDiagnostic {
+  kind: 'timeout' | 'http' | 'network' | 'local'
+  name: string
+  code?: FriendlyErrorCode
+  httpStatus?: number
+  reason?: 'dns' | 'tls' | 'connection' | 'permission' | 'disk_full' | 'busy' | 'unsupported_format' | 'invalid_data' | 'not_found'
+  nativeCode?: string
+  cause?: FailureDiagnostic
+}
+
+const ERROR_NAMES = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'DOMException',
+  'NotAllowedError', 'NotFoundError', 'NotReadableError', 'OverconstrainedError', 'AbortError',
+  'NetworkError', 'SecurityError', 'TimeoutError'])
+
+/** Only categorical causes/codes are retained: exception bodies can contain speech or credentials. */
+export function diagnoseFailure(error: unknown, depth = 0): FailureDiagnostic {
+  try {
+    const { code, text } = decodeError(error)
+    const rawName = error instanceof Error ? error.name : text.match(/^([A-Za-z]+Error):/)?.[1]
+    const name = rawName && ERROR_NAMES.has(rawName) ? rawName : 'Error'
+    const httpStatus = extractHttpStatus(text) ?? undefined
+    let reason: FailureDiagnostic['reason']
+    if (/dns|enotfound|name (?:or service|resolution)|failed to resolve|lookup address/i.test(text)) reason = 'dns'
+    else if (/tls|ssl|certificate/i.test(text)) reason = 'tls'
+    else if (code === 'clipboard_unsupported_format' || /unsupported clipboard format|not a bounded HGLOBAL/i.test(text)) reason = 'unsupported_format'
+    else if (code === 'storage_locked' || /database is (?:locked|busy)|sqlite_(?:busy|locked)/i.test(text)) reason = 'busy'
+    else if (code === 'storage_readonly' || name === 'NotAllowedError' || name === 'SecurityError' || /permission|access (?:is )?denied|read.?only/i.test(text)) reason = 'permission'
+    else if (code === 'storage_no_space' || /disk full|no space|not enough space/i.test(text)) reason = 'disk_full'
+    else if (code === 'storage_invalid_data') reason = 'invalid_data'
+    else if (name === 'NotFoundError' || /not found|no such file/i.test(text)) reason = 'not_found'
+    else if (isNetworkFailure(text) || name === 'NetworkError') reason = 'connection'
+    const kind = isTimeout(text) || name === 'TimeoutError' ? 'timeout'
+      : httpStatus ? 'http'
+        : reason === 'dns' || reason === 'tls' || reason === 'connection' ? 'network' : 'local'
+    const nativeCode = text.match(/\b(?:HRESULT\s*[:=]?\s*)?(0x[0-9a-f]{8})\b/i)?.[1]
+    const diagnostic: FailureDiagnostic = { kind, name,
+      ...(code ? { code } : {}), ...(httpStatus ? { httpStatus } : {}),
+      ...(reason ? { reason } : {}), ...(nativeCode ? { nativeCode } : {}) }
+    const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined
+    if (depth < 2 && cause && cause !== error) {
+      diagnostic.cause = diagnoseFailure(cause, depth + 1)
+    }
+    return diagnostic
+  } catch {
+    return { kind: 'local', name: 'Error' }
+  }
+}
+
+/** Append a known cause/action to a caller's user-facing description; never show raw diagnostics. */
+export function failureMessage(error: unknown, fallback: string): string {
+  const diagnostic = diagnoseFailure(error)
+  let hint: string | undefined
+  if (diagnostic.code === 'clipboard_unavailable') hint = t('err.operation.clipboardUnavailable')
+  else if (diagnostic.kind === 'timeout') hint = t('err.operation.timeout')
+  else if (diagnostic.kind === 'http') hint = t('err.operation.http', { status: String(diagnostic.httpStatus) })
+  else if (diagnostic.reason === 'dns') hint = t('err.operation.dns')
+  else if (diagnostic.reason === 'tls') hint = t('err.operation.tls')
+  else if (diagnostic.kind === 'network') hint = t('err.operation.network')
+  else if (diagnostic.reason === 'permission') hint = t('err.operation.permission')
+  else if (diagnostic.reason === 'disk_full') hint = t('err.operation.diskFull')
+  else if (diagnostic.reason === 'busy') hint = t('err.operation.busy')
+  else if (diagnostic.reason === 'unsupported_format') hint = t('err.operation.clipboardFormat')
+  else if (diagnostic.reason === 'invalid_data') hint = t('err.operation.invalidData')
+  else if (diagnostic.reason === 'not_found') hint = t('err.operation.notFound')
+  return hint ? `${fallback} ${hint}` : fallback
+}
+
+export function insertionFailureMessage(reason: string): string {
+  if (reason === 'insertion_timeout') return t('overlay.insertionTimeoutHint')
+  if (reason === 'paste_unconfirmed') return t('overlay.unconfirmedHint')
+  if (reason === 'clipboard_changed') return t('overlay.clipboardChangedHint')
+  if (reason.startsWith('clipboard_')) {
+    return failureMessage(`${ERROR_PROTOCOL_PREFIX}${reason}:`, t('overlay.clipboardFailedHint'))
+  }
+  if (['invalid_target', 'target_not_foreground', 'focus_not_confirmed'].includes(reason)) return t('overlay.focusLostHint')
+  if (reason === 'input_blocked_access_denied' || reason === 'send_input_short_write') return t('overlay.inputBlockedHint')
+  return reason === 'not_editable' ? t('overlay.fallbackHint') : t('overlay.insertionFailedHint')
 }
 
 export function describeServerError(error: unknown, hasCustomUrl: boolean): FriendlyError {

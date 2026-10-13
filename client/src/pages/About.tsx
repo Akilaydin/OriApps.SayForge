@@ -53,7 +53,7 @@ export default function About() {
               </Button>
             </div>
             {update.phase === 'up-to-date' && <p role="status" className="mt-2 text-sm text-muted-foreground">{t('updater.upToDate')}</p>}
-            {update.phase === 'error' && update.errorStage === 'check' && <p role="alert" className="mt-2 text-sm text-destructive">{t('updater.checkFailed')}</p>}
+            {update.phase === 'error' && update.errorStage === 'check' && <p role="alert" className="mt-2 text-sm text-destructive">{update.errorMessage ?? t('updater.checkFailed')}</p>}
             {update.phase === 'available' && <p role="status" className="mt-2 text-sm text-muted-foreground">{t('updater.available', { version: update.version ?? '' })}</p>}
           </div>
 

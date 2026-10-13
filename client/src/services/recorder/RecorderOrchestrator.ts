@@ -49,7 +49,7 @@ import {
   type MicLevel,
 } from './helpers'
 import { t } from '@/i18n'
-import { describeProviderError } from '@/lib/errorMessages'
+import { describeProviderError, failureMessage } from '@/lib/errorMessages'
 import { describeMicSource, micSourceChanged } from './micSourceReminder'
 
 type StateTransition =
@@ -1565,9 +1565,9 @@ export class RecorderOrchestrator {
       this.provider.cancel()
       const errMsg = String(error)
       if (errMsg.includes('microphone') || errMsg.includes('audio')) {
-        this.overlayService.showError(t('recorder.microphoneUnavailable'))
+        this.overlayService.showError(failureMessage(error, t('recorder.microphoneUnavailable')))
       } else {
-        this.overlayService.showError(t('recorder.startFailed'))
+        this.overlayService.showError(failureMessage(error, t('recorder.startFailed')))
       }
       this.resetToIdle({ keepOverlay: true })
     }
