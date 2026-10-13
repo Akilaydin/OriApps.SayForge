@@ -28,6 +28,8 @@ import { pttShortcutConflictsWithAccelerator } from '@/lib/shortcutKeys'
 import { t, type TranslationKey } from '@/i18n'
 import { useT } from '@/i18n/useT'
 import { MIC_LOW_RMS_THRESHOLD } from '@/services/recorder/helpers'
+import { runAction } from '@/services/actionFeedback'
+import { SaveStatus, useActionPending } from '@/components/ActionFeedback'
 
 function ShortcutLabel({ label, help }: { label: string; help: string }) {
   return (
@@ -45,6 +47,8 @@ function ShortcutLabel({ label, help }: { label: string; help: string }) {
 
 export default function GeneralSettingsPage() {
   const t = useT()
+  const savePending = useActionPending('general-settings')
+  const saveChange = (operation: () => Promise<unknown>) => runAction('general-settings', operation, { error: t('feedback.applyFailed') })
   const [autoLaunch, setAutoLaunch] = useState(false)
   const [autoLaunchReady, setAutoLaunchReady] = useState(false)
   const [autoLaunchBusy, setAutoLaunchBusy] = useState(false)
@@ -142,7 +146,7 @@ export default function GeneralSettingsPage() {
       catch { setAutoLaunchReady(false) }
     } finally { launchBusy.current = false; setAutoLaunchBusy(false) }
   }
-  const handleMicChange = async (deviceId: string) => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }
+  const handleMicChange = async (deviceId: string) => { await saveChange(async () => { setSelectedMic(deviceId); await setSetting('selectedMic', deviceId); await refreshRecorderSettings() }) }
   const updateTestMicGain = (enabled: boolean, db: number) => {
     liveMicGain.current = { enabled, db }
     if (testMicGainNodeRef.current) {
@@ -202,13 +206,13 @@ export default function GeneralSettingsPage() {
       setMicGainSaving(false)
     }
   }
-  const toggleMuteSystemAudio = async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }
-  const toggleProtectClipboard = async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }
-  const toggleHistoryEnabled = async () => { const next = !historyEnabled; setHistoryEnabled(next); await setSetting('historyEnabled', next) }
-  const toggleReadySound = async () => { const next = !readySoundEnabled; setReadySoundEnabled(next); await setSetting('readySoundEnabled', next); await refreshRecorderSettings() }
-  const handleLogRetentionDaysChange = async (value: number) => { setLogRetentionDays(value); await setSetting('logRetentionDays', value) }
-  const handlePTTChange = async (value: string) => { setPttKey(value); await setSetting('shortcutPTT', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }
-  const handleHandsFreeChange = async (value: string) => { setHandsFreeKey(value); await setSetting('shortcutHandsFree', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }
+  const toggleMuteSystemAudio = async () => { await saveChange(async () => { const next = !muteSystemAudio; setMuteSystemAudio(next); await setSetting('muteSystemAudioWhileRecording', next); await refreshRecorderSettings() }) }
+  const toggleProtectClipboard = async () => { await saveChange(async () => { const next = !protectClipboard; setProtectClipboard(next); await setSetting('protectClipboard', next); await refreshRecorderSettings() }) }
+  const toggleHistoryEnabled = async () => { await saveChange(async () => { const next = !historyEnabled; setHistoryEnabled(next); await setSetting('historyEnabled', next) }) }
+  const toggleReadySound = async () => { await saveChange(async () => { const next = !readySoundEnabled; setReadySoundEnabled(next); await setSetting('readySoundEnabled', next); await refreshRecorderSettings() }) }
+  const handleLogRetentionDaysChange = async (value: number) => { await saveChange(async () => { setLogRetentionDays(value); await setSetting('logRetentionDays', value) }) }
+  const handlePTTChange = async (value: string) => { await saveChange(async () => { setPttKey(value); await setSetting('shortcutPTT', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }) }
+  const handleHandsFreeChange = async (value: string) => { await saveChange(async () => { setHandsFreeKey(value); await setSetting('shortcutHandsFree', value); bridge.notifyShortcutsChanged(); refreshPTTSetting() }) }
 
   const validatePTT = useCallback(async (value: string) => {
     if (!value) return null
@@ -283,8 +287,9 @@ export default function GeneralSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-8">
+    <fieldset disabled={savePending || !ready} className="mx-auto max-w-4xl p-8">
       <h1 className="mb-6 text-2xl font-bold">{t('settings.title')}</h1>
+      <SaveStatus actionKey="general-settings" />
       <div className="space-y-6">
         <Card>
           <CardContent className="p-6">
@@ -381,6 +386,6 @@ export default function GeneralSettingsPage() {
 
         <BackupSection />
       </div>
-    </div>
+    </fieldset>
   )
 }

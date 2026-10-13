@@ -5,6 +5,9 @@ import Sidebar from './components/Sidebar'
 import TitleBar from './components/TitleBar'
 import WelcomeGuide from './components/WelcomeGuide'
 import UpdatePrompt from './components/UpdatePrompt'
+import { ToastViewport } from './components/ActionFeedback'
+import { runAction } from './services/actionFeedback'
+import { t } from './i18n'
 import Home from './pages/Home'
 import History from './pages/History'
 import Dictionary from './pages/Dictionary'
@@ -49,10 +52,11 @@ export default function App() {
     }
   }, [navigate])
 
-  const handleWelcomeComplete = () => {
-    setShowWelcome(false)
-    void setSetting('onboardingVersion', __APP_VERSION__)
-    bridge.notifyShortcutsChanged()
+  const handleWelcomeComplete = async () => {
+    const saved = await runAction('onboarding', () => setSetting('onboardingVersion', __APP_VERSION__), {
+      error: t('feedback.saveFailed'),
+    })
+    if (saved) { setShowWelcome(false); bridge.notifyShortcutsChanged() }
   }
 
   if (!onboardingChecked) {
@@ -79,6 +83,7 @@ export default function App() {
       </div>
       {showWelcome && <WelcomeGuide onComplete={handleWelcomeComplete} />}
       {!showWelcome && <UpdatePrompt />}
+      <ToastViewport />
     </div>
   )
 }

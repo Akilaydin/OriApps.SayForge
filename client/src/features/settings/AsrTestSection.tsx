@@ -12,6 +12,7 @@ import { resolveAsrDisplayModel } from '@/lib/asrModels'
 import { describeProviderError } from '@/lib/errorMessages'
 import type { WorkMode } from '@/services/transcription'
 import { useT } from '@/i18n/useT'
+import { showToast } from '@/services/actionFeedback'
 
 interface TestResult {
   text: string
@@ -67,7 +68,7 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
       setPlaying(true)
       await audio.play()
     } catch {
-      if (mounted.current) setPlaying(false)
+      if (mounted.current) { setPlaying(false); showToast('error', t('feedback.playFailed')) }
     }
   }
 

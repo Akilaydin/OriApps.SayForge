@@ -8,46 +8,46 @@ import {
   type ConfigImportPreview,
 } from '@/services/backup'
 import { useT } from '@/i18n/useT'
+import { runAction } from '@/services/actionFeedback'
+import { useActionPending } from '@/components/ActionFeedback'
 
 type Confirmation = { kind: 'config' | 'full'; path: string; preview?: ConfigImportPreview }
 
 export default function BackupSection() {
   const t = useT()
-  const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [restartRequired, setRestartRequired] = useState(false)
+  const busy = useActionPending('backup')
 
   const exportSettings = async () => {
-    setBusy(true)
-    try {
+    await runAction('backup', async () => {
+      setStatus('')
       const result = await exportConfigFile({ mode: 'full' })
-      setStatus(t('backup.savedTo', { path: result.filePath || '' }))
-    } catch (error) { setStatus(String(error)) }
-    finally { setBusy(false) }
+      if (result.filePath) setStatus(t('backup.savedTo', { path: result.filePath }))
+      return !result.canceled && !!result.filePath
+    }, { success: t('feedback.exported'), canceled: t('feedback.canceled'), error: t('feedback.exportFailed') })
   }
 
   const chooseImport = async (kind: 'config' | 'full') => {
-    setBusy(true)
-    try {
+    await runAction('backup', async () => {
+      setStatus('')
       const path = await pickImportFile(kind)
-      if (!path) return
+      if (!path) return false
       const preview = kind === 'config' ? await inspectConfigImport(path) : undefined
       setConfirmation({ kind, path, preview })
-    } catch (error) { setStatus(String(error)) }
-    finally { setBusy(false) }
+    }, { canceled: t('feedback.canceled'), error: t('feedback.importFailed') })
   }
 
   const confirmImport = async () => {
     if (!confirmation) return
-    setBusy(true)
-    try {
+    await runAction('backup', async () => {
+      setStatus('')
       await runImport(confirmation.kind, confirmation.path, confirmation.preview?.importToken)
       setConfirmation(null)
       setRestartRequired(true)
       setStatus(t('backup.importComplete'))
-    } catch (error) { setStatus(String(error)) }
-    finally { setBusy(false) }
+    }, { success: t('feedback.imported'), error: t('feedback.importFailed') })
   }
 
   return (
@@ -67,7 +67,7 @@ export default function BackupSection() {
           <Button variant="outline" size="sm" disabled={busy} onClick={() => void chooseImport('full')}>{t('backup.restoreLegacy')}</Button>
         </div>
         {status && <p role="status" className="break-all text-sm text-muted-foreground">{status}</p>}
-        {restartRequired && <Button disabled={busy} onClick={() => void restartApp().catch((error) => setStatus(String(error)))}>{t('backup.restart')}</Button>}
+        {restartRequired && <Button disabled={busy} onClick={() => void runAction('backup', restartApp)}>{t('backup.restart')}</Button>}
       </CardContent>
       {confirmation && (
         <Modal title={t('configTransfer.importTitle')} locked={busy} onClose={() => setConfirmation(null)} panelClassName="w-full max-w-lg">

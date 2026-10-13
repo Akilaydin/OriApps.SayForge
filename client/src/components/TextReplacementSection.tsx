@@ -6,6 +6,8 @@ import { Switch } from '@/components/ui/switch'
 import { useSortable, DragHandle, moveItem } from '@/components/ui/sortable'
 import { t } from '@/i18n'
 import { useT } from '@/i18n/useT'
+import { runAction, showToast } from '@/services/actionFeedback'
+import { useAutosaveFeedback } from '@/hooks/useAutosaveFeedback'
 import {
   getTextReplacements,
   saveTextReplacements,
@@ -25,6 +27,9 @@ export default function TextReplacementSection() {
   const [batchMode, setBatchMode] = useState(false)
   const [batchText, setBatchText] = useState('')
   const [batchHint, setBatchHint] = useState('')
+  const [ready, setReady] = useState(false)
+  const notice = useRef<string>()
+  const saveStatus = useAutosaveFeedback(rules, ready, saveTextReplacements, notice)
 
   useEffect(() => {
     getTextReplacements().then((loaded) => {
@@ -34,7 +39,8 @@ export default function TextReplacementSection() {
         enabled: r.enabled !== false,
       }))
       setRules(migrated)
-    })
+      setReady(true)
+    }).catch(() => showToast('error', t('feedback.loadFailed')))
   }, [])
 
   const addRule = useCallback(() => {
@@ -43,43 +49,48 @@ export default function TextReplacementSection() {
     if (!from) return
     setRules((prev) => {
       if (prev.some((r) => r.from === from)) return prev
+      notice.current = t('feedback.saved')
       return [...prev, { id: createId(), from, to, enabled: true }]
     })
     setFromInput('')
     setToInput('')
   }, [fromInput, toInput])
 
-  const importBatch = useCallback(() => {
+  const importBatch = useCallback(async () => {
     const parsed = parseBatchReplacements(batchText)
     if (parsed.length === 0) {
       setBatchHint(t('textReplace.importNothing'))
       return
     }
-    setRules((prev) => {
-      const existing = new Set(prev.map((r) => r.from))
-      const next = [...prev]
-      let added = 0
-      let updated = 0
-      for (const { from, to } of parsed) {
-        if (existing.has(from)) {
-          const idx = next.findIndex((r) => r.from === from)
-          if (idx >= 0 && next[idx].to !== to) {
-            next[idx] = { ...next[idx], to }
-            updated++
+    await runAction('replacement-import', async () => {
+      setRules((prev) => {
+        const existing = new Set(prev.map((r) => r.from))
+        const next = [...prev]
+        let added = 0
+        let updated = 0
+        for (const { from, to } of parsed) {
+          if (existing.has(from)) {
+            const idx = next.findIndex((r) => r.from === from)
+            if (idx >= 0 && next[idx].to !== to) {
+              next[idx] = { ...next[idx], to }
+              updated++
+            }
+          } else {
+            next.push({ id: createId(), from, to, enabled: true })
+            existing.add(from)
+            added++
           }
-        } else {
-          next.push({ id: createId(), from, to, enabled: true })
-          existing.add(from)
-          added++
         }
-      }
-      setBatchHint(updated > 0
-        ? t('textReplace.importedWithUpdates', { added, updated })
-        : t('textReplace.imported', { added }))
-      return next
-    })
-    setBatchText('')
-  }, [batchText])
+        notice.current = updated > 0
+          ? t('textReplace.importedWithUpdates', { added, updated })
+          : t('textReplace.imported', { added })
+        setBatchHint('')
+        return next
+      })
+      setBatchText('')
+    }, { confirmation: parsed.some((item) => rules.some((rule) => rule.from === item.from && rule.to !== item.to))
+      ? t('feedback.confirmReplace') : undefined })
+  }, [batchText, rules])
 
   const moveRule = useCallback((from: number, to: number) => {
     setRules((prev) => moveItem(prev, from, to))
@@ -87,8 +98,11 @@ export default function TextReplacementSection() {
 
   const sortable = useSortable({ onMove: moveRule })
 
-  const removeRule = useCallback((id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id))
+  const removeRule = useCallback(async (id: string) => {
+    await runAction('replacement-delete', async () => {
+      notice.current = t('feedback.deleted')
+      setRules((prev) => prev.filter((r) => r.id !== id))
+    }, { confirmation: t('feedback.confirmDeleteRule') })
   }, [])
 
   const toggleRule = useCallback((id: string) => {
@@ -97,20 +111,10 @@ export default function TextReplacementSection() {
       return next
     })
   }, [])
-
-  const initialized = useRef(false)
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true
-      return
-    }
-    void saveTextReplacements(rules)
-  }, [rules])
-
   const enabledCount = rules.filter((r) => r.enabled).length
 
   return (
-    <div className="rounded-lg border border-border">
+    <fieldset disabled={!ready} className="rounded-lg border border-border">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-lg font-semibold">{t('textReplace.title')}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
@@ -124,6 +128,7 @@ export default function TextReplacementSection() {
         )}
       </div>
       <div className="p-4">
+        {saveStatus && <p role="status" className="mb-2 text-xs text-muted-foreground">{saveStatus}</p>}
         {!batchMode && (
           <div className="flex items-center gap-2">
             <input
@@ -266,6 +271,6 @@ export default function TextReplacementSection() {
           </div>
         )}
       </div>
-    </div>
+    </fieldset>
   )
 }
