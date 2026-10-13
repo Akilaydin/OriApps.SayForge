@@ -105,6 +105,10 @@ Paths below are relative to `client/`.
   retries with the original snapshot until restoration succeeds or the clipboard
   changes. Partial write failures remain owned by their updated clipboard
   sequence, permitting recovery without replacing a newer user copy.
+- Explicit Copy and unprotected paste use the same owned-window snapshot/rollback
+  path under the paste mutex. Successful writes supersede any pending restoration;
+  failed writes retain or recover the previous clipboard formats. The Tauri Copy
+  command resolves the main-window HWND without changing its frontend arguments.
 - Keyboard injection requires an existing enabled target, matching foreground
   window and confirmed keyboard focus immediately before Ctrl+V. Win32 input
   event counts and console message delivery are never treated as verified text.

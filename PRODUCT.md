@@ -58,6 +58,9 @@ When clipboard protection is enabled, insertion backs up supported clipboard for
 and restores them if the clipboard has not changed.
 If a format cannot be backed up safely or the clipboard is unavailable, SayForge
 leaves the original contents untouched and shows the copyable fallback card.
+Explicit Copy and insertion with clipboard protection disabled also preserve supported
+previous formats if writing fails. They leave the new text on the clipboard after success.
+If the clipboard cannot be safely backed up, these operations report failure before clearing it.
 Keyboard insertion can be confirmed when the same focused editor exposes a changed
 text length. Unavailable or unchanged length, including equal-length replacements,
 keeps the copyable fallback even if Windows accepted the input events.

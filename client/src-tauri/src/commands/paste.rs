@@ -56,7 +56,7 @@ pub fn paste_text(
     // If injection failed because target is not editable, trigger overlay fallback
     if !result.ok {
         if result.reason.as_deref() == Some("not_editable") {
-            let _ = inject_to_clipboard(&text);
+            let _ = inject_to_clipboard(&text, clipboard_owner);
 
             let fallback_data = serde_json::json!({
                 "state": "fallback",
@@ -158,15 +158,18 @@ pub fn get_active_app_context(detector: State<ContextDetector>) -> Result<Option
 }
 
 #[tauri::command]
-pub fn copy_text(text: String) -> Result<(), String> {
-    inject_to_clipboard(&text).map_err(|e| e.to_string())
+pub fn copy_text(text: String, app: AppHandle) -> Result<(), String> {
+    let owner = app.get_webview_window("main")
+        .and_then(|window| window.hwnd().ok())
+        .map_or(0, |handle| handle.0 as isize);
+    inject_to_clipboard(&text, owner)
 }
 
-fn inject_to_clipboard(text: &str) -> Result<(), String> {
+fn inject_to_clipboard(text: &str, owner_hwnd: isize) -> Result<(), String> {
     #[cfg(windows)]
     {
         unsafe {
-            if crate::inject::set_clipboard_with_retry_pub(text, 5, 30) {
+            if crate::inject::set_clipboard_with_retry_pub(text, 5, 30, owner_hwnd) {
                 Ok(())
             } else {
                 Err("clipboard write failed".to_string())
@@ -175,7 +178,7 @@ fn inject_to_clipboard(text: &str) -> Result<(), String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = text;
+        let _ = (text, owner_hwnd);
         Err("not implemented on this platform".to_string())
     }
 }
