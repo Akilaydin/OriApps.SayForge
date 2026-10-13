@@ -1,5 +1,5 @@
 
-import { invoke } from '@tauri-apps/api/core'
+import { invoke as nativeInvoke, type InvokeArgs, type InvokeOptions } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -7,7 +7,15 @@ import type { AsrHotwordCapability } from '../lib/asrModels'
 import type { DiagnosticOccurrence, DiagnosticsPreview } from '../types/appApi'
 
 // Re-export for convenience
-export { invoke, listen, emit }
+export { listen, emit }
+
+export function invoke<T>(command: string, ...args: [args?: InvokeArgs, options?: InvokeOptions]): Promise<T> {
+  return nativeInvoke<T>(command, ...args).catch((error) => {
+    // Arguments can contain audio, speech, API keys or settings; log only the operation.
+    logIpcError(command, error)
+    throw error
+  })
+}
 
 // ─── Window Controls ───
 
@@ -26,17 +34,17 @@ export function close() {
 // ─── Overlay ───
 
 /**
- * Bug 003 diagnostic helper — log overlay IPC failures to runtime events
+ * Log native IPC failures to runtime events
  * (which mirror to sayforge.log via appendDebugLog).
  */
-function logOverlayIpcError(op: string, err: unknown) {
+function logIpcError(op: string, err: unknown) {
   try {
     // Lazy import to avoid circular dep with debugLog
-    void import('./debugLog').then(({ addRuntimeEvent }) => {
-      addRuntimeEvent('error', 'overlay-ipc', `${op} failed`, { error: String(err) })
-    })
+    void import('./debugLog').then(({ reportRuntimeFailure }) => {
+      reportRuntimeFailure('ipc', op, err)
+    }).catch(() => { })
   } catch {
-    console.error(`[overlay-ipc] ${op} failed:`, err)
+    // Diagnostic import/transport failures must not change the operation result.
   }
 }
 
@@ -59,28 +67,24 @@ export interface OverlayHealthSnapshot {
 }
 
 export function presentOverlay(data: unknown) {
-  return invoke<number>('present_overlay', { data }).catch((err) => {
-    logOverlayIpcError('present_overlay', err)
+  return invoke<number>('present_overlay', { data }).catch(() => {
     return 0
   })
 }
 
 export function showOverlay() {
-  return invoke<number>('show_overlay').catch((err) => {
-    logOverlayIpcError('show_overlay', err)
+  return invoke<number>('show_overlay').catch(() => {
     return 0
   })
 }
 
 export function hideOverlay() {
-  return invoke<void>('hide_overlay').catch((err) => {
-    logOverlayIpcError('hide_overlay', err)
+  return invoke<void>('hide_overlay').catch(() => {
   })
 }
 
 export function updateOverlay(data: unknown) {
-  return invoke<void>('update_overlay_state', { data }).catch((err) => {
-    logOverlayIpcError('update_overlay_state', err)
+  return invoke<void>('update_overlay_state', { data }).catch(() => {
   })
 }
 
@@ -170,7 +174,8 @@ export function restoreSystemOutput() {
 }
 
 export function appendDebugLog(payload: unknown) {
-  invoke('append_debug_log', { payload })
+  // Bypass reporting to avoid recursive failures when the log transport is unavailable.
+  try { void nativeInvoke('append_debug_log', { payload }).catch(() => { }) } catch { /* ignore */ }
 }
 
 // ─── Store ───

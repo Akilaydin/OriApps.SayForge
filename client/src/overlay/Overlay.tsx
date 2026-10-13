@@ -5,6 +5,7 @@ import { isLocale, setLocale } from '@/i18n'
 import { useT } from '@/i18n/useT'
 import { addRuntimeEvent } from '../services/debugLog'
 import { formatRecordingTimer } from '../services/recorder/types'
+import { failureMessage, insertionFailureMessage } from '@/lib/errorMessages'
 
 type OverlayState =
   | 'blank'
@@ -104,7 +105,7 @@ export default function Overlay() {
   const [cardToken, setCardToken] = useState(0)
   const [fallbackReason, setFallbackReason] = useState('')
   const [thinkingNote, setThinkingNote] = useState<'late' | null>(null)
-  const [copyError, setCopyError] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
   const [toastText, setToastText] = useState('')
   const [toastTone, setToastTone] = useState<'info' | 'warn'>('info')
@@ -193,7 +194,7 @@ export default function Overlay() {
           setBars((prev) => Array(prev.length).fill(3))
         }
         setCopied(false)
-        setCopyError(false)
+        setCopyError(null)
         if (payload.state !== 'fallback' && hideTimerRef.current) {
           clearTimeout(hideTimerRef.current)
           hideTimerRef.current = null
@@ -379,7 +380,7 @@ export default function Overlay() {
         return
       }
       setCopied(true)
-      setCopyError(false)
+      setCopyError(null)
       addRuntimeEvent('info', 'overlay', 'Result card copied', {
         textLen: fallbackText.length,
         source,
@@ -400,7 +401,7 @@ export default function Overlay() {
       })
       if (cardAtStart !== cardRef.current.presentationId) return
       setCopied(false)
-      setCopyError(true)
+      setCopyError(failureMessage(error, t('overlay.copyFailedHint')))
     }
   }
 
@@ -434,11 +435,7 @@ export default function Overlay() {
             <div className="space-y-1">
               <span className="block text-xs font-medium tracking-[0.16em]" style={{ color: 'var(--overlay-text-muted)' }}>{t('overlay.recognizedText')}</span>
               <span className="block text-xs" style={{ color: copyError ? '#fca5a5' : 'var(--overlay-text-dim)' }}>
-                {copyError
-                  ? t('overlay.copyFailedHint')
-                  : fallbackReason === 'insertion_timeout'
-                    ? t('overlay.insertionTimeoutHint')
-                    : t('overlay.fallbackHint')}
+                {copyError ?? insertionFailureMessage(fallbackReason)}
               </span>
             </div>
             <div className="flex shrink-0 items-center gap-2">

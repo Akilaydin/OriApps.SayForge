@@ -3,14 +3,30 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 const dialog = vi.hoisted(() => ({ confirm: vi.fn() }))
+const native = vi.hoisted(() => ({ invoke: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@tauri-apps/plugin-dialog', () => dialog)
+vi.mock('@tauri-apps/api/core', () => native)
 import { dismissToast, getFeedbackState, pauseToast, resumeToast, runAction, showToast } from '../actionFeedback'
 import { ToastViewport } from '@/components/ActionFeedback'
 
-beforeEach(() => { vi.useFakeTimers(); dialog.confirm.mockReset(); dialog.confirm.mockResolvedValue(true) })
+beforeEach(() => { vi.useFakeTimers(); dialog.confirm.mockReset(); dialog.confirm.mockResolvedValue(true); native.invoke.mockClear() })
 afterEach(() => { getFeedbackState().toasts.forEach((toast) => dismissToast(toast.id)); vi.useRealTimers() })
 
 describe('confirmed user-action feedback', () => {
+  it('reports a permission failure to the file log and explains the known cause without exposing the exception', async () => {
+    vi.useRealTimers()
+    await runAction('synthetic-save-permission', async () => {
+      throw new Error('Permission denied: SYNTHETIC_PRIVATE_SETTINGS')
+    }, { error: 'Could not save settings.' })
+    expect(getFeedbackState().toasts.at(-1)?.message).toMatch(/Could not save settings.*permission/i)
+    await vi.waitFor(() => expect(native.invoke).toHaveBeenCalledWith('append_debug_log', {
+      payload: expect.objectContaining({ source: 'action', detail: expect.objectContaining({
+        error: expect.objectContaining({ kind: 'local', reason: 'permission' }),
+      }) }),
+    }))
+    expect(JSON.stringify(native.invoke.mock.calls)).not.toContain('SYNTHETIC_PRIVATE_SETTINGS')
+  })
+
   it('waits for persistence and suppresses an immediate duplicate Save', async () => {
     let finish!: () => void
     const save = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))

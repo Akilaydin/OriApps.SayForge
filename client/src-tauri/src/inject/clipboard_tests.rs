@@ -229,7 +229,7 @@ fn external_copy_racing_with_close_is_not_adopted() {
         });
         let _lock = PASTE_LOCK.lock().unwrap();
         let id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
-        assert!(replace_clipboard(text, true, owner.0, id, 1, 0));
+        assert!(replace_clipboard(text, true, owner.0, id, 1, 0).is_ok());
         assert!(!clipboard_still_ours(text, id));
         let mut state = PENDING_CLIPBOARD.lock().unwrap().take().unwrap();
         assert!(matches!(restore_clipboard_if_unchanged(&mut state), RestoreOutcome::Changed));
@@ -426,7 +426,7 @@ fn newer_external_copy_of_the_same_text_is_not_restored() {
         put_fixture(owner.0, "Original synthetic clipboard");
         let _lock = PASTE_LOCK.lock().unwrap();
         let id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
-        assert!(replace_clipboard(text, true, owner.0, id, 1, 0));
+        assert!(replace_clipboard(text, true, owner.0, id, 1, 0).is_ok());
         put_fixture(external.0, text);
         assert!(!clipboard_still_ours(text, id));
         let mut state = PENDING_CLIPBOARD.lock().unwrap().take().unwrap();
@@ -444,7 +444,7 @@ fn explicit_copy_supersedes_protected_paste_restoration() {
         {
             let _lock = PASTE_LOCK.lock().unwrap();
             let id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
-            assert!(replace_clipboard("Protected paste", true, owner.0, id, 1, 0));
+            assert!(replace_clipboard("Protected paste", true, owner.0, id, 1, 0).is_ok());
             assert!(PENDING_CLIPBOARD.lock().unwrap().is_some());
         }
         assert!(set_clipboard_with_retry_pub("Explicit copy", 1, 0, owner.0.0 as isize));

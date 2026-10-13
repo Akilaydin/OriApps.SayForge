@@ -1,6 +1,8 @@
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { t } from '@/i18n'
 import type { FeedbackTone } from '@/components/ui/feedback'
+import { reportRuntimeFailure } from './debugLog'
+import { failureMessage } from '@/lib/errorMessages'
 
 export interface Toast { id: number; tone: FeedbackTone; message: string }
 type ActionState = 'pending' | 'success' | 'error' | 'idle'
@@ -79,10 +81,11 @@ export async function runAction(
     actionState(key, 'success')
     if (messages.success) showToast('success', messages.success)
     return true
-  } catch {
+  } catch (error) {
+    reportRuntimeFailure('action', key, error)
     actionState(key, 'error')
     // Never put provider responses, API keys or user text in a notification.
-    showToast('error', messages.error ?? t('feedback.actionFailed'))
+    showToast('error', failureMessage(error, messages.error ?? t('feedback.actionFailed')))
     return false
   }
 }

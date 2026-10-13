@@ -74,23 +74,12 @@ export interface PromptPreset {
 export const USER_PROMPT_PREFIX = 'Process the following speech transcript:\n\n'
 
 export async function listHistory(query: HistoryListQuery = {}): Promise<HistoryRecord[]> {
-  try {
-    const records = await api().historyList(query)
-    return (records as HistoryRecord[]) || []
-  } catch (err) {
-    console.error('[store] listHistory FAILED:', err)
-    return []
-  }
+  const records = await api().historyList(query)
+  return (records as HistoryRecord[]) || []
 }
 
 export async function countHistory(query: Omit<HistoryListQuery, 'limit' | 'offset'> = {}): Promise<number> {
-  try {
-    const count = await api().historyCount(query)
-    return count
-  } catch (err) {
-    console.error('[store] countHistory FAILED:', err)
-    return 0
-  }
+  return api().historyCount(query)
 }
 
 export async function addHistory(record: HistoryRecord): Promise<void> {
