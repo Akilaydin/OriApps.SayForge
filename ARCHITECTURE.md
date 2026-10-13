@@ -80,6 +80,15 @@ Paths below are relative to `client/`.
 ### Rust (`src-tauri/src/`)
 
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
+- `commands/audio_mute.rs` serializes output mute, restore and exit preparation
+  under one native mutex. The RAM snapshot holds the original endpoint ID and
+  mute flag until SetMute succeeds. Exit preparation rejects late mute requests;
+  failed restoration retains the snapshot and allows retry. Tray Quit restores
+  before requesting exit; Tauri ExitRequested also restores and can prevent exit.
+  Frontend mute/restore requests form a serial queue, which blocks updater
+  reservation while pending. Before the Windows updater's direct process exit,
+  installation restores output again and aborts on failure. No state is persisted
+  for forced termination or power-loss recovery.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
 - `inject/mod.rs` — known Qt/vendor process names remain an editability fallback only when the target's UIA control is not explicitly disabled, read-only or non-editable. Detection of 360/QQ/Baidu security processes is diagnostic only and never grants insertion permission.
 - `providers/` — OpenAI-compatible HTTP ASR and capability reporting.

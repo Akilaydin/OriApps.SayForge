@@ -31,6 +31,10 @@ existing rotating log files without recording audio, speech, credentials or
 provider response bodies; there is no additional log interface.
 
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
+- Optional system-output muting during recording restores the original device's
+  mute state on stop, cancellation and normal Quit, including an output that was
+  already muted. If restoration fails, Quit leaves SayForge running with a retry
+  message. Forced process termination and power loss are not covered.
 - Microphone boost is optional and adjustable in Settings → Microphone from 0–18 dB in
   1 dB steps. New installs and existing installs without these settings default to
   enabled at +6 dB (approximately ×2); disabling boost gives 0 dB while retaining

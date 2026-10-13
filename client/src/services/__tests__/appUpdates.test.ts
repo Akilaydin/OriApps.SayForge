@@ -32,6 +32,19 @@ beforeEach(() => {
 })
 
 describe('optional signed updates', () => {
+  it('does not launch an installer that exits the app when output restoration fails', async () => {
+    const update = release()
+    mock.check.mockResolvedValue(update)
+    mock.invoke.mockImplementation((command) => command === 'restore_system_output'
+      ? Promise.reject(new Error('Synthetic output restore failure')) : Promise.resolve())
+    const manager = await updates()
+    await manager.checkForUpdates()
+    await manager.installAvailableUpdate()
+    expect(update.install).not.toHaveBeenCalled()
+    expect(manager.getUpdateStatus()).toMatchObject({ phase: 'error', errorStage: 'install' })
+    expect(mock.release).toHaveBeenCalledOnce()
+  })
+
   it('keeps a timeout cause in the permanent log and gives a useful manual error without exposing payloads', async () => {
     const manager = await updates()
     mock.check.mockRejectedValueOnce(new Error('HTTP 504: request timed out; api_key=SYNTHETIC_SECRET; response=SYNTHETIC_PRIVATE_TEXT'))
