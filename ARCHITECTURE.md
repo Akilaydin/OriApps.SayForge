@@ -121,6 +121,15 @@ Paths below are relative to `client/`.
 - Capture only target metadata for insertion; do not read editor text or send selections to the ASR provider.
 - Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
 - Cloud ASR sends recorded audio and the selected Transcription Prompt. Retired model files/settings remain untouched.
+- Multipart and chat share the bundled `asrTimeout.json` policy: 120 seconds plus
+  one second per audio second and a WAV/base64 upload budget at 16 KiB/s (4 KiB
+  payload overhead). Duration is bounded to five minutes and native requests to
+  thirty minutes. At 16 kHz, five-minute PCM receives 1,202 seconds. The registry
+  applies one Tokio deadline across encoding, compatibility retries and responses;
+  individual HTTP requests use the same budget. Frontend waiting adds 30 seconds
+  before its existing 15-second late-result grace period. Cancellation/run gates
+  continue to suppress stale results; canceled HTTP work may continue until its
+  native deadline, as before. No recording archive or automatic retry was added.
 - Preserve settings, SQLite schema migrations and the application data path.
 - Main and overlay WebView2 windows must use consistent environment-level browser flags.
 

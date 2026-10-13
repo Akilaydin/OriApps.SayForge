@@ -5,40 +5,36 @@ use crate::error_protocol;
 
 #[tauri::command]
 pub async fn cloud_transcribe(request: CloudTranscribeRequest) -> Result<AsrResult, String> {
-    let config = &request.asr_config;
-    match config.provider.as_str() {
-        "openai_compat_transcribe" => {
-            asr_transcriptions::transcribe(
-                &request.audio_b64,
-                request.sample_rate,
-                config,
-                &request.hotwords,
-            )
-            .await
+    let padding = if request.audio_b64.ends_with("==") { 2 } else if request.audio_b64.ends_with('=') { 1 } else { 0 };
+    let pcm_bytes = (request.audio_b64.len() / 4 * 3).saturating_sub(padding);
+    let timeout = super::http_client::transcription_timeout(pcm_bytes, request.sample_rate);
+    // One deadline covers encoding, upload, response bodies and compatibility retries.
+    tokio::time::timeout(timeout, async {
+        let config = &request.asr_config;
+        match config.provider.as_str() {
+            "openai_compat_transcribe" => {
+                asr_transcriptions::transcribe(
+                    &request.audio_b64, request.sample_rate, config, &request.hotwords,
+                ).await
+            }
+            "openai_compat" => {
+                asr_openai_compat::transcribe(
+                    &request.audio_b64, request.sample_rate, config, &request.hotwords,
+                ).await
+            }
+            "openai_chat_audio" | "openai_chat_audio_standard" => {
+                asr_openai_chat_audio::transcribe(
+                    &request.audio_b64, request.sample_rate, config, &request.hotwords,
+                ).await
+            }
+            other => Err(error_protocol::encode(
+                "connect_failed",
+                format!("ASR provider \"{}\" is not implemented", other),
+            )),
         }
-        "openai_compat" => {
-            asr_openai_compat::transcribe(
-                &request.audio_b64,
-                request.sample_rate,
-                config,
-                &request.hotwords,
-            )
-            .await
-        }
-        "openai_chat_audio" | "openai_chat_audio_standard" => {
-            asr_openai_chat_audio::transcribe(
-                &request.audio_b64,
-                request.sample_rate,
-                config,
-                &request.hotwords,
-            )
-            .await
-        }
-        other => Err(error_protocol::encode(
-            "connect_failed",
-            format!("ASR provider \"{}\" is not implemented", other),
-        )),
-    }
+    }).await.map_err(|_| error_protocol::encode(
+        "provider_timeout", "The transcription time limit expired",
+    ))?
 }
 
 ///

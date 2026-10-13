@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), read: vi.fn(), settings: new Map<string, unknown>() }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@/services/store', () => ({ getSetting: (key: string, fallback: unknown) => Promise.resolve(mocks.settings.get(key) ?? fallback) }))
@@ -24,6 +24,53 @@ function record(provider: CloudAPIProvider, runId: number, patch: Partial<StartO
 beforeEach(() => {
   mocks.invoke.mockReset(); mocks.settings.clear()
   mocks.read.mockReset().mockImplementation(() => Promise.resolve(Object.fromEntries(mocks.settings)))
+})
+
+describe.each(['transcriptions', 'chat_standard'])('long cloud request using %s', (protocol) => {
+  afterEach(() => vi.useRealTimers())
+
+  it.each(['mp3', 'wav'])('delivers a delayed five-minute %s recording without a second request', async (audioEncoding) => {
+    vi.useFakeTimers()
+    mocks.settings.set('cloudAsr.protocol', protocol)
+    mocks.settings.set('cloudAsr.audioEncoding', audioEncoding)
+    const pending = deferred<ReturnType<typeof result>>()
+    mocks.invoke.mockReturnValue(pending.promise)
+    const provider = new CloudAPIProvider(), onFinal = vi.fn(), onDone = vi.fn()
+    await provider.connect({ onFinal, onDone })
+    provider.start({ runId: 1 })
+    provider.sendAudio(new ArrayBuffer(16000 * 2 * 300))
+    provider.stop()
+    await settle()
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(onFinal).not.toHaveBeenCalled()
+    pending.resolve(result('Delayed synthetic transcript'))
+    await settle()
+    expect(mocks.invoke).toHaveBeenCalledOnce()
+    const extra = mocks.invoke.mock.calls[0][1].request.asr_config.extra
+    expect(extra.protocol).toBe(protocol)
+    expect(extra.audioEncoding ?? 'wav').toBe(audioEncoding)
+    expect(onFinal).toHaveBeenCalledWith(expect.objectContaining({ durationSec: 300, asrText: 'Delayed synthetic transcript' }))
+    expect(onDone).toHaveBeenCalledOnce()
+  })
+
+  it.each(['resolve', 'reject'] as const)('suppresses a late %s after user cancellation', async (completion) => {
+    vi.useFakeTimers()
+    mocks.settings.set('cloudAsr.protocol', protocol)
+    const pending = deferred<ReturnType<typeof result>>()
+    mocks.invoke.mockReturnValue(pending.promise)
+    const provider = new CloudAPIProvider(), onFinal = vi.fn(), onDone = vi.fn(), onError = vi.fn()
+    await provider.connect({ onFinal, onDone, onError })
+    record(provider, 1)
+    await settle()
+    await vi.advanceTimersByTimeAsync(180_000)
+    provider.cancel()
+    if (completion === 'resolve') pending.resolve(result('Canceled synthetic transcript'))
+    else pending.reject(new Error('Canceled synthetic failure'))
+    await settle()
+    expect(onFinal).not.toHaveBeenCalled()
+    expect(onDone).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+  })
 })
 describe('buffered cloud recording run isolation', () => {
   it('uploads configured endpoint, model, encoding and a snapshot of hotwords once after stop', async () => {
