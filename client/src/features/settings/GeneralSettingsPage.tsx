@@ -287,7 +287,7 @@ export default function GeneralSettingsPage() {
   }
 
   return (
-    <fieldset disabled={savePending || !ready} className="mx-auto max-w-4xl p-8">
+    <fieldset disabled={savePending || !ready} className="mx-auto min-w-0 max-w-4xl p-8">
       <h1 className="mb-6 text-2xl font-bold">{t('settings.title')}</h1>
       <SaveStatus actionKey="general-settings" />
       <div className="space-y-6">

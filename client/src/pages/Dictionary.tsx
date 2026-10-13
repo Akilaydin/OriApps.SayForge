@@ -221,7 +221,7 @@ export default function Dictionary() {
   }
 
   return (
-    <fieldset disabled={loading || mutationPending} className="mx-auto max-w-4xl">
+    <fieldset disabled={loading || mutationPending} className="mx-auto min-w-0 max-w-4xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold">{t('nav.hotwords')}</h1>

@@ -114,7 +114,7 @@ export default function TextReplacementSection() {
   const enabledCount = rules.filter((r) => r.enabled).length
 
   return (
-    <fieldset disabled={!ready} className="rounded-lg border border-border">
+    <fieldset disabled={!ready} className="min-w-0 rounded-lg border border-border">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-lg font-semibold">{t('textReplace.title')}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
