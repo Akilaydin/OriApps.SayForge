@@ -299,6 +299,7 @@ pub async fn transcribe(
     let encoding = audio_encoding(config, payload);
     let language = resolve_language(config);
     let audio_sec = pcm.len() as f64 / (sample_rate.max(1) as f64 * 2.0);
+    let request_timeout = super::http_client::transcription_timeout(pcm.len(), sample_rate);
     // Report total ASR work including MP3 encoding, not only network time.
     let start = Instant::now();
     // Keep MP3 compression off the async executor; it can process five minutes of audio.
@@ -336,7 +337,7 @@ pub async fn transcribe(
         .post(&url)
         .header("Authorization", format!("Bearer {}", config.api_key))
         .json(&body)
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(request_timeout)
         .send()
         .await
         .map_err(|e| diag::request_failure(scope, "http_send", &e))?;

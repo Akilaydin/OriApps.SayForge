@@ -195,6 +195,7 @@ pub async fn transcribe(
     }
 
     let audio_sec = pcm.len() as f64 / (sample_rate.max(1) as f64 * 2.0);
+    let request_timeout = super::http_client::transcription_timeout(pcm.len(), sample_rate);
     let language = resolve_language(config);
     let model = resolve_model(config, endpoint);
     let url = resolve_url(config, endpoint)?;
@@ -229,7 +230,7 @@ pub async fn transcribe(
             .post(&url)
             .header("Authorization", format!("Bearer {}", config.api_key))
             .multipart(form)
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(request_timeout)
             .send()
             .await
             .map_err(|e| diag::request_failure(scope, "http_send", &e))?;

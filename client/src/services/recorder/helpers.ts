@@ -1,5 +1,6 @@
 
 import type { ActiveAppContext } from '@/types/appContext'
+import asrTimeout from '../transcription/asrTimeout.json'
 
 export function summarizeAppContext(context: ActiveAppContext | null) {
   if (!context) return null
@@ -100,6 +101,15 @@ export function computeProcessingTimeoutMs(
   providerMode: string,
 ): number {
   const safeAudioSec = Number.isFinite(audioDurationSec) ? Math.max(0, audioDurationSec) : 0
+  if (providerMode === 'cloud_api') {
+    const audioSec = Math.min(safeAudioSec, asrTimeout.maxAudioSeconds)
+    // Budget the larger WAV/base64 chat payload for both protocols and codecs.
+    const uploadBytes = audioSec * 16000 * 2 * 4 / 3 + asrTimeout.payloadOverheadBytes
+    const uploadMs = Math.ceil(uploadBytes / asrTimeout.minUploadBytesPerSecond) * 1000
+    const requestMs = Math.min(asrTimeout.maxRequestMs,
+      asrTimeout.baseResponseMs + Math.ceil(audioSec * asrTimeout.responseMsPerAudioSecond) + uploadMs)
+    return requestMs + asrTimeout.frontendHeadroomMs
+  }
   const extraMs = Math.min(
     PROCESSING_TIMEOUT_MAX_EXTRA_MS,
     Math.ceil(safeAudioSec * PROCESSING_TIMEOUT_PER_AUDIO_SEC_MS),
@@ -108,10 +118,6 @@ export function computeProcessingTimeoutMs(
 
   if (providerMode !== 'server') {
     timeout = Math.max(timeout, 30000)
-  }
-  if (providerMode === 'cloud_api') {
-    const cloudTimeout = 30000 + Math.ceil(safeAudioSec * 500)
-    timeout = Math.min(Math.max(timeout, cloudTimeout), 90000)
   }
   return timeout
 }

@@ -1,0 +1,9 @@
+{
+  "maxAudioSeconds": 300,
+  "baseResponseMs": 120000,
+  "responseMsPerAudioSecond": 1000,
+  "minUploadBytesPerSecond": 16384,
+  "payloadOverheadBytes": 4096,
+  "maxRequestMs": 1800000,
+  "frontendHeadroomMs": 30000
+}
