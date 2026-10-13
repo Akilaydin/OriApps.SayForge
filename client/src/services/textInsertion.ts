@@ -4,6 +4,7 @@ export type TextInsertionStrategy =
   | 'wm_paste'
   | 'send_unicode'
   | 'send_input'
+  | 'send_input_verified'
 
 export interface TextInsertionAttempt {
   strategy: TextInsertionStrategy

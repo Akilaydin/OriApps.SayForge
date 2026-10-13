@@ -11,7 +11,7 @@ pub struct PasteResult {
     pub strategy: Option<String>,
     pub reason: Option<String>,
     pub detail: Option<String>,
-    /// True when paste used SendInput on a Chromium window — can't verify success.
+    /// True when the native paste could not be confirmed by an observed text change.
     #[serde(default)]
     pub uncertain: bool,
 }
