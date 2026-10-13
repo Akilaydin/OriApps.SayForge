@@ -62,6 +62,8 @@ At the final time limit, the app reports that audio is not saved and must be rec
 again. It never promises an audio retry from history.
 When clipboard protection is enabled, insertion backs up supported clipboard formats
 and restores them if the clipboard has not changed.
+Copied bitmap images are supported: they do not block Copy or insertion, and
+clipboard protection restores the image after pasting text.
 If a format cannot be backed up safely or the clipboard is unavailable, SayForge
 leaves the original contents untouched and shows the copyable fallback card.
 Explicit Copy and insertion with clipboard protection disabled also preserve supported
