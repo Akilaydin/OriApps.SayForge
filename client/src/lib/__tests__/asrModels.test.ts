@@ -25,17 +25,20 @@ describe('OpenAI-compatible audio request construction', () => {
     expect(buildAsrExtra('openai_compat', {
       model: 'gemini-example', protocol: 'chat_standard',
       instructions: 'Transcribe Russian speech.',
-      audioEncoding: 'mp3',
+      audioEncoding: 'mp3', reasoningEffort: 'low',
     })).toEqual({
       model: 'gemini-example', protocol: 'chat_standard',
       instructions: 'Transcribe Russian speech.',
-      audioEncoding: 'mp3',
+      audioEncoding: 'mp3', reasoningEffort: 'low',
     })
   })
   it('omits default options and empty strings', () => {
     expect(buildAsrExtra('openai_compat', {audioEncoding: 'wav'})).toBeUndefined()
     expect(buildAsrExtra('groq_whisper')).toBeUndefined()
     expect(buildAsrExtra('groq_whisper', {model: '  '})).toBeUndefined()
+    expect(buildAsrExtra('openai_compat', {reasoningEffort: '   '})).toBeUndefined()
+    expect(buildAsrExtra('openai_compat', {reasoningEffort: '  custom-level  '}))
+      .toEqual({reasoningEffort:'custom-level'})
   })
   it('preserves a user-provided model and endpoint even when not in a built-in catalog', () => {
     expect(buildAsrExtra('openai_compat', {

@@ -130,7 +130,7 @@ describe('buffered cloud recording run isolation', () => {
     expect(onFinal).not.toHaveBeenCalled(); expect(onDone).not.toHaveBeenCalled()
   })
   it('keeps a complete active profile snapshot despite changes during recording', async () => {
-    const old = {id:'a',provider:'openai_compat',model:'old',apiUrl:'https://old.invalid/v1',apiKey:'old-key',protocol:'chat_standard',audioEncoding:'mp3',systemInstruction:'Old instruction'}
+    const old = {id:'a',provider:'openai_compat',model:'old',apiUrl:'https://old.invalid/v1',apiKey:'old-key',protocol:'chat_standard',audioEncoding:'mp3',systemInstruction:'Old instruction',reasoningEffort:'low'}
     mocks.settings.set('cloudAsr.profiles',[old])
     mocks.settings.set('cloudAsr.activeProfileId','a')
     mocks.settings.set('cloudAsr.apiKey','mixed-flat-key')
@@ -138,12 +138,12 @@ describe('buffered cloud recording run isolation', () => {
     const provider = new CloudAPIProvider()
     await provider.connect({})
     provider.start({runId:1}); await settle()
-    mocks.settings.set('cloudAsr.profiles',[{...old,apiKey:'new-key',model:'new'}])
+    mocks.settings.set('cloudAsr.profiles',[{...old,apiKey:'new-key',model:'new',reasoningEffort:'high'}])
     provider.sendAudio(new ArrayBuffer(16000)); provider.stop(); await settle()
-    expect(mocks.invoke.mock.calls[0][1].request.asr_config).toMatchObject({api_key:'old-key',extra:{model:'old',instructions:'Old instruction'}})
+    expect(mocks.invoke.mock.calls[0][1].request.asr_config).toMatchObject({api_key:'old-key',extra:{model:'old',instructions:'Old instruction',reasoningEffort:'low'}})
     expect(mocks.invoke.mock.calls[0][1].request.asr_config.extra).not.toHaveProperty('userPrompt')
     record(provider,2); await settle()
-    expect(mocks.invoke.mock.calls[1][1].request.asr_config).toMatchObject({api_key:'new-key',extra:{model:'new'}})
+    expect(mocks.invoke.mock.calls[1][1].request.asr_config).toMatchObject({api_key:'new-key',extra:{model:'new',reasoningEffort:'high'}})
     expect(mocks.read).toHaveBeenCalledTimes(2)
   })
   it.each(['resolve','reject'] as const)('isolates late settings completion: %s', async completion => {

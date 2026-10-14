@@ -454,6 +454,8 @@
   "asr.transcriptionPromptHint": "Standard chat: sent with audio in the user message. Legacy chat: sent as a system instruction. Audio/transcriptions: sent as prompt; support and instruction handling depend on the model. No separate cleanup request.",
   "asr.protocolHint": "OpenAI-compatible services use one of two protocols for speech. The protocol is detected automatically and remembered; select one here if the detection is incorrect.",
   "asr.modelFreeTextHint": "Enter the model name offered by this service. If you are unsure, start with the default shown in the field.",
+  "asr.reasoningEffort": "Reasoning Effort",
+  "asr.reasoningEffortHint": "Optional. Leave blank for the provider's default. Sent only with chat requests.",
   "asrTest.title": "Recognition test",
   "asrTest.desc": "Tests speech recognition with a built-in English speech clip and the selected transcription prompt.",
   "asrTest.play": "Play",

@@ -40,6 +40,7 @@ describe('OpenAI-compatible protocol, credentials and validation', () => {
   })
   it('defaults new profiles to MP3 while missing legacy settings remain WAV', () => {
     expect(emptyAsrProfile().audioEncoding).toBe('mp3')
+    expect(emptyAsrProfile().reasoningEffort).toBe('')
     expect(parseAsrAudioEncoding('mp3')).toBe('mp3')
     for(const value of [undefined,null,'aac','']) expect(parseAsrAudioEncoding(value)).toBe('wav')
     for(const value of ['wav', undefined]) {
@@ -94,8 +95,15 @@ describe('safe parsing and migration from older releases', () => {
   it('preserves protocol, user text prompt, system instruction, model and encoding on parse', () => {
     const original={id:'1',provider:'openai_compat',apiUrl:'https://gateway.invalid/v1',model:'my-gemini',
       apiKey:'secret',protocol:'chat_standard',audioEncoding:'mp3',
-      systemInstruction:'Transcribe precisely',userPrompt:'Preserve C# API names'}
+      systemInstruction:'Transcribe precisely',userPrompt:'Preserve C# API names',reasoningEffort:'low'}
     expect(parseAsrProfiles([original])[0]).toMatchObject(original)
+  })
+  it('keeps missing and invalid legacy reasoning effort empty without altering model', () => {
+    for (const value of [undefined, null, 1]) {
+      const parsed = parseAsrProfiles([{id:'old',provider:'openai_compat',model:'gemini-3.8-flash-high',reasoningEffort:value}])[0]
+      expect(parsed.reasoningEffort).toBe('')
+      expect(parsed.model).toBe('gemini-3.8-flash-high')
+    }
   })
   it('handles invalid arrays, duplicated IDs and unknown entries without silently dropping them', () => {
     expect(parseAsrProfiles(null)).toEqual([])
