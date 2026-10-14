@@ -1,6 +1,10 @@
 import { isTauri } from '@tauri-apps/api/core'
 import { check, type Update, type DownloadEvent } from '@tauri-apps/plugin-updater'
 import { beginUpdateInstallation, endUpdateInstallation } from './recorder'
+import { reportRuntimeFailure } from './debugLog'
+import { restoreSystemOutput } from './bridge'
+import { failureMessage } from '@/lib/errorMessages'
+import { t } from '@/i18n'
 
 export type UpdatePhase = 'idle' | 'checking' | 'available' | 'up-to-date'
   | 'downloading' | 'waiting' | 'installing' | 'error'
@@ -11,6 +15,7 @@ export interface UpdateStatus {
   notes?: string
   percent?: number
   errorStage?: 'check' | 'install'
+  errorMessage?: string
 }
 
 const subscribers = new Set<() => void>()
@@ -25,7 +30,7 @@ let cancelWaiting = false
 function discardPendingUpdate() {
   const previous = pendingUpdate
   pendingUpdate = null
-  if (previous) void previous.close().catch(() => { })
+  if (previous) void previous.close().catch((error) => { reportRuntimeFailure('update', 'close', error, 'warn') })
 }
 
 function publish(next: UpdateStatus) {
@@ -62,10 +67,12 @@ export function checkForUpdates(manual = false): Promise<void> {
       } else {
         publish({ phase: 'available', version: update.version, notes: update.body?.slice(0, 600) })
       }
-    } catch {
+    } catch (error) {
+      reportRuntimeFailure('update', 'check', error, 'warn')
       discardPendingUpdate()
       // An automatic network failure must never interrupt dictation or display an error.
-      publish({ phase: manualCheckRequested ? 'error' : 'idle', errorStage: 'check' })
+      publish({ phase: manualCheckRequested ? 'error' : 'idle', errorStage: 'check',
+        errorMessage: failureMessage(error, t('updater.checkFailed')) })
     } finally {
       manualCheckRequested = false
       checkInFlight = null
@@ -117,11 +124,15 @@ export function installAvailableUpdate(): Promise<void> {
       }
 
       publish({ phase: 'installing', version: update.version })
+      // The Windows installer exits directly, bypassing Tauri's ExitRequested event.
+      await restoreSystemOutput()
       // On Windows this launches the signed NSIS installer and exits the app.
       await update.install()
-    } catch {
+    } catch (error) {
+      reportRuntimeFailure('update', 'install', error)
       discardPendingUpdate()
-      publish({ phase: 'error', version: update.version, errorStage: 'install' })
+      publish({ phase: 'error', version: update.version, errorStage: 'install',
+        errorMessage: failureMessage(error, t('updater.installFailed')) })
     } finally {
       if (reserved) endUpdateInstallation()
       installInFlight = null

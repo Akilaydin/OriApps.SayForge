@@ -37,6 +37,7 @@ async function syncRuntimeActive(profile: AsrProfile | null): Promise<void> {
     setSetting('cloudAsr.model', profile ? resolveAsrApiModel(profile) : ''),
     setSetting('cloudAsr.apiKey', creds.apiKey),
     setSetting('cloudAsr.systemInstruction', profile?.provider === 'openai_compat' ? profile.systemInstruction : ''),
+    setSetting('cloudAsr.reasoningEffort', profile?.provider === 'openai_compat' ? profile.reasoningEffort : ''),
     setSetting('cloudAsr.audioEncoding', profile?.provider === 'openai_compat' ? profile.audioEncoding : 'wav'),
     setSetting('cloudAsr.baseUrl', profile ? asrEndpointUrl(profile) : ''),
     setSetting('cloudAsr.protocol', profile?.protocol ?? 'auto'),
@@ -105,16 +106,17 @@ export async function loadAsrProfiles(): Promise<AsrProfileState> {
   const alreadyAuto = Array.isArray(rawAuto) ? rawAuto.filter((x): x is string => typeof x === 'string') : []
 
   if (profiles.length === 0 && orphanProfiles.length === 0) {
-    const [provider, model, apiKey, apiUrl, protocol, audioEncoding, systemInstruction, userPrompt] = await Promise.all([
+    const [provider, model, apiKey, apiUrl, protocol, audioEncoding, systemInstruction, userPrompt, reasoningEffort] = await Promise.all([
       getSetting('cloudAsr.provider', 'openai_compat'), getSetting('cloudAsr.model', ''),
       getSetting('cloudAsr.apiKey', ''), getSetting('cloudAsr.baseUrl', ''),
       getSetting('cloudAsr.protocol', 'auto'), getSetting('cloudAsr.audioEncoding', 'wav'),
       getSetting('cloudAsr.systemInstruction', ''), getSetting('cloudAsr.userPrompt', ''),
+      getSetting('cloudAsr.reasoningEffort', ''),
     ])
     if (apiKey || apiUrl) {
       const migrated = parseAsrProfilesDetailed([{
         id: emptyAsrProfile().id, provider, model, apiKey, apiUrl, protocol,
-        audioEncoding, systemInstruction, userPrompt,
+        audioEncoding, systemInstruction, userPrompt, reasoningEffort,
       }]).profiles[0]
       if (migrated) {
         profiles = [migrated]

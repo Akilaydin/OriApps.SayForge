@@ -6,6 +6,8 @@
   detail?: unknown
 }
 
+import { diagnoseFailure } from '@/lib/errorMessages'
+
 const MAX_RUNTIME_EVENTS = 120
 const ENABLE_INFO_CONSOLE = false
 
@@ -80,6 +82,13 @@ export function addRuntimeEvent(
   message: string,
   detail?: unknown,
 ) {
+  // Backend callbacks used to put the full rejected provider string in the
+  // message. Retain its categorical cause, never the response body.
+  if (source === 'backend' && level === 'error') {
+    detail = { error: message, context: detail }
+    message = 'Backend operation failed'
+  }
+  detail = sanitizeDetail(detail)
   const event: RuntimeEvent = {
     time: Date.now(),
     level,
@@ -109,6 +118,37 @@ export function addRuntimeEvent(
     detail,
     time: event.time,
   })
+}
+
+function sanitizeDetail(value: unknown, key = '', seen = new WeakSet<object>(), depth = 0): unknown {
+  if (/^(error|exception|msg)$/.test(key) || value instanceof Error) return diagnoseFailure(value)
+  if (/api.?key|token|password|secret|authorization|credential|prompt|instruction|endpoint|url|model/i.test(key)) return '[redacted]'
+  if (typeof value === 'number' && /(?:Len|Length|Count|Bytes|Ms|Sec)$/i.test(key)) return value
+  if (/transcript|(?:asr|llm|result|recognized|editor)[_.]?text|selection|(?:request|response|raw)[_.]?body|^body$|window.?title|^title$|^(?:text|audio|pcm|wav|mp3|base64)$|audio.*(?:data|buffer|base64|b64|chunks)/i.test(key)) return '[redacted]'
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value) || (typeof Blob !== 'undefined' && value instanceof Blob)) return '[redacted]'
+  if (typeof value === 'string') {
+    const safe = value.replace(/\b(?:https?|wss?):\/\/\S+/gi, '[url redacted]')
+    return safe.length > 500 ? safe.slice(0, 500) + '…' : safe
+  }
+  if (!value || typeof value !== 'object') return value
+  if (depth >= 4 || seen.has(value)) return '[bounded]'
+  seen.add(value)
+  try {
+    if (Array.isArray(value)) return value.slice(0, 20).map((item) => sanitizeDetail(item, key, seen, depth + 1))
+    return Object.fromEntries(Object.entries(value).slice(0, 60)
+      .map(([name, item]) => [name, sanitizeDetail(item, name, seen, depth + 1)]))
+  } catch {
+    return '[unavailable]'
+  }
+}
+
+export function reportRuntimeFailure(source: string, operation: string, error: unknown,
+  level: 'warn' | 'error' = 'error') {
+  try {
+    addRuntimeEvent(level, source, 'Operation failed', { operation, error })
+  } catch {
+    // Diagnostics must not replace the original operation failure.
+  }
 }
 
 export function getRuntimeEvents(): RuntimeEvent[] {

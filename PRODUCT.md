@@ -22,7 +22,19 @@ saving/saved indicator instead of a notification for each change. Destructive
 deletion, reset, replacement import, draft clearing and tray Quit require confirmation.
 Existing recording, ASR-test and updater progress/results remain inline.
 
+Failures report the action that failed and a known cause with a recovery hint.
+Startup initialization failures offer Retry instead of an empty window. Clipboard
+failures distinguish unsafe formats, unavailable clipboard, lost focus and
+unconfirmed delivery; unconfirmed delivery warns against duplicate insertion.
+Background update failures remain silent. Technical causes are retained in the
+existing rotating log files without recording audio, speech, credentials or
+provider response bodies; there is no additional log interface.
+
 - Configurable push-to-talk and hands-free shortcuts, microphone selection and a recording overlay.
+- Optional system-output muting during recording restores the original device's
+  mute state on stop, cancellation and normal Quit, including an output that was
+  already muted. If restoration fails, Quit leaves SayForge running with a retry
+  message. Forced process termination and power loss are not covered.
 - Microphone boost is optional and adjustable in Settings → Microphone from 0–18 dB in
   1 dB steps. New installs and existing installs without these settings default to
   enabled at +6 dB (approximately ×2); disabling boost gives 0 dB while retaining
@@ -83,6 +95,7 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 
 - Standard chat sends Transcription Prompt as text alongside audio in one `user` message. A blank prompt uses the built-in transcription instruction. Legacy chat keeps the supported system-instruction shape and WAV-only audio. Multipart sends the prompt through `/audio/transcriptions`; hints and instruction handling depend on the model and endpoint. A blank multipart prompt uses the existing punctuation hint.
 - Explicit `chat_standard` makes one ASR request. Existing `auto` protocol probing and multipart retry without an unsupported prompt are compatibility fallbacks, not cleanup calls. They do not emulate instruction support.
+- Cloud ASR profiles optionally accept free-text Reasoning Effort. The value is sent as `reasoning_effort` in chat requests without changing the model ID; blank values and older profiles omit it, leaving the provider default. Multipart audio/transcriptions never sends it. The same profile option applies to saved dictation and unsaved-profile tests.
 - Editor text and selections are not read or sent to the provider. Ordinary focused-target insertion remains unchanged. ASR errors, empty responses and cancellation must not insert text.
 - Existing `systemInstruction` settings are the Transcription Prompt; their text is retained unchanged. Retired cleanup settings, credentials, presets and nonempty legacy `userPrompt` values remain stored/exportable but are inactive.
 - Settings and transcription history are stored locally. New recordings are not archived; older audio files and history remain untouched.

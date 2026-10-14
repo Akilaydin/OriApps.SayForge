@@ -13,6 +13,7 @@ import { describeProviderError } from '@/lib/errorMessages'
 import type { WorkMode } from '@/services/transcription'
 import { useT } from '@/i18n/useT'
 import { showToast } from '@/services/actionFeedback'
+import { reportRuntimeFailure } from '@/services/debugLog'
 
 interface TestResult {
   text: string
@@ -24,7 +25,6 @@ interface TestResult {
 
 interface TestError {
   message: string
-  detail?: string
 }
 
 export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
@@ -67,7 +67,8 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
       audio.onended = () => { if (mounted.current) setPlaying(false) }
       setPlaying(true)
       await audio.play()
-    } catch {
+    } catch (error) {
+      reportRuntimeFailure('asr-test', 'play_audio', error)
       if (mounted.current) { setPlaying(false); showToast('error', t('feedback.playFailed')) }
     }
   }
@@ -95,9 +96,10 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
         })
       }
     } catch (err) {
+      reportRuntimeFailure('asr-test', 'recognize_audio', err)
       if (!current()) return
       const friendly = describeProviderError(err)
-      setError({ message: friendly.message, detail: friendly.detail })
+      setError({ message: friendly.message })
     } finally {
       testBusy.current = false
       if (mounted.current) setTesting(false)
@@ -143,7 +145,6 @@ export default function AsrTestSection({ workMode }: { workMode: WorkMode }) {
             className="mt-4"
             tone="error"
             message={t('asrTest.failed', { message: error.message })}
-            detail={error.detail}
             actions={[{ label: t('common.retry'), onClick: () => void handleTest(), disabled: testing }]}
           />
         )}

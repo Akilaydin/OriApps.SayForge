@@ -666,6 +666,23 @@ export default function CloudAPISection() {
             </div>
           )}
 
+          {draftEntry?.id === 'openai_compat' && (
+            <div>
+              <label htmlFor="asr-reasoning-effort" className="mb-1 block text-sm text-muted-foreground">
+                {t('asr.reasoningEffort')}
+              </label>
+              <input
+                id="asr-reasoning-effort"
+                type="text"
+                value={draft.reasoningEffort}
+                onChange={(e) => patchDraft({ reasoningEffort: e.target.value })}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveDraft() }}
+                className={inputClass}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{t('asr.reasoningEffortHint')}</p>
+            </div>
+          )}
+
           {draftModels.length > 1 && (
             <div>
               <label htmlFor="asr-model" className="mb-1 block text-sm text-muted-foreground">{t('asr.model')}</label>

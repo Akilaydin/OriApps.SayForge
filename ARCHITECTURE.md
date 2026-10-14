@@ -71,20 +71,41 @@ Paths below are relative to `client/`.
   reports only the latest save outcome. No notification state is persisted.
 - `stores/language.ts` — fixed English UI locale without stored language preferences; `stores/providerDefaults.ts` — provider startup defaults independent of UI language.
 - `services/debugLog.ts` — bounded runtime diagnostics mirrored to native logs; no experimental session/audio viewer or separate PTT laboratory hook.
+  Native command failures retain the operation and categorical cause (stable code,
+  HTTP status, timeout, DNS/TLS or local failure), without IPC arguments or raw
+  exception bodies. The shared runtime sink sanitizes private fields before memory,
+  console and file output. Logging rejection is absorbed without recursive reporting.
+  Updater and startup errors use the same reporter and existing feedback components.
 
 ### Rust (`src-tauri/src/`)
 
 - `main.rs` — Tauri setup, commands, single-instance behavior, tray and windows.
+- `commands/audio_mute.rs` serializes output mute, restore and exit preparation
+  under one native mutex. The RAM snapshot holds the original endpoint ID and
+  mute flag until SetMute succeeds. Exit preparation rejects late mute requests;
+  failed restoration retains the snapshot and allows retry. Tray Quit restores
+  before requesting exit; Tauri ExitRequested also restores and can prevent exit.
+  Frontend mute/restore requests form a serial queue, which blocks updater
+  reservation while pending. Before the Windows updater's direct process exit,
+  installation restores output again and aborts on failure. No state is persisted
+  for forced termination or power-loss recovery.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
 - `inject/mod.rs` — known Qt/vendor process names remain an editability fallback only when the target's UIA control is not explicitly disabled, read-only or non-editable. Detection of 360/QQ/Baidu security processes is diagnostic only and never grants insertion permission.
 - `providers/` — OpenAI-compatible HTTP ASR and capability reporting.
 - ASR IPC uses provider, API key and protocol/model options; old vendor-specific app IDs, workspace credentials and catalog flags are not used.
+- Optional per-profile `reasoningEffort` is normalized into ASR `extra`, then emitted by the Rust chat adapter as top-level `reasoning_effort` only when nonblank. Both chat payload shapes and profile tests share this request builder; the multipart adapter ignores it.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
 - `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.
 
 ## Storage
 
 - SQLite: `%LOCALAPPDATA%\com.oriapps.sayforge\sayforge.db`, using WAL and versioned migrations.
+  Command reads distinguish missing settings from failed queries or invalid stored
+  JSON; failures return stable storage codes and log only SQLite/conversion metadata.
+  Legacy internal fallback accessors and the database schema remain compatible.
+- `%LOCALAPPDATA%\com.oriapps.sayforge\logs\sayforge.log` retains native and frontend
+  diagnostics across restarts. Rotation keeps three 5 MiB backups; individual
+  payloads are bounded to 8 KiB and flattened to one line. File failures are nonfatal.
 - `app_settings` holds JSON settings; `history_records` stores transcription records. Legacy prompt presets, app rules, corrections and feedback retain their existing tables for compatibility.
 - Recording PCM lives only in the cloud provider buffer; no second archive buffer or audio retention cleanup runs. Older audio files remain on disk. Log cleanup still follows its retention setting.
 - Settings JSON export/import excludes history and audio. Legacy selected settings and full ZIP imports remain compatible; preview tokens protect settings import confirmation. Retired settings and SQLite columns/tables remain intact. History favorites and statistics have no active UI; recording no longer updates statistics.

@@ -425,9 +425,9 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
     }
 
     // Both modes need rollback on failure; only protected paste restores after success.
-    let clipboard_ok = replace_clipboard(text, restore_clipboard, clipboard_owner, paste_id, 5, 30);
+    let clipboard_result = replace_clipboard(text, restore_clipboard, clipboard_owner, paste_id, 5, 30);
 
-    if !clipboard_ok {
+    if let Err(reason) = clipboard_result {
         let guards = detect_input_guard_software();
         crate::commands::system::write_log_line(&format!(
             "[RUST] [inject] clipboard write failed pasteId={} utf8Len={} utf16Len={} inputGuards={} {}",
@@ -440,14 +440,9 @@ unsafe fn do_inject(target: HWND, focus: HWND, text: &str, restore_clipboard: bo
         return InjectResult {
             ok: false,
             strategy: Some("clipboard".to_string()),
-            reason: Some(if restore_clipboard {
-                "clipboard_backup_unavailable".to_string()
-            } else {
-                "clipboard_blocked".to_string()
-            }),
+            reason: Some(clipboard_error_code(&reason).to_string()),
             detail: Some(format!(
-                "pasteId={} clipboard unavailable or unsafe to replace inputGuards={}",
-                paste_id, guards
+                "pasteId={} {} inputGuards={}", paste_id, reason, guards
             )),
             uncertain: false,
         };
@@ -1459,7 +1454,7 @@ unsafe fn replace_clipboard(
     paste_id: u64,
     max_retries: u32,
     retry_delay_ms: u64,
-) -> bool {
+) -> Result<(), String> {
     let mut pending = PENDING_CLIPBOARD.lock().unwrap();
     let previous_paste = if restore_after_success { pending.as_ref() } else { None };
     match set_clipboard_preserving(text, previous_paste, owner, max_retries, retry_delay_ms) {
@@ -1472,7 +1467,7 @@ unsafe fn replace_clipboard(
             } else {
                 None // Explicit Copy must supersede a pending protected-paste restore.
             };
-            true
+            Ok(())
         }
         Err((why, recovery)) => {
             if let Some((previous, sequence)) = recovery {
@@ -1485,7 +1480,7 @@ unsafe fn replace_clipboard(
             crate::commands::system::write_log_line(&format!(
                 "[RUST] [inject] clipboard replacement failed pasteId={} reason={}", paste_id, why
             ));
-            false
+            Err(why)
         }
     }
 }
@@ -1521,9 +1516,25 @@ unsafe fn mark_clipboard_history_excluded() {
 
 #[cfg(windows)]
 pub unsafe fn set_clipboard_with_retry_pub(text: &str, max_retries: u32, retry_delay_ms: u64, owner_hwnd: isize) -> bool {
+    set_clipboard_with_retry_result(text, max_retries, retry_delay_ms, owner_hwnd).is_ok()
+}
+
+#[cfg(windows)]
+pub unsafe fn set_clipboard_with_retry_result(text: &str, max_retries: u32, retry_delay_ms: u64, owner_hwnd: isize) -> Result<(), String> {
     let _paste_lock = PASTE_LOCK.lock().unwrap();
     let paste_id = PASTE_GENERATION.fetch_add(1, Ordering::AcqRel) + 1;
     replace_clipboard(text, false, HWND(owner_hwnd as *mut _), paste_id, max_retries, retry_delay_ms)
+}
+
+#[cfg(windows)]
+pub fn clipboard_error_code(reason: &str) -> &'static str {
+    if reason.contains("unsupported clipboard format") || reason.contains("not a bounded HGLOBAL") {
+        "clipboard_unsupported_format"
+    } else if reason.contains("OpenClipboard") || reason.contains("owner window unavailable") {
+        "clipboard_unavailable"
+    } else {
+        "clipboard_write_failed"
+    }
 }
 
 #[cfg(windows)]

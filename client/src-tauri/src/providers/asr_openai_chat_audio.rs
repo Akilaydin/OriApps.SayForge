@@ -215,6 +215,11 @@ fn resolve_user_prompt(config: &AsrProviderConfig, payload: AudioPayloadFormat) 
     if matches!(payload, AudioPayloadFormat::OpenAi) { transcription_prompt(config) } else { None }
 }
 
+fn resolve_reasoning_effort(config: &AsrProviderConfig) -> Option<&str> {
+    config.extra.get("reasoningEffort").and_then(|v| v.as_str())
+        .map(str::trim).filter(|s| !s.is_empty())
+}
+
 fn build_body(
     model: &str,
     audio: &[u8],
@@ -223,6 +228,7 @@ fn build_body(
     language: Option<&str>,
     payload: AudioPayloadFormat,
     encoding: AudioEncoding,
+    reasoning_effort: Option<&str>,
 ) -> serde_json::Value {
     let data = base64::engine::general_purpose::STANDARD.encode(audio);
     let input_audio = match payload {
@@ -252,6 +258,9 @@ fn build_body(
     let mut body = serde_json::json!({ "model": model, "messages": messages });
     if let Some(lang) = language {
         body["asr_options"] = serde_json::json!({ "language": lang });
+    }
+    if let Some(effort) = reasoning_effort.filter(|s| !s.trim().is_empty()) {
+        body["reasoning_effort"] = serde_json::json!(effort);
     }
     body
 }
@@ -329,7 +338,7 @@ pub async fn transcribe(
 
     let body = build_body(
         &model, &audio, instruction.as_deref(), user_prompt,
-        language.as_deref(), payload, encoding,
+        language.as_deref(), payload, encoding, resolve_reasoning_effort(config),
     );
     let client = super::http_client::shared();
 
@@ -405,7 +414,7 @@ pub async fn test_connection(config: &AsrProviderConfig) -> TestResult {
         },
     };
     let instruction = resolve_instruction(config, &model, payload, &[]);
-    let body = build_body(&model, &audio, instruction.as_deref(), resolve_user_prompt(config, payload), None, payload, encoding);
+    let body = build_body(&model, &audio, instruction.as_deref(), resolve_user_prompt(config, payload), None, payload, encoding, resolve_reasoning_effort(config));
 
     let client = super::http_client::shared();
     let start = Instant::now();
@@ -470,7 +479,7 @@ mod tests {
 
             #[test]
     fn legacy_audio_is_sent_as_a_data_url() {
-        let body = build_body("whisper-1", &pcm_to_wav(&[0, 0, 0, 0], 16000), None, None, None, AudioPayloadFormat::DataUrl, AudioEncoding::Wav);
+        let body = build_body("whisper-1", &pcm_to_wav(&[0, 0, 0, 0], 16000), None, None, None, AudioPayloadFormat::DataUrl, AudioEncoding::Wav, None);
         let audio = body["messages"][0]["content"][0]["input_audio"]
             .as_str()
             .expect("input_audio must be a string");
@@ -480,13 +489,40 @@ mod tests {
     #[test]
     fn standard_audio_is_sent_as_an_openai_object_with_raw_base64() {
         let wav = pcm_to_wav(&[1, 2, 3, 4], 16000);
-        let body = build_body("gemini-example", &wav, Some(DEFAULT_TRANSCRIBE_INSTRUCTION), None, None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav);
+        let body = build_body("gemini-example", &wav, Some(DEFAULT_TRANSCRIBE_INSTRUCTION), None, None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav, None);
         let audio = &body["messages"][1]["content"][0]["input_audio"];
         assert_eq!(audio["format"], "wav");
         let data = audio["data"].as_str().expect("input_audio.data must be a string");
         assert!(!data.starts_with("data:"), "OpenAI input_audio.data needs raw base64");
         assert_eq!(base64::engine::general_purpose::STANDARD.decode(data).unwrap(), wav);
         assert_eq!(body["messages"][0]["role"], "system");
+    }
+
+    #[test]
+    fn reasoning_effort_is_optional_for_both_chat_payloads_without_changing_model() {
+        for provider in ["openai_chat_audio", "openai_chat_audio_standard"] {
+            let payload = audio_payload_format(provider);
+            for (value, expected) in [
+                (serde_json::Value::Null, None),
+                (serde_json::json!("   "), None),
+                (serde_json::json!("low"), Some("low")),
+                (serde_json::json!("custom-level"), Some("custom-level")),
+            ] {
+                let mut extra = serde_json::json!({ "model": "gemini-3.8-flash-high" });
+                if !value.is_null() {
+                    extra["reasoningEffort"] = value;
+                }
+                let config = config_for(provider, extra);
+                let model = resolve_model(&config, endpoint_for(provider));
+                let body = build_body(&model, &[0, 0], None, None, None, payload, AudioEncoding::Wav,
+                    resolve_reasoning_effort(&config));
+                assert_eq!(body["model"], "gemini-3.8-flash-high");
+                match expected {
+                    Some(effort) => assert_eq!(body["reasoning_effort"], effort),
+                    None => assert!(body.get("reasoning_effort").is_none(), "{body}"),
+                }
+            }
+        }
     }
 
     #[test]
@@ -512,7 +548,7 @@ mod tests {
         let mp3 = pcm_to_mp3(&pcm, 16000).expect("MP3 encoding failed");
         assert!(!mp3.is_empty());
         assert!(mp3.len() < pcm.len() / 2, "mp3={} pcm={}", mp3.len(), pcm.len());
-        let body = build_body("gemini-example", &mp3, None, None, None, AudioPayloadFormat::OpenAi, AudioEncoding::Mp3);
+        let body = build_body("gemini-example", &mp3, None, None, None, AudioPayloadFormat::OpenAi, AudioEncoding::Mp3, None);
         let field = &body["messages"][0]["content"][0]["input_audio"];
         assert_eq!(field["format"], "mp3");
         let sent = base64::engine::general_purpose::STANDARD.decode(field["data"].as_str().unwrap()).unwrap();
@@ -549,7 +585,7 @@ mod tests {
         }));
         let instruction = resolve_instruction(&config, "gemini-example", AudioPayloadFormat::OpenAi, &[]);
         assert_eq!(instruction, None);
-        let body = build_body("gemini-example", &[1, 2], instruction.as_deref(), resolve_user_prompt(&config, AudioPayloadFormat::OpenAi), None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav);
+        let body = build_body("gemini-example", &[1, 2], instruction.as_deref(), resolve_user_prompt(&config, AudioPayloadFormat::OpenAi), None, AudioPayloadFormat::OpenAi, AudioEncoding::Wav, None);
         assert_eq!(body["messages"].as_array().unwrap().len(), 1);
         assert_eq!(body["messages"][0]["role"], "user");
         assert_eq!(body["messages"][0]["content"][0]["text"], "Transcribe in Russian.");

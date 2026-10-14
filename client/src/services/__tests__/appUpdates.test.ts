@@ -6,9 +6,10 @@ const mock = vi.hoisted(() => ({
   check: vi.fn(),
   reserve: vi.fn(() => true),
   release: vi.fn(),
+  invoke: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/api/core', () => ({ isTauri: mock.isTauri }))
+vi.mock('@tauri-apps/api/core', () => ({ isTauri: mock.isTauri, invoke: mock.invoke }))
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: mock.check }))
 vi.mock('../recorder', () => ({ beginUpdateInstallation: mock.reserve, endUpdateInstallation: mock.release }))
 
@@ -27,9 +28,54 @@ beforeEach(() => {
   vi.clearAllMocks()
   mock.isTauri.mockReturnValue(true)
   mock.reserve.mockReturnValue(true)
+  mock.invoke.mockResolvedValue(undefined)
 })
 
 describe('optional signed updates', () => {
+  it('does not launch an installer that exits the app when output restoration fails', async () => {
+    const update = release()
+    mock.check.mockResolvedValue(update)
+    mock.invoke.mockImplementation((command) => command === 'restore_system_output'
+      ? Promise.reject(new Error('Synthetic output restore failure')) : Promise.resolve())
+    const manager = await updates()
+    await manager.checkForUpdates()
+    await manager.installAvailableUpdate()
+    expect(update.install).not.toHaveBeenCalled()
+    expect(manager.getUpdateStatus()).toMatchObject({ phase: 'error', errorStage: 'install' })
+    expect(mock.release).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a timeout cause in the permanent log and gives a useful manual error without exposing payloads', async () => {
+    const manager = await updates()
+    mock.check.mockRejectedValueOnce(new Error('HTTP 504: request timed out; api_key=SYNTHETIC_SECRET; response=SYNTHETIC_PRIVATE_TEXT'))
+    await manager.checkForUpdates(true)
+    expect(manager.getUpdateStatus()).toMatchObject({
+      phase: 'error', errorStage: 'check', errorMessage: expect.stringMatching(/timed out/i),
+    })
+    await vi.waitFor(() => expect(mock.invoke).toHaveBeenCalledWith('append_debug_log', {
+      payload: expect.objectContaining({ source: 'update', detail: expect.objectContaining({
+        operation: 'check', error: expect.objectContaining({ kind: 'timeout', httpStatus: 504 }),
+      }) }),
+    }))
+    const logs = JSON.stringify(mock.invoke.mock.calls)
+    expect(logs).not.toContain('SYNTHETIC_SECRET')
+    expect(logs).not.toContain('SYNTHETIC_PRIVATE_TEXT')
+  })
+
+  it('records an automatic DNS failure without opening an update error prompt', async () => {
+    const manager = await updates()
+    mock.check.mockRejectedValueOnce(new Error('DNS resolution failed for https://synthetic.invalid/?token=SYNTHETIC_SECRET'))
+    await manager.checkForUpdates()
+    expect(manager.getUpdateStatus().phase).toBe('idle')
+    expect(showUpdatePrompt(manager.getUpdateStatus(), true, true)).toBe(false)
+    await vi.waitFor(() => expect(mock.invoke).toHaveBeenCalledWith('append_debug_log', {
+      payload: expect.objectContaining({ source: 'update', detail: expect.objectContaining({
+        operation: 'check', error: expect.objectContaining({ kind: 'network', reason: 'dns' }),
+      }) }),
+    }))
+    expect(JSON.stringify(mock.invoke.mock.calls)).not.toContain('SYNTHETIC_SECRET')
+  })
+
   it('suggests a new version, and Later neither downloads nor suppresses a manual check', async () => {
     const update = release()
     mock.check.mockResolvedValue(update)

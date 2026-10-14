@@ -16,12 +16,13 @@ export function asrConfigFromProfile(profile: AsrProfile): AsrProviderConfig {
     extra: buildAsrExtra(profile.provider, {
       model: resolveAsrApiModel(profile), baseUrl: asrEndpointUrl(profile), protocol: profile.protocol,
       instructions: profile.systemInstruction, audioEncoding: profile.audioEncoding,
+      reasoningEffort: profile.reasoningEffort,
     }),
   }
 }
 
 const keys = ['profiles', 'activeProfileId', 'provider', 'apiKey', 'model', 'baseUrl',
-  'protocol', 'systemInstruction', 'audioEncoding'].map(key => 'cloudAsr.' + key)
+  'protocol', 'systemInstruction', 'audioEncoding', 'reasoningEffort'].map(key => 'cloudAsr.' + key)
 
 export async function loadAsrConfig(): Promise<AsrProviderConfig> {
   let settings: Record<string, unknown>
@@ -39,6 +40,7 @@ export async function loadAsrConfig(): Promise<AsrProviderConfig> {
     extra: buildAsrExtra(provider, {
       model: str('model'), baseUrl: str('baseUrl'), protocol: parseAsrCompatProtocol(str('protocol')),
       instructions: str('systemInstruction'), audioEncoding: str('audioEncoding', 'wav'),
+      reasoningEffort: str('reasoningEffort'),
     }),
   }
 }

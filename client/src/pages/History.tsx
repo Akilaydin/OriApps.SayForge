@@ -8,6 +8,7 @@ import { exportHistory } from '@/services/exports'
 import { useT } from '@/i18n/useT'
 import { runAction } from '@/services/actionFeedback'
 import { useActionPending } from '@/components/ActionFeedback'
+import { failureMessage } from '@/lib/errorMessages'
 
 const PAGE_SIZE = 100
 
@@ -35,7 +36,7 @@ export default function History() {
       setTotal(count)
       setStatus('')
     } catch (error) {
-      if (id === request.current) setStatus(String(error))
+      if (id === request.current) setStatus(failureMessage(error, t('history.loadFailed')))
     }
   }, [search, limit])
 

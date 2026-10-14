@@ -14,12 +14,53 @@ pub struct MicMuteState {
 }
 
 #[cfg(windows)]
-static SAVED_MUTE_STATE: Lazy<Mutex<Option<bool>>> = Lazy::new(|| Mutex::new(None));
+static OUTPUT_MUTE_STATE: Lazy<Mutex<OutputMuteState>> = Lazy::new(|| Mutex::new(OutputMuteState::default()));
+
+#[cfg(any(windows, test))]
+struct SavedOutputMute {
+    endpoint_id: String,
+    muted: bool,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Default)]
+struct OutputMuteState {
+    saved: Option<SavedOutputMute>,
+    exiting: bool,
+}
+
+#[cfg(any(windows, test))]
+impl OutputMuteState {
+    fn mute(&mut self, capture: impl FnOnce() -> Result<SavedOutputMute, String>,
+        apply: impl FnOnce(&SavedOutputMute) -> Result<(), String>) -> Result<bool, String> {
+        if self.exiting { return Ok(false); }
+        if self.saved.is_none() { self.saved = Some(capture()?); }
+        // Save before SetMute: a failed device call must still permit restoration.
+        apply(self.saved.as_ref().unwrap())?;
+        Ok(true)
+    }
+
+    fn restore(&mut self, apply: impl FnOnce(&SavedOutputMute) -> Result<(), String>) -> Result<bool, String> {
+        match self.saved.as_ref() {
+            Some(previous) => { apply(previous)?; self.saved = None; Ok(true) }
+            None => Ok(false),
+        }
+    }
+
+    fn prepare_exit(&mut self, apply: impl FnOnce(&SavedOutputMute) -> Result<(), String>) -> Result<(), String> {
+        self.exiting = true;
+        if let Err(error) = self.restore(apply) {
+            self.exiting = false;
+            return Err(error);
+        }
+        Ok(())
+    }
+}
 
 #[cfg(windows)]
-unsafe fn with_endpoint_volume<F, R>(f: F) -> Result<R, String>
+unsafe fn with_endpoint_volume<F, R>(endpoint_id: Option<&str>, f: F) -> Result<R, String>
 where
-    F: FnOnce(&windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume) -> Result<R, String>,
+    F: FnOnce(&windows::Win32::Media::Audio::IMMDevice, &windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume) -> Result<R, String>,
 {
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::Media::Audio::{
@@ -38,15 +79,19 @@ where
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER)
                 .map_err(|e| format!("CoCreateInstance MMDeviceEnumerator: {}", e))?;
 
-        let device = enumerator
-            .GetDefaultAudioEndpoint(eRender, eConsole)
-            .map_err(|e| format!("GetDefaultAudioEndpoint: {}", e))?;
+        let device = if let Some(id) = endpoint_id {
+            enumerator.GetDevice(&windows::core::HSTRING::from(id))
+                .map_err(|e| format!("GetDevice(saved output): {}", e))?
+        } else {
+            enumerator.GetDefaultAudioEndpoint(eRender, eConsole)
+                .map_err(|e| format!("GetDefaultAudioEndpoint: {}", e))?
+        };
 
         let endpoint: IAudioEndpointVolume = device
             .Activate(CLSCTX_ALL, None)
             .map_err(|e| format!("Activate IAudioEndpointVolume: {}", e))?;
 
-        f(&endpoint)
+        f(&device, &endpoint)
     })();
 
     if need_co_uninit {
@@ -60,30 +105,14 @@ where
 pub fn mute_system_output() -> Result<bool, String> {
     #[cfg(windows)]
     unsafe {
-        with_endpoint_volume(|ep| {
-            let was_muted = ep
-                .GetMute()
-                .map_err(|e| format!("GetMute: {}", e))?
-                .as_bool();
-
-            {
-                let mut saved = SAVED_MUTE_STATE.lock().unwrap();
-                if saved.is_none() {
-                    *saved = Some(was_muted);
-                }
-            }
-
-            if !was_muted {
-                ep.SetMute(true, std::ptr::null())
-                    .map_err(|e| format!("SetMute(true): {}", e))?;
-            }
-
-            crate::commands::system::write_log_line(&format!(
-                "[RUST] [audio_mute] muted output (prev_muted={})",
-                was_muted
-            ));
-            Ok(true)
-        })
+        let mut state = OUTPUT_MUTE_STATE.lock().unwrap_or_else(|error| error.into_inner());
+        state.mute(|| with_endpoint_volume(None, |device, ep| {
+            let muted = ep.GetMute().map_err(|e| format!("GetMute: {}", e))?.as_bool();
+            let id = device.GetId().map_err(|e| format!("GetId(output): {}", e))?;
+            let endpoint_id = id.to_string().map_err(|e| format!("Output ID conversion: {}", e));
+            windows::Win32::System::Com::CoTaskMemFree(Some(id.0.cast()));
+            Ok(SavedOutputMute { endpoint_id: endpoint_id?, muted })
+        }), |saved| set_output_mute(saved, true))
     }
     #[cfg(not(windows))]
     {
@@ -95,28 +124,36 @@ pub fn mute_system_output() -> Result<bool, String> {
 pub fn restore_system_output() -> Result<bool, String> {
     #[cfg(windows)]
     unsafe {
-        let saved = {
-            let mut s = SAVED_MUTE_STATE.lock().unwrap();
-            s.take()
-        };
-
-        match saved {
-            Some(prev) => with_endpoint_volume(|ep| {
-                ep.SetMute(windows::Win32::Foundation::BOOL::from(prev), std::ptr::null())
-                    .map_err(|e| format!("SetMute restore: {}", e))?;
-                crate::commands::system::write_log_line(&format!(
-                    "[RUST] [audio_mute] restored output (mute={})",
-                    prev
-                ));
-                Ok(true)
-            }),
-            None => Ok(false),
-        }
+        let mut state = OUTPUT_MUTE_STATE.lock().unwrap_or_else(|error| error.into_inner());
+        state.restore(|saved| set_output_mute(saved, saved.muted))
     }
     #[cfg(not(windows))]
     {
         Ok(false)
     }
+}
+
+#[cfg(windows)]
+unsafe fn set_output_mute(saved: &SavedOutputMute, muted: bool) -> Result<(), String> {
+    with_endpoint_volume(Some(&saved.endpoint_id), |_, ep| {
+        ep.SetMute(windows::Win32::Foundation::BOOL::from(muted), std::ptr::null())
+            .map_err(|e| format!("SetMute(output): {}", e))?;
+        log::info!("[audio_mute] output mute={}", muted);
+        Ok(())
+    })
+}
+
+pub fn prepare_system_output_for_exit() -> Result<(), String> {
+    #[cfg(windows)]
+    unsafe {
+        let mut state = OUTPUT_MUTE_STATE.lock().unwrap_or_else(|error| error.into_inner());
+        state.prepare_exit(|saved| set_output_mute(saved, saved.muted)).map_err(|error| {
+            log::error!("[audio_mute] operation=restore_before_exit error={}", error);
+            error
+        })
+    }
+    #[cfg(not(windows))]
+    { Ok(()) }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -302,6 +339,99 @@ pub fn get_mic_mute_state(device_label: Option<String>) -> MicMuteState {
 #[cfg(test)]
 mod tests {
     use super::{mic_label_match_rank, normalize_mic_label};
+
+    #[test]
+    fn failed_output_restore_keeps_the_original_state_for_retry() {
+        let mut state = super::OutputMuteState { saved: Some(synthetic_snapshot(false)), ..Default::default() };
+        assert!(state.restore(|_| Err("synthetic endpoint failure".into())).is_err());
+        assert_eq!(state.saved.as_ref().map(|saved| saved.muted), Some(false), "failure must retain the original unmuted state");
+        let mut output_muted = true;
+        assert!(state.restore(|previous| { output_muted = previous.muted; Ok(()) }).unwrap());
+        assert!(!output_muted);
+        assert!(state.saved.is_none());
+    }
+
+    fn synthetic_snapshot(muted: bool) -> super::SavedOutputMute {
+        super::SavedOutputMute { endpoint_id: "synthetic-original-output".into(), muted }
+    }
+
+    #[test]
+    fn exit_restores_original_muted_and_unmuted_output_and_rejects_late_mute() {
+        for initial_mute in [false, true] {
+            let mut state = super::OutputMuteState::default();
+            let mut output_muted = initial_mute;
+            state.mute(|| Ok(synthetic_snapshot(initial_mute)), |_| { output_muted = true; Ok(()) }).unwrap();
+            assert!(output_muted);
+            // Repeat requests must retain the first snapshot, even if default output changed.
+            state.mute(|| panic!("must not capture a different default output"), |_| Ok(())).unwrap();
+            state.prepare_exit(|previous| {
+                assert_eq!(previous.endpoint_id, "synthetic-original-output");
+                output_muted = previous.muted;
+                Ok(())
+            }).unwrap();
+            assert_eq!(output_muted, initial_mute);
+            assert!(state.saved.is_none());
+            assert!(!state.mute(|| panic!("late mute must not access devices"), |_| panic!("late mute must not change sound")).unwrap());
+            assert!(!state.restore(|_| panic!("duplicate stop/exit must not modify sound")).unwrap());
+        }
+    }
+
+    #[test]
+    fn failed_exit_can_be_retried_and_failed_mute_still_retains_the_original_snapshot() {
+        let mut state = super::OutputMuteState::default();
+        assert!(state.mute(|| Ok(synthetic_snapshot(false)), |_| Err("synthetic partial SetMute failure".into())).is_err());
+        assert!(state.saved.is_some());
+        assert!(state.prepare_exit(|_| Err("synthetic disconnected endpoint".into())).is_err());
+        assert!(!state.exiting);
+        assert!(!state.saved.as_ref().unwrap().muted);
+        state.prepare_exit(|previous| { assert!(!previous.muted); Ok(()) }).unwrap();
+        assert!(state.exiting);
+        assert!(state.saved.is_none());
+    }
+
+    #[test]
+    fn ordinary_stop_allows_a_new_recording_and_unused_mute_never_accesses_devices_on_exit() {
+        let mut state = super::OutputMuteState::default();
+        state.mute(|| Ok(synthetic_snapshot(false)), |_| Ok(())).unwrap();
+        assert!(state.restore(|previous| { assert!(!previous.muted); Ok(()) }).unwrap());
+        assert!(!state.exiting);
+        state.mute(|| Ok(synthetic_snapshot(true)), |_| Ok(())).unwrap();
+        assert!(state.restore(|previous| { assert!(previous.muted); Ok(()) }).unwrap());
+        state.prepare_exit(|_| panic!("no saved state must not access audio")).unwrap();
+    }
+
+    #[test]
+    fn exit_waits_for_in_flight_mute_then_restores_before_late_requests() {
+        use std::sync::{Arc, Mutex, mpsc};
+        let state = Arc::new(Mutex::new(super::OutputMuteState::default()));
+        let muted = Arc::new(Mutex::new(false));
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let mute_state = state.clone();
+        let mute_output = muted.clone();
+        let mute = std::thread::spawn(move || {
+            mute_state.lock().unwrap().mute(|| Ok(synthetic_snapshot(false)), |_| {
+                *mute_output.lock().unwrap() = true;
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+                Ok(())
+            }).unwrap();
+        });
+        started_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        let exit_state = state.clone();
+        let exit_output = muted.clone();
+        let (attempt_tx, attempt_rx) = mpsc::channel();
+        let exit = std::thread::spawn(move || {
+            attempt_tx.send(()).unwrap();
+            exit_state.lock().unwrap().prepare_exit(|previous| { *exit_output.lock().unwrap() = previous.muted; Ok(()) }).unwrap();
+        });
+        attempt_rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        release_tx.send(()).unwrap();
+        mute.join().unwrap();
+        exit.join().unwrap();
+        assert!(!*muted.lock().unwrap());
+        assert!(!state.lock().unwrap().mute(|| panic!("exit already started"), |_| panic!("late mute")).unwrap());
+    }
 
     #[test]
     fn browser_route_prefix_does_not_change_endpoint_identity() {

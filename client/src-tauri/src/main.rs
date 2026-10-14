@@ -510,7 +510,13 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         // Signed updater checks are user-controlled and do not run during shutdown.
-        .run(|_, _| {});
+        .run(|_, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if commands::audio_mute::prepare_system_output_for_exit().is_err() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }
 
 #[cfg(test)]

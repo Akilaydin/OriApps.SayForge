@@ -169,11 +169,8 @@ fn inject_to_clipboard(text: &str, owner_hwnd: isize) -> Result<(), String> {
     #[cfg(windows)]
     {
         unsafe {
-            if crate::inject::set_clipboard_with_retry_pub(text, 5, 30, owner_hwnd) {
-                Ok(())
-            } else {
-                Err("clipboard write failed".to_string())
-            }
+            crate::inject::set_clipboard_with_retry_result(text, 5, 30, owner_hwnd)
+                .map_err(|reason| crate::error_protocol::encode(crate::inject::clipboard_error_code(&reason), reason))
         }
     }
     #[cfg(not(windows))]

@@ -206,6 +206,8 @@ export interface AsrProfile {
   audioEncoding: AsrAudioEncoding
   /** Transcription Prompt. Keep the historical storage key for compatible imports. */
   systemInstruction: string
+  /** Optional chat/completions reasoning level; empty means provider default. */
+  reasoningEffort: string
   /** Retired field: retain nonempty legacy values for export/recovery only. */
   userPrompt?: string
   model: string
@@ -228,6 +230,7 @@ export function emptyAsrProfile(provider = ASR_PROVIDERS[0].id): AsrProfile {
     protocol: 'auto',
     audioEncoding: 'mp3',
     systemInstruction: '',
+    reasoningEffort: '',
     model: entry ? asrModelsOf(entry)[0].id : '',
     apiKey: '',
   }
@@ -280,6 +283,7 @@ export function parseAsrProfilesDetailed(
           ? LEGACY_PROTOCOLS[str(v.provider)] ?? 'auto' : parseAsrCompatProtocol(v.protocol),
       audioEncoding: parseAsrAudioEncoding(v.audioEncoding),
       systemInstruction: str(v.systemInstruction),
+      reasoningEffort: str(v.reasoningEffort),
       ...(str(v.userPrompt) ? { userPrompt: str(v.userPrompt) } : {}),
       model,
       apiKey: str(v.apiKey),
