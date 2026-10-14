@@ -93,6 +93,7 @@ Paths below are relative to `client/`.
 - `inject/mod.rs` — known Qt/vendor process names remain an editability fallback only when the target's UIA control is not explicitly disabled, read-only or non-editable. Detection of 360/QQ/Baidu security processes is diagnostic only and never grants insertion permission.
 - `providers/` — OpenAI-compatible HTTP ASR and capability reporting.
 - ASR IPC uses provider, API key and protocol/model options; old vendor-specific app IDs, workspace credentials and catalog flags are not used.
+- Optional per-profile `reasoningEffort` is normalized into ASR `extra`, then emitted by the Rust chat adapter as top-level `reasoning_effort` only when nonblank. Both chat payload shapes and profile tests share this request builder; the multipart adapter ignores it.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
 - `commands/backup.rs` — local exports/imports; no WebDAV client or background backup scheduler.
 

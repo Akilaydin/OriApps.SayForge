@@ -11,6 +11,7 @@ export interface AsrConfigExtra extends Record<string, unknown> {
   model?: string
   instructions?: string
   audioEncoding?: string
+  reasoningEffort?: string
   baseUrl?: string
   protocol?: string
 }
@@ -21,6 +22,7 @@ export function buildAsrExtra(
     model?: string
     instructions?: string
     audioEncoding?: string
+    reasoningEffort?: string
     baseUrl?: string
     protocol?: string
   } = {},
@@ -28,14 +30,16 @@ export function buildAsrExtra(
   const model = options.model?.trim() || ''
   const instructions = options.instructions?.trim() ?? ''
   const audioEncoding = options.audioEncoding === 'mp3' ? 'mp3' : ''
+  const reasoningEffort = options.reasoningEffort?.trim() ?? ''
   const baseUrl = options.baseUrl?.trim() ?? ''
   const protocol = options.protocol?.trim() ?? ''
   const explicitProtocol = protocol === 'auto' ? '' : protocol
-  if (!model && !instructions && !audioEncoding && !baseUrl && !explicitProtocol) return undefined
+  if (!model && !instructions && !audioEncoding && !baseUrl && !explicitProtocol && !reasoningEffort) return undefined
   return {
     ...(model ? { model } : {}),
     ...(instructions ? { instructions } : {}),
     ...(audioEncoding ? { audioEncoding } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(explicitProtocol ? { protocol: explicitProtocol } : {}),
   }
