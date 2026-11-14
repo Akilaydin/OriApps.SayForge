@@ -38,7 +38,10 @@ export function isAiCorrectionConfigured(settings: AiCorrectionSettings): boolea
   if (!settings.apiKey.trim() || !settings.model.trim()) return false
   try {
     const url = new URL(settings.apiUrl)
-    return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname)
+    if (url.protocol === 'https:') return Boolean(url.hostname)
+    if (url.protocol !== 'http:') return false
+    const host = url.hostname.toLowerCase()
+    return host === 'localhost' || host === '[::1]' || /^127(?:\.[0-9]{1,3}){3}$/.test(host)
   } catch {
     return false
   }

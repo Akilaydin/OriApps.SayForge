@@ -102,7 +102,8 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 - Editor text and selections are not read or sent to the provider. When AI correction is enabled,
   the ASR transcript is sent to the configured correction endpoint, which may incur extra latency
   and provider charges. If correction fails, times out, or returns empty output, the original ASR
-  transcript is retained. Cancellation must not insert late results.
+  transcript is retained; explicitly truncated output is also rejected. Remote correction endpoints
+  require HTTPS; HTTP is accepted only for loopback providers. Cancellation must not insert late results.
 - Existing `systemInstruction` settings remain the Transcription Prompt. The separate AI correction
   uses the stored `cloudAi.*` credentials/prompt and `aiEnabled` switch. Historical presets and
   nonempty legacy `userPrompt` values remain stored/exportable but inactive.

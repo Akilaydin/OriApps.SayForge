@@ -219,7 +219,7 @@
   "settings.aiCorrection.apiKey": "API key",
   "settings.aiCorrection.model": "Model",
   "settings.aiCorrection.prompt": "Correction instructions",
-  "settings.aiCorrection.missingConfig": "Enter a valid HTTP(S) API URL, key, and model before correction can run.",
+  "settings.aiCorrection.missingConfig": "Enter an HTTPS URL (or loopback HTTP), API key, and model before correction can run.",
   "settings.aiCorrection.loading": "Loading AI correction settings…",
   "settings.aiCorrection.loadFailed": "Could not load AI correction settings. Reopen Settings to try again.",
   "settings.aiCorrection.unsaved": "Changes take effect after saving.",

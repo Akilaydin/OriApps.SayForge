@@ -192,7 +192,10 @@ An empty `cloudAi.systemPrompt` uses the default correction instructions.
 The command accepts `text`, `ai_config` and `system_prompt` and returns `text` and
 `elapsed_ms`. The native HTTP timeout is bounded to 15 seconds; the frontend has a
 16-second wait limit. Provider errors, timeouts and empty corrected text fall back to
-unaltered ASR text before local formatting. Run-ID and cancellation checks after each
+unaltered ASR text before local formatting. Remote correction endpoints require HTTPS;
+only loopback endpoints may use HTTP, and redirects are disabled to prevent transcript/key
+disclosure on cross-scheme redirects. Explicitly truncated model responses (for example,
+`finish_reason: length`) also trigger raw-ASR fallback. Run-ID and cancellation checks after each
 await prevent late AI responses from updating history or inserting text. Native and
 frontend logs must never include audio, transcripts, prompts, API keys, endpoint URLs
 or untrusted provider response bodies. No existing database schema changes are required.

@@ -1,12 +1,21 @@
 use crate::error_protocol;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_SYSTEM_PROMPT: &str = "You are an accurate speech transcription proofreader. Return only the corrected transcription, preserving the speaker's language and meaning.";
 static THINKING_BLOCK: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
     regex::Regex::new(r"(?is)<think>.*?</think>").expect("valid thinking tag pattern")
+});
+// Never follow HTTP redirects: even a secure endpoint could redirect a request
+// containing the transcript and API key to an unencrypted destination.
+static CORRECTION_HTTP: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::Lazy::new(|| {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("AI correction HTTP client")
 });
 
 #[derive(Deserialize)]
@@ -34,10 +43,22 @@ pub struct PolishResult {
 fn chat_url(configured: &str) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(configured.trim())
         .map_err(|_| error_protocol::encode("connect_failed", "Invalid AI correction URL"))?;
-    if !matches!(url.scheme(), "http" | "https") || !url.has_host() {
+    let transport_allowed = match url.scheme() {
+        "https" => url.has_host(),
+        "http" => url.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .parse::<IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        }),
+        _ => false,
+    };
+    if !transport_allowed {
         return Err(error_protocol::encode(
             "connect_failed",
-            "Invalid AI correction URL",
+            "AI correction requires HTTPS, except for loopback HTTP",
         ));
     }
 
@@ -71,7 +92,7 @@ fn chat_body(config: &AiConfig, text: &str, system_prompt: Option<&str>) -> Valu
 }
 
 fn chat_request(url: reqwest::Url, config: &AiConfig, body: &Value) -> reqwest::RequestBuilder {
-    super::http_client::shared()
+    CORRECTION_HTTP
         .post(url)
         .bearer_auth(&config.api_key)
         .json(body)
@@ -79,6 +100,15 @@ fn chat_request(url: reqwest::Url, config: &AiConfig, body: &Value) -> reqwest::
 }
 
 fn response_text(body: &Value) -> Option<String> {
+    // The model may provide a nonempty but incomplete prefix when its output
+    // token limit is hit. Never paste that prefix in place of the full ASR text.
+    if matches!(
+        body.pointer("/choices/0/finish_reason")
+            .and_then(Value::as_str),
+        Some("length" | "content_filter" | "tool_calls" | "function_call")
+    ) {
+        return None;
+    }
     let content = body.pointer("/choices/0/message/content")?;
     let text = match content {
         Value::String(value) => value.to_string(),
@@ -202,6 +232,27 @@ mod tests {
     }
 
     #[test]
+    fn rejects_remote_plaintext_endpoints_but_allows_local_development() {
+        for configured in [
+            "http://gateway.example/v1",
+            "http://192.168.1.15:8000/v1",
+            "http://127.0.0.1.example.com/v1",
+            "http://[2001:db8::1]:3000/v1",
+        ] {
+            assert!(chat_url(configured).is_err(), "{configured}");
+        }
+        for configured in [
+            "http://localhost:3000/v1",
+            "http://127.0.0.1:3000/v1",
+            "http://127.10.0.20:3000/v1",
+            "http://[::1]:3000/v1",
+            "https://gateway.example/v1",
+        ] {
+            assert!(chat_url(configured).is_ok(), "{configured}");
+        }
+    }
+
+    #[test]
     fn request_uses_bearer_post_json_and_a_fifteen_second_timeout() {
         let config = config();
         let body = chat_body(
@@ -251,6 +302,12 @@ mod tests {
         assert_eq!(response_text(&array).as_deref(), Some("Correct text."));
         let reasoning = json!({"choices": [{"message": {"content": "<think>Internal reasoning</think>Corrected."}}]});
         assert_eq!(response_text(&reasoning).as_deref(), Some("Corrected."));
+        let truncated = json!({"choices": [{"finish_reason": "length", "message": {"content": "Incomplete but nonempty"}}]});
+        assert_eq!(response_text(&truncated), None);
+        let filtered = json!({"choices": [{"finish_reason": "content_filter", "message": {"content": "Partial text"}}]});
+        assert_eq!(response_text(&filtered), None);
+        let completed = json!({"choices": [{"finish_reason": "stop", "message": {"content": "Complete text"}}]});
+        assert_eq!(response_text(&completed).as_deref(), Some("Complete text"));
         assert_eq!(response_text(&json!({"choices": []})), None);
         assert_eq!(
             response_text(&json!({"choices": [{"message": {"content": "  "}}]})),

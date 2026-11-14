@@ -76,12 +76,18 @@ describe('AI correction settings', () => {
     expect((await loadAiCorrectionSettings()).prompt).toBe('')
   })
 
-  it('checks credentials and HTTP(S) endpoint independently of enabled and prompt', () => {
+  it('requires encrypted remote transport but permits loopback HTTP for local providers', () => {
     expect(isAiCorrectionConfigured({ ...complete, enabled: false, prompt: '' })).toBe(true)
     expect(isAiCorrectionConfigured({ ...complete, apiKey: ' ' })).toBe(false)
     expect(isAiCorrectionConfigured({ ...complete, model: '' })).toBe(false)
     expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'not-a-url' })).toBe(false)
     expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'ftp://ai.example.test' })).toBe(false)
     expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://127.0.0.1:11434/v1' })).toBe(true)
+    expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://localhost:3000/v1' })).toBe(true)
+    expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://[::1]:11434/v1' })).toBe(true)
+    expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://127.2.3.4:3000/v1' })).toBe(true)
+    expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://192.168.1.1:3000/v1' })).toBe(false)
+    expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://example.com/v1' })).toBe(false)
+    expect(isAiCorrectionConfigured({ ...complete, apiUrl: 'http://localhost.attacker.example/v1' })).toBe(false)
   })
 })
