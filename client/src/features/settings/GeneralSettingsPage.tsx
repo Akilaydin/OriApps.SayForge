@@ -20,6 +20,7 @@ import { drawBars, resetWaveform } from '@/services/waveform'
 import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
 import AppSection from './AppSection'
+import AiCorrectionSection from './AiCorrectionSection'
 import BackupSection from './BackupSection'
 import MicrophoneSection from './MicrophoneSection'
 import type { MicVolumeLevel } from './MicrophoneSection'
@@ -348,6 +349,8 @@ export default function GeneralSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <AiCorrectionSection />
 
         <AppSection autoLaunch={autoLaunch} onToggleAutoLaunch={toggleAutoLaunch} ready={ready && autoLaunchReady} animate={animate} busy={autoLaunchBusy} error={autoLaunchError} onRetry={() => void retryAutoLaunch()} />
 

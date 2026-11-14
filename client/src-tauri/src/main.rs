@@ -493,6 +493,7 @@ fn main() {
             commands::diagnostics::read_log_file,
             commands::diagnostics::open_log_folder,
             // Providers (cloud ASR)
+            providers::ai_correction::cloud_polish,
             providers::registry::cloud_transcribe,
             providers::registry::test_asr_connection,
             providers::capabilities::asr_hotword_capability,

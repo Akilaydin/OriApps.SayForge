@@ -8,7 +8,8 @@ Technical reference for the current SayForge implementation. Product behavior be
 - React manages the UI, microphone capture, recording lifecycle and text processing.
 - Rust handles Win32 integration, persistence and cloud HTTP calls.
 - Speech mode: `cloud_api`. Retired `local`/server values normalize and persist as `cloud_api` at frontend startup.
-- ASR is the only remote text-producing operation. There is no separate AI refinement provider, context-aware writing stage or editor-text capture.
+- ASR produces the initial transcript; optional AI correction is a second, sequential OpenAI-compatible
+  chat completion request. There is no context-aware writing stage or editor-text capture.
 - Diagnostics previews and ZIP exports still redact historical Rust and frontend AI-provider log entries. Active ASR diagnostics exclude private response bodies, endpoint/model details and prompt content.
 - SQLite persists settings and history. The app uses `com.oriapps.sayforge` as its identity.
 - The Tauri 2 updater checks one public static GitHub Releases `latest.json` at startup or when requested in About. The signed NSIS is downloaded only after consent; a small UI prompt does not open a separate window and does not interrupt tray startup. On Windows the native updater launches the installer and exits the app.
@@ -31,6 +32,7 @@ Global hotkey / UI
     -> RecorderOrchestrator
     -> microphone capture (16 kHz mono PCM)
        -> CloudAPIProvider -> Rust ASR adapter -> configured API
+    -> optional AI correction (text-only chat/completions)
     -> local text transforms
     -> text history
     -> captured Windows text target
@@ -57,6 +59,8 @@ Paths below are relative to `client/`.
   passes them to `startCapture`; in-flight dictation is not altered by UI changes.
   The microphone test can update only its own `GainNode` during a 5-second test.
 - `services/transcription/` — provider interface, mode selection, buffered cloud delivery and run isolation.
+- `services/aiCorrection.ts` and `aiCorrectionSettings.ts` — optional independent correction
+  request, fallback and legacy-compatible settings. The orchestrator gates stale results by run ID.
 - `services/textPostProcess.ts` and `textReplacement.ts` — configurable output transformations.
 - `services/recorder/OverlayService.ts` and `PasteService.ts` — progress/recovery UI and native insertion requests.
 - Low/no-signal warnings use PCM RMS before speech detection. Once enough speech is
@@ -91,7 +95,7 @@ Paths below are relative to `client/`.
   for forced termination or power-loss recovery.
 - `keyboard/`, `context/`, `commands/paste.rs` — global input hooks, foreground-target probing and Win32 insertion.
 - `inject/mod.rs` — known Qt/vendor process names remain an editability fallback only when the target's UIA control is not explicitly disabled, read-only or non-editable. Detection of 360/QQ/Baidu security processes is diagnostic only and never grants insertion permission.
-- `providers/` — OpenAI-compatible HTTP ASR and capability reporting.
+- `providers/` — OpenAI-compatible HTTP ASR, optional chat correction and capability reporting.
 - ASR IPC uses provider, API key and protocol/model options; old vendor-specific app IDs, workspace credentials and catalog flags are not used.
 - Optional per-profile `reasoningEffort` is normalized into ASR `extra`, then emitted by the Rust chat adapter as top-level `reasoning_effort` only when nonblank. Both chat payload shapes and profile tests share this request builder; the multipart adapter ignores it.
 - `storage/` and `commands/storage.rs` — SQLite migrations, settings and history.
@@ -145,9 +149,11 @@ Paths below are relative to `client/`.
   Password/unavailable metadata, absent TextPattern, unchanged length and documents
   reaching the bounded one-million-unit query remain unconfirmed. Ambiguous delivery
   shows the fallback card without an automatic second paste.
-- Capture only target metadata for insertion; do not read editor text or send selections to the ASR provider.
+- Capture only target metadata for insertion; do not read editor text or send selections to ASR or AI correction providers.
 - Keep buffered ASR UI capabilities, protocol selection and Rust provider dispatch consistent. Retired streaming settings remain stored but are inert.
-- Cloud ASR sends recorded audio and the selected Transcription Prompt. Retired model files/settings remain untouched.
+- Cloud ASR sends recorded audio and the selected Transcription Prompt. Optional correction sends
+  only the already recognized transcript and its independent AI prompt, never recorded audio or editor context.
+  Retired model files/settings remain untouched.
 - Multipart and chat share the bundled `asrTimeout.json` policy: 120 seconds plus
   one second per audio second and a WAV/base64 upload budget at 16 KiB/s (4 KiB
   payload overhead). Duration is bounded to five minutes and native requests to
@@ -165,8 +171,8 @@ Paths below are relative to `client/`.
 One editable field retains the historical `systemInstruction` profile/flat-setting key.
 No destructive migration or new SQLite schema is needed. Nonempty historical `userPrompt`
 values are preserved in parsed profiles and backups only; they do not participate in requests.
-Retired AI settings/credentials and historical `llmText`/`llmMs` fields remain compatible.
-New history puts the locally transformed ASR output in `llmText` and writes `llmMs: 0`.
+Historical `llmText`/`llmMs` fields remain compatible. New history puts the locally transformed
+final transcript in `llmText` and measures optional correction time in `llmMs` (zero when disabled).
 
 The runtime sends this single prompt as `extra.instructions`. Standard chat puts it in
 the same `user` content array as the audio; its default transcription system message is
@@ -174,8 +180,22 @@ used only when the user field is blank. Hotword hints remain independent. Legacy
 chat keeps custom instructions in `system`, avoiding user text that could mask discarded
 unsupported audio. Multipart uses the same prompt in its `prompt` form field, with the
 existing punctuation hint for blank input. Model/endpoint support controls what it means;
-no second refinement request compensates for unsupported instructions. Existing multipart
+the separate AI correction is optional, not an ASR protocol fallback. Existing multipart
 unsupported-prompt retry remains a compatibility fallback and may omit the hint.
+
+## Optional AI correction
+
+The `aiEnabled` setting defaults to off. When enabled with a complete independent
+`cloudAi.apiUrl`, `.apiKey` and `.model` configuration, the recorder sends
+ASR text to Rust `cloud_polish` via one OpenAI-compatible `/chat/completions` request.
+An empty `cloudAi.systemPrompt` uses the default correction instructions.
+The command accepts `text`, `ai_config` and `system_prompt` and returns `text` and
+`elapsed_ms`. The native HTTP timeout is bounded to 15 seconds; the frontend has a
+16-second wait limit. Provider errors, timeouts and empty corrected text fall back to
+unaltered ASR text before local formatting. Run-ID and cancellation checks after each
+await prevent late AI responses from updating history or inserting text. Native and
+frontend logs must never include audio, transcripts, prompts, API keys, endpoint URLs
+or untrusted provider response bodies. No existing database schema changes are required.
 
 ## ASR protocol selection
 

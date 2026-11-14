@@ -32,6 +32,7 @@ import {
   stopInsertionTargetTracking,
 } from '../textInsertion'
 import { applyTextTransforms } from '../textPostProcess'
+import { correctTranscript } from '../aiCorrection'
 import type { ActiveAppContext } from '../../types/appContext'
 import type { ClientRuntimeInfo } from '../../types/appApi'
 import { OverlayService, type FailureRecovery } from './OverlayService'
@@ -2051,7 +2052,9 @@ export class RecorderOrchestrator {
     const runId = context.runId
     if (!this.isRunCurrent(runId)) return
 
-    const baseText = result.asrText
+    const correction = await correctTranscript(result.asrText, () => this.isRunCurrent(runId) && !this.isRunCanceled(runId))
+    if (!correction || !this.isRunCurrent(runId) || this.isRunCanceled(runId)) return
+    const baseText = correction.text
     let textToPaste: string
     try {
       textToPaste = await applyTextTransforms(baseText)
@@ -2116,7 +2119,9 @@ export class RecorderOrchestrator {
           asrText: result.asrText,
           llmText: textToPaste,
           asrMs: result.asrMs,
-          llmMs: 0,
+          llmMs: correction.elapsedMs,
+          aiSource: correction.status === 'applied' ? 'custom' : 'none',
+          aiStatus: correction.status,
           durationSec: wallSec,
           audioDurationSec: audioDur > 0 ? audioDur : undefined,
           asrDurationSec: result.durationSec > 0 ? result.durationSec : undefined,
@@ -2161,7 +2166,7 @@ export class RecorderOrchestrator {
         mode: this.provider.mode,
         audioSec: Number(audioDur.toFixed(1)),
         asrMs: result.asrMs,
-        llmMs: 0,
+        llmMs: correction.elapsedMs,
         asrLen: result.asrText?.length ?? 0,
         asrHadText,
         silenceProven,
