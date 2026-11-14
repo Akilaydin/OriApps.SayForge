@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FinalResult } from '../../transcription/types'
 import type { ProbeResult } from '../PasteService'
 
-const mocks = vi.hoisted(() => ({ add: vi.fn(), remove: vi.fn(), transform: vi.fn(), emit: vi.fn(), paste: vi.fn() }))
+const mocks = vi.hoisted(() => ({ add: vi.fn(), remove: vi.fn(), transform: vi.fn(), correct: vi.fn(), emit: vi.fn(), paste: vi.fn() }))
 vi.mock('../../store', () => ({
   addHistory: mocks.add, deleteHistory: mocks.remove, updateHistoryRecord: vi.fn(),
   getSetting: (_key: string, fallback: unknown) => Promise.resolve(fallback),
@@ -11,6 +11,7 @@ vi.mock('../../bridge', () => ({ emit: mocks.emit, pasteText: mocks.paste }))
 vi.mock('../../debugLog', () => ({ addRuntimeEvent: vi.fn() }))
 vi.mock('../../transcription', () => ({ getProvider: () => ({ mode: 'cloud_api' }) }))
 vi.mock('../../textPostProcess', () => ({ applyTextTransforms: mocks.transform }))
+vi.mock('../../aiCorrection', () => ({ correctTranscript: mocks.correct }))
 import { RecorderOrchestrator } from '../RecorderOrchestrator'
 
 const context = () => ({
@@ -45,9 +46,35 @@ beforeEach(() => {
   mocks.add.mockResolvedValue(undefined)
   mocks.remove.mockResolvedValue(undefined)
   mocks.transform.mockImplementation((text: string) => Promise.resolve(text))
+  mocks.correct.mockImplementation((text: string) => Promise.resolve({ text, elapsedMs: 0, status: 'skipped' }))
 })
 
 describe('final result isolation after removing the audio archive', () => {
+  it('stores and inserts corrected text while keeping original ASR text', async () => {
+    mocks.correct.mockResolvedValue({ text: 'AI correction', elapsedMs: 27, status: 'applied' })
+    const recorder = session(), insert = vi.spyOn(recorder, 'handleTextInsertion').mockResolvedValue(undefined)
+    await recorder.processFinalResult(result, context(), options)
+    expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({
+      asrText: 'Synthetic text', llmText: 'AI correction', llmMs: 27, aiStatus: 'applied', aiSource: 'custom',
+    }))
+    expect(mocks.transform).toHaveBeenCalledWith('AI correction')
+    expect(insert).toHaveBeenCalledWith('AI correction', expect.objectContaining({ runId: 1 }))
+  })
+
+  it('does not transform or persist a result canceled while AI correction is pending', async () => {
+    let finish!: (value: null) => void
+    mocks.correct.mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const recorder = session(), insert = vi.spyOn(recorder, 'handleTextInsertion').mockResolvedValue(undefined)
+    const pending = recorder.processFinalResult(result, context(), options)
+    recorder.markRunCanceled(1)
+    recorder.activeRunId = 0
+    finish(null)
+    await pending
+    expect(mocks.transform).not.toHaveBeenCalled()
+    expect(mocks.add).not.toHaveBeenCalled()
+    expect(insert).not.toHaveBeenCalled()
+  })
+
   it('persists text without an audio path and forwards it to insertion', async () => {
     const recorder = session(), insert = vi.spyOn(recorder, 'handleTextInsertion').mockResolvedValue(undefined)
     await recorder.processFinalResult(result, context(), options)
