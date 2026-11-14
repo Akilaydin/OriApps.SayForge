@@ -194,7 +194,9 @@ The command accepts `text`, `ai_config` and `system_prompt` and returns `text` a
 16-second wait limit. Provider errors, timeouts and empty corrected text fall back to
 unaltered ASR text before local formatting. Remote correction endpoints require HTTPS;
 only loopback endpoints may use HTTP, and redirects are disabled to prevent transcript/key
-disclosure on cross-scheme redirects. Explicitly truncated model responses (for example,
+disclosure on cross-scheme redirects. Loopback HTTP bypasses system and environment proxies
+so plaintext credentials and transcripts cannot leave the machine via a proxy.
+Explicitly truncated model responses (for example,
 `finish_reason: length`) also trigger raw-ASR fallback. Run-ID and cancellation checks after each
 await prevent late AI responses from updating history or inserting text. Native and
 frontend logs must never include audio, transcripts, prompts, API keys, endpoint URLs

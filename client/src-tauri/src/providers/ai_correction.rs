@@ -17,6 +17,16 @@ static CORRECTION_HTTP: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync
         .build()
         .expect("AI correction HTTP client")
 });
+// Local HTTP traffic must not be forwarded to an HTTP_PROXY/system proxy,
+// which would otherwise disclose the transcript and key outside this machine.
+static CORRECTION_LOCAL_HTTP: once_cell::sync::Lazy<reqwest::Client> =
+    once_cell::sync::Lazy::new(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("AI correction loopback client")
+    });
 
 #[derive(Deserialize)]
 pub struct CloudPolishRequest {
@@ -91,8 +101,16 @@ fn chat_body(config: &AiConfig, text: &str, system_prompt: Option<&str>) -> Valu
     })
 }
 
+fn correction_client(url: &reqwest::Url) -> &'static reqwest::Client {
+    if url.scheme() == "http" {
+        &*CORRECTION_LOCAL_HTTP
+    } else {
+        &*CORRECTION_HTTP
+    }
+}
+
 fn chat_request(url: reqwest::Url, config: &AiConfig, body: &Value) -> reqwest::RequestBuilder {
-    CORRECTION_HTTP
+    correction_client(&url)
         .post(url)
         .bearer_auth(&config.api_key)
         .json(body)
@@ -250,6 +268,17 @@ mod tests {
         ] {
             assert!(chat_url(configured).is_ok(), "{configured}");
         }
+    }
+
+    #[test]
+    fn loopback_plaintext_uses_the_proxy_free_http_client() {
+        let local = chat_url("http://127.0.0.1:12345/v1").unwrap();
+        let remote = chat_url("https://provider.example/v1").unwrap();
+        assert!(std::ptr::eq(
+            correction_client(&local),
+            &*CORRECTION_LOCAL_HTTP
+        ));
+        assert!(std::ptr::eq(correction_client(&remote), &*CORRECTION_HTTP));
     }
 
     #[test]
