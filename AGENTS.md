@@ -28,7 +28,7 @@ Read the relevant documents and actual code before changing behavior. Report con
 - Preserve focused-target probing and a copyable fallback when insertion fails or cannot be confirmed.
 - Preserve the identity `com.oriapps.sayforge`, database `sayforge.db` and existing user data.
 - The UI is English-only; speech recognition languages depend on the selected provider or model.
-- ASR is the only provider call; Transcription Prompt accompanies audio. Do not add a separate cleanup call or capture editor text.
+- Transcription Prompt accompanies audio. Optional AI correction is a distinct, user-enabled text-only provider call after ASR; never read editor text or selections for it.
 - Protect audio, transcripts, editor text, API keys and backup credentials. Use synthetic test data; do not expose real content in logs or commits.
 - Configure WebView2 browser arguments globally for windows sharing one environment.
 - The new optional updater requires a signed published release channel; never download/install without user consent. Preserve existing NSIS installation modes and release signing-key secrecy.

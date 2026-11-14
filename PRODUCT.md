@@ -45,7 +45,8 @@ provider response bodies; there is no additional log interface.
   High gain levels may increase noise or clip loud speech. Input warnings are
   limited to before speech is detected, so normal pauses do not prompt the user.
 - Cloud speech recognition; cloud audio is uploaded after recording stops; live captions are not supported.
-- One Transcription Prompt sent in the ASR request; no separate cleanup provider or request.
+- One Transcription Prompt sent in the ASR request. Optional AI correction separately sends the
+  recognized text to a configured OpenAI-compatible chat endpoint using its own prompt.
 - Hotwords, local text replacements and formatting.
   Default text replacements cover common technical terms; an explicitly saved
   empty list disables replacements, and existing custom lists remain unchanged.
@@ -62,7 +63,9 @@ provider response bodies; there is no additional log interface.
 
 1. Select a microphone, speech engine and recording shortcut.
 2. Record speech; the overlay shows the current state.
-3. Stop recording. Speech is transcribed with the configured prompt, then local text replacements and formatting are applied.
+3. Stop recording. Speech is transcribed with the configured prompt. If enabled, a separate AI
+   request corrects the transcript; otherwise the ASR text is used directly. Local text
+   replacements and formatting are applied afterward.
 4. Insert the result into the captured editable target. If insertion fails or cannot be confirmed, show a copyable fallback card.
 
 Cancellation must not insert late results. Empty/silent recordings can produce no text. Not every Windows application permits automatic insertion.
@@ -94,10 +97,16 @@ Legacy local-mode settings migrate to Cloud API. Downloaded model files and reti
 ## Transcription prompts and personal data
 
 - Standard chat sends Transcription Prompt as text alongside audio in one `user` message. A blank prompt uses the built-in transcription instruction. Legacy chat keeps the supported system-instruction shape and WAV-only audio. Multipart sends the prompt through `/audio/transcriptions`; hints and instruction handling depend on the model and endpoint. A blank multipart prompt uses the existing punctuation hint.
-- Explicit `chat_standard` makes one ASR request. Existing `auto` protocol probing and multipart retry without an unsupported prompt are compatibility fallbacks, not cleanup calls. They do not emulate instruction support.
+- Explicit `chat_standard` makes one ASR request. Existing `auto` protocol probing and multipart retry without an unsupported prompt are compatibility fallbacks, not correction calls. They do not emulate instruction support. Optional AI correction adds a separate, sequential chat completion request regardless of the ASR protocol.
 - Cloud ASR profiles optionally accept free-text Reasoning Effort. The value is sent as `reasoning_effort` in chat requests without changing the model ID; blank values and older profiles omit it, leaving the provider default. Multipart audio/transcriptions never sends it. The same profile option applies to saved dictation and unsaved-profile tests.
-- Editor text and selections are not read or sent to the provider. Ordinary focused-target insertion remains unchanged. ASR errors, empty responses and cancellation must not insert text.
-- Existing `systemInstruction` settings are the Transcription Prompt; their text is retained unchanged. Retired cleanup settings, credentials, presets and nonempty legacy `userPrompt` values remain stored/exportable but are inactive.
+- Editor text and selections are not read or sent to the provider. When AI correction is enabled,
+  the ASR transcript is sent to the configured correction endpoint, which may incur extra latency
+  and provider charges. If correction fails, times out, or returns empty output, the original ASR
+  transcript is retained; explicitly truncated output is also rejected. Remote correction endpoints
+  require HTTPS; HTTP is accepted only for loopback providers. Cancellation must not insert late results.
+- Existing `systemInstruction` settings remain the Transcription Prompt. The separate AI correction
+  uses the stored `cloudAi.*` credentials/prompt and `aiEnabled` switch. Historical presets and
+  nonempty legacy `userPrompt` values remain stored/exportable but inactive.
 - Settings and transcription history are stored locally. New recordings are not archived; older audio files and history remain untouched.
 - Text history can be disabled. Settings exports exclude history and audio; older ZIP backups can still be restored after confirmation. Backups are local and initiated by the user.
 - Legacy restore replaces archived settings/collections and matching audio files, preserving unrelated audio. Limits: 64 MiB JSON, 512 MiB per audio file, 8 GiB each for the ZIP file and extracted audio total, and 100,000 ZIP entries. Invalid archives are rejected; ordinary restore failures roll back database and audio changes. Process termination or power loss during restore is not covered by that rollback.
